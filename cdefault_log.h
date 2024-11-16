@@ -13,7 +13,7 @@
 #define LOG_INFO(fmt, ...) CDEFAULT_LOG_IMPL("INFO", stdout, fmt, ##__VA_ARGS__)
 #define LOG_WARN(fmt, ...) CDEFAULT_LOG_IMPL("WARN", stdout, fmt, ##__VA_ARGS__)
 #define LOG_ERROR(fmt, ...) CDEFAULT_LOG_IMPL("ERROR", stderr, fmt, ##__VA_ARGS__)
-#define LOG_FATAL(fmt, ...) CDEFAULT_LOG_IMPL("FATAL", stderr, fmt, ##__VA_ARGS__)
+#define LOG_FATAL(fmt, ...) { CDEFAULT_LOG_IMPL("FATAL", stderr, fmt, ##__VA_ARGS__); exit(1); }
 
 #ifdef DEBUG
 #define LOG_DEBUG(fmt, ...) CDEFAULT_LOG_IMPL("DEBUG", stdout, fmt, ##__VA_ARGS__)
