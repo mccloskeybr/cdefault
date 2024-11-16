@@ -22,7 +22,7 @@ String StringCreateSized(void* allocator, int32_t length, char* fmt, ...);
 String StringCreateCopy(void* allocator, String to_copy);
 String StringCreateFromStringView(void* allocator, StringView string_view);
 void StringFree(void* allocator, String string);
-void StringConcat(void* allocator, String dest, StringView source);
+void StringConcat(void* allocator, String* dest, StringView source);
 
 StringView StringViewCreateFromString(String string);
 StringView StringViewCreateFromCString(char* ptr);
@@ -93,9 +93,9 @@ void StringFree(void* allocator, String string) {
   FREE(allocator, string.buf);
 }
 
-void StringConcat(void* allocator, String dest, StringView source) {
-  REALLOCATE(allocator, dest.buf, (dest.length + source.length + 1) * sizeof(char));
-  snprintf(dest.buf + dest.length, source.length + 1, "%s", source.ptr);
+void StringConcat(void* allocator, String* dest, StringView source) {
+  dest->buf = REALLOCATE(allocator, dest->buf, (dest->length + source.length + 1) * sizeof(char));
+  snprintf(dest->buf + dest->length, source.length + 1, "%s", source.ptr);
 }
 
 StringView StringViewCreateFromString(String string) {
