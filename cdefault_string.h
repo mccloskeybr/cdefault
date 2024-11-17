@@ -31,6 +31,7 @@ int32_t StringViewFindLastOf(StringView string_view, char c);
 bool StringViewCompare(StringView a, StringView b);
 int32_t StringViewFindSubstring(StringView string_view, StringView substring);
 bool StringViewForward(StringView* string_view, int32_t offset);
+bool StringViewNext(StringView* string_view, StringView* extract, StringView substring);
 
 #define S_SV(s) StringViewCreateFromString(s)
 #define C_SV(p) StringViewCreateFromCString(p)
@@ -96,6 +97,7 @@ void StringFree(void* allocator, String string) {
 void StringConcat(void* allocator, String* dest, StringView source) {
   dest->buf = REALLOCATE(allocator, dest->buf, (dest->length + source.length + 1) * sizeof(char));
   snprintf(dest->buf + dest->length, source.length + 1, "%s", source.ptr);
+  dest->length += source.length;
 }
 
 StringView StringViewCreateFromString(String string) {
@@ -148,6 +150,18 @@ bool StringViewForward(StringView* string_view, int32_t offset) {
   if (string_view->length < offset) { return false;}
   string_view->ptr += offset;
   string_view->length -= offset;
+  return true;
+}
+
+bool StringViewNext(StringView* string_view, StringView* extract, StringView substring) {
+  int32_t offset = StringViewFindSubstring(*string_view, substring);
+  if (offset == -1) { return false; }
+  if (extract != NULL) {
+    extract->ptr = string_view->ptr;
+    extract->length = offset;
+  }
+  string_view->ptr += offset + substring.length;
+  string_view->length -= offset + substring.length;
   return true;
 }
 
