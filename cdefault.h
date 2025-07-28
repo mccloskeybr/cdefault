@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <inttypes.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <threads.h>
@@ -37,8 +38,17 @@ typedef double   F64;
                  (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : \
                  __FILE__))
 
-#define STATIC_ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
-#define BIT(i) 1 << i
+#define STATIC_ARRAY_LEN(arr) (sizeof(arr) / sizeof((arr)[0]))
+
+#define BIT(idx) (1 << (idx))
+#define EXTRACT_BIT(word, idx) (((word) >> (idx)) & 1)
+#define EXTRACT_U8(word, pos) (((word) >> ((pos) * 8)) & 0xff)
+#define EXTRACT_U16(word, pos) (((word) >> ((pos) * 16)) & 0xffff)
+#define EXTRACT_U32(word, pos) (((word) >> ((pos) * 32)) & 0xffffffff)
+
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#define MAX(a, b) (((a) < (b)) ? (b) : (a))
+#define CLAMP(a, x, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
 
 #define KB(n)       (((U64)(n)) << 10)
 #define MB(n)       (((U64)(n)) << 20)
@@ -48,14 +58,31 @@ typedef double   F64;
 #define MILLION(n)  ((n)*1000000)
 #define BILLION(n)  ((n)*1000000000)
 
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_YELLOW  "\x1b[33m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_MAGENTA "\x1b[35m"
+#define ANSI_COLOR_CYAN    "\x1b[36m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Assertions
+///////////////////////////////////////////////////////////////////////////////
+
 #ifndef NDEBUG
 #  define ASSERT(exp) assert(exp)
-#  define STATIC_ASSERT(exp, msg) static_assert((exp), msg)
 #else
 #  define ASSERT(exp) (exp)
-#  define STATIC_ASSERT(exp)
 #endif
-
+#if defined(__GNUC__) || defined(__clang__)
+#  define TRAP() __debugbreak()
+#elif defined(__MSC_VER)
+#  define TRAP() __builtin_trap()
+#else
+#  error Unknown trap intrinsic for this compiler.
+#endif
+#define STATIC_ASSERT(exp, msg) static_assert((exp), msg)
 #define UNIMPLEMENTED() ASSERT(false)
 #define UNREACHABLE() ASSERT(false)
 #define TODO() ASSERT(false)
@@ -73,21 +100,41 @@ typedef double   F64;
 #define UNLIKELY(expr) BRANCH_EXPECT(expr, false)
 
 ///////////////////////////////////////////////////////////////////////////////
-// NOTE: Log
+// NOTE: Alignment and offsets
 ///////////////////////////////////////////////////////////////////////////////
 
-// NOTE: If not initialized, will print to stderr.
-void LogInit(FILE* fd);
-void Log(char* level, char* filename, U32 loc, char* fmt, ...);
-#define LOG_INFO(fmt, ...) Log("INFO",  FILENAME, __LINE__, fmt, ##__VA_ARGS__)
-#define LOG_WARN(fmt, ...) Log("WARN",  FILENAME, __LINE__, fmt, ##__VA_ARGS__)
-#define LOG_ERROR(fmt, ...) Log("ERROR", FILENAME, __LINE__, fmt, ##__VA_ARGS__)
-
-#ifndef NDEBUG
-#  define LOG_DEBUG(fmt, ...) Log("DEBUG", FILENAME, fmt, __VA_ARGS__)
+#if defined(_MSC_VER) || defined(__clang__)
+#  define ALIGN_OF(T) __alignof(T)
+#elif defined(__GNUC__)
+#  define ALIGN_OF(T) __alignof__(T)
 #else
-#  define LOG_DEBUG(fmt, ...)
+#  error ALIGN_OF not defined for this compiler.
 #endif
+#define ALIGN_POW_2(x, b) (((x) + (b) - 1) & (~((b) - 1)))
+
+#define MEMBER(T, m)                    (((T*) 0)->m)
+#define OFFSET_OF(T, m)                 (size_t) (&MEMBER(T,m))
+#define MEMBER_FROM_OFFSET(T, ptr, off) (T)((((U8*) ptr) + (off)))
+#define CAST_FROM_MEMBER(T, m, ptr)     (T*)(((U8*) ptr) - OFFSET_OF(T, m))
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Memory
+///////////////////////////////////////////////////////////////////////////////
+
+#define MEMORY_COPY(dst, src, size) memmove((dst), (src), (size))
+#define MEMORY_SET(dst, byte, size) memset((dst), (byte), (size))
+#define MEMORY_COMPARE(a, b, size)  memcmp((a), (b), (size))
+
+#define MEMORY_COPY_STRUCT(d, s)       MEMORY_COPY((d), (s), sizeof(*(d)))
+#define MEMORY_COPY_STATIC_ARRAY(d, s) MEMORY_COPY((d), (s), sizeof(d))
+
+#define MEMORY_ZERO(dest, size)     MEMORY_SET(dst, 0, size)
+#define MEMORY_ZERO_STRUCT(s)       MEMORY_ZERO((s), sizeof(*(s)))
+#define MEMORY_ZERO_STATIC_ARRAY(a) MEMORY_ZERO((a), sizeof(a))
+
+#define IS_MEMORY_MATCH(a, b, size)       (MEMORY_COMPARE((a), (b), (size)) == 0)
+#define IS_MEMORY_MATCH_STRUCT(a, b)      IS_MEMORY_MATCH((a), (b), sizeof(*(a)))
+#define IS_MEMORY_MATCH_STATIC_ARRAY(a,b) IS_MEMORY_MATCH((a), (b), sizeof(a))
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: List macros
@@ -158,27 +205,122 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...);
   } while (0)
 #define DLL_PUSH_FRONT(list, node) DLL_INSERT(list, (typeof(node)) NULL, node)
 #define DLL_PUSH_BACK(list, node)  DLL_INSERT(list, DLL_BACK(list), node)
-#define DLL_POP_FRONT(list)                                  \
-  do {                                                       \
-    typeof((list)->dll_cont.head) n = (list)->dll_cont.head; \
-    DLL_REMOVE(list, n);                                     \
+#define DLL_POP_FRONT(list)                                           \
+  do {                                                                \
+    typeof((list)->dll_cont.head) _cdef_node = (list)->dll_cont.head; \
+    DLL_REMOVE(list, _cdef_node);                                     \
   } while(0)
-#define DLL_POP_BACK(list)                                   \
-  do {                                                       \
-    typeof((list)->dll_cont.tail) n = (list)->dll_cont.tail; \
-    DLL_REMOVE(list, n);                                     \
+#define DLL_POP_BACK(list)                                            \
+  do {                                                                \
+    typeof((list)->dll_cont.tail) _cdef_node = (list)->dll_cont.tail; \
+    DLL_REMOVE(list, _cdef_node);                                     \
   } while(0)
 #define DLL_FRONT(list) (list)->dll_cont.head
 #define DLL_BACK(list) (list)->dll_cont.tail
 #define DLL_NEXT(node) (node)->dll_node.next
 #define DLL_PREV(node) (node)->dll_node.prev
 
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Log
+///////////////////////////////////////////////////////////////////////////////
+
+// NOTE: If not initialized, will print to stderr.
+void LogInit(FILE* fd);
+void Log(char* level, char* filename, U32 loc, char* fmt, ...);
+#define LOG_INFO(fmt, ...) Log("INFO",  FILENAME, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_WARN(fmt, ...) Log("WARN",  FILENAME, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_ERROR(fmt, ...) Log("ERROR", FILENAME, __LINE__, fmt, ##__VA_ARGS__)
+
+#ifndef NDEBUG
+#  define LOG_DEBUG(fmt, ...) Log("DEBUG", FILENAME, fmt, __VA_ARGS__)
+#else
+#  define LOG_DEBUG(fmt, ...)
+#endif
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Test
+///////////////////////////////////////////////////////////////////////////////
+
+// NOTE: Test functions should return a B32, true on success.
+// NOTE: Wrap test functions in TEST() from main, expectations in TEST_EXPECT().
+
+#define TEST(func) \
+  if (func) { LOG_INFO ("\t[" ANSI_COLOR_GREEN "SUCCESS" ANSI_COLOR_RESET "]: "#func); } \
+  else      { LOG_ERROR("\t[" ANSI_COLOR_RED   "FAILURE" ANSI_COLOR_RESET "]: "#func); }
+#define TEST_EXPECT(expr) if (!(expr)) { LOG_ERROR("\tExpectation failed: "#expr); return false; }
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Arena
+///////////////////////////////////////////////////////////////////////////////
+
+typedef struct Arena Arena;
+struct Arena {
+  U64 capacity;
+  U64 pos;
+};
+
+typedef struct ArenaTemp ArenaTemp;
+struct ArenaTemp {
+  Arena* arena;
+  U64 pos;
+};
+
+Arena* ArenaCreate(U64 capacity);
+void ArenaRelease(Arena* arena);
+void* ArenaPush(Arena* arena, U64 size, U64 align);
+void ArenaPop(Arena* arena, U64 size);
+void ArenaClear(Arena* arena);
+
+ArenaTemp ArenaTempBegin(Arena* arena);
+void ArenaTempEnd(ArenaTemp* temp);
+
+#define ARENA_PUSH_ARRAY(arena, type, count) (type*) ArenaPush(arena, sizeof(type) * count, MAX(8, ALIGN_OF(type)))
+#define ARENA_PUSH_STRUCT(arena, type) ARENA_PUSH_ARRAY(arena, type, 1)
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: String
+///////////////////////////////////////////////////////////////////////////////
+
+typedef struct String8 String8;
+struct String8 {
+  U8* str;
+  U64 size;
+};
+
+B32 CharIsSpace(U8 c);
+B32 CharIsLower(U8 c);
+B32 CharIsUpper(U8 c);
+B32 CharIsAlpha(U8 c);
+B32 CharIsDigit(U8 c, U32 base);
+U8 CharToLower(U8 c);
+U8 CharToUpper(U8 c);
+
+String8 String8Create(U8* str, U64 size);
+String8 String8CreateCString(U8* c_str);
+String8 String8CreateRange(U8* str, U8* one_past_last);
+#define String8CreateStatic(s) String8Create(s, sizeof(s) - 1)
+String8 String8Substring(String8* s, U64 start, U64 end);
+
+B32 String8StartsWith(String8* a, String8* b); // NOTE: True iff a starts with b.
+B32 String8EndsWith(String8* a, String8* b); // NOTE: True iff a ens with b.
+B32 String8IsMatch(String8* a, String8* b);
+S64 String8Find(String8* string, U64 start_pos, String8* needle); // NOTE: Returns -1 on failure.
+S64 String8FindReverse(String8* string, U64 reverse_start_pos, String8* needle); // NOTE: Returns -1 on failure.
+
+String8 String8Concat(Arena* arena, String8* a, String8* b);
+String8 String8FormatV(Arena* arena, U8* fmt, va_list args);
+String8 String8Format(Arena* arena, U8* fmt, ...);
+
 #endif // CDEFAULT_H_
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Implementation
+///////////////////////////////////////////////////////////////////////////////
 
 #ifdef CDEFAULT_IMPLEMENTATION
 
 ///////////////////////////////////////////////////////////////////////////////
-// NOTE: Log
+// NOTE: Log implementation
 ///////////////////////////////////////////////////////////////////////////////
 
 typedef struct LogConfig LogConfig;
@@ -210,6 +352,190 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...) {
   va_start(args, fmt);
   LogV(level, filename, loc, fmt, args);
   va_end(args);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Arena implementation
+///////////////////////////////////////////////////////////////////////////////
+
+Arena* ArenaCreate(U64 capacity) {
+  Arena* arena = (Arena*) malloc(capacity + sizeof(Arena));
+  ASSERT(arena != NULL);
+  arena->capacity = capacity;
+  arena->pos = 0;
+}
+
+void ArenaRelease(Arena* arena) {
+  free(arena);
+}
+
+void* ArenaPush(Arena* arena, U64 size, U64 align) {
+  arena->pos = ALIGN_POW_2(arena->pos, align);
+  ASSERT(arena->pos + size < arena->capacity);
+  void* chunk = ((U8*) arena) + sizeof(Arena) + arena->pos;
+  arena->pos += size;
+  return chunk;
+}
+
+void ArenaPop(Arena* arena, U64 size) {
+  ASSERT(arena->pos > size);
+  arena->pos -= size;
+}
+
+void ArenaClear(Arena* arena) {
+  arena->pos = 0;
+}
+
+ArenaTemp ArenaTempBegin(Arena* arena) {
+  ArenaTemp temp = {0};
+  temp.arena = arena;
+  temp.pos = arena->pos;
+  return temp;
+}
+
+void ArenaTempEnd(ArenaTemp* temp) {
+  temp->arena->pos = temp->pos;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: String Implementation
+///////////////////////////////////////////////////////////////////////////////
+
+B32 CharIsSpace(U8 c) {
+  return (c == ' '  || c == '\n' ||
+          c == '\t' || c == '\r' ||
+          c == '\f' || c == '\v');
+}
+
+B32 CharIsLower(U8 c) {
+  return ('a' <= c && c <= 'z');
+}
+
+B32 CharIsUpper(U8 c) {
+  return ('A' <= c && c <= 'Z');
+}
+
+B32 CharIsAlpha(U8 c) {
+  return CharIsLower(c) || CharIsUpper(c);
+}
+
+B32 CharIsDigit(U8 c, U32 base) {
+  if (UNLIKELY(base == 0 || base > 16)) { return false; }
+  if      ('0' <= c && c <= '9') { c -= '0'; }
+  else if (CharIsLower(c))       { c -= 'a'; c += 10; }
+  else if (CharIsUpper(c))       { c -= 'A'; c += 10; }
+  return (c < base);
+}
+
+U8 CharToLower(U8 c) {
+  if (CharIsUpper(c)) { c += 'a' - 'A'; }
+  return c;
+}
+
+U8 CharToUpper(U8 c) {
+  if (CharIsLower(c)) { c += 'A' - 'a'; }
+  return c;
+}
+
+String8 String8Create(U8* str, U64 size) {
+  String8 result = {0};
+  result.str = str;
+  result.size = size;
+  return result;
+}
+
+String8 String8CreateCString(U8* c_str) {
+  U8* c = c_str;
+  while (*c != '\0') { c += 1; }
+  return String8CreateRange(c_str, c);
+}
+
+String8 String8CreateRange(U8* str, U8* one_past_last) {
+  String8 result = {0};
+  result.str = str;
+  result.size = (U64) (one_past_last - str);
+  return result;
+}
+
+String8 String8Substring(String8* s, U64 start, U64 end) {
+  ASSERT(end > start);
+  start = MIN(start, s->size);
+  end = MIN(end, s->size);
+  String8 result = {0};
+  result.str = s->str + start;
+  result.size = end - start;
+  return result;
+}
+
+B32 String8StartsWith(String8* a, String8* b) {
+  if (a->size < b->size) { return false; }
+  for (U64 i = 0; i < b->size; ++i) {
+    if (a->str[i] != b->str[i]) { return false; }
+  }
+  return true;
+}
+
+B32 String8EndsWith(String8* a, String8* b) {
+  if (a->size < b->size) { return false; }
+  U64 a_offset = a->size - b->size;
+  for (U64 i = 0; i < b->size; ++i) {
+    if (a->str[a_offset + i] != b->str[i]) { return false; }
+  }
+  return true;
+}
+
+B32 String8IsMatch(String8* a, String8* b) {
+  if (a->size != b->size) { return false; }
+  return String8StartsWith(a, b);
+}
+
+S64 String8Find(String8* string, U64 start_pos, String8* needle) {
+  if (string->size < start_pos + needle->size) { return -1; }
+  for (U64 i = 0; i < string->size - start_pos; ++i) {
+    U64 offset = start_pos + i;
+    String8 substr = String8Create(string->str + offset, string->size - offset);
+    if (String8StartsWith(&substr, needle)) { return offset; }
+  }
+  return -1;
+}
+
+S64 String8FindReverse(String8* string, U64 reverse_start_pos, String8* needle) {
+  if (string->size < reverse_start_pos + needle->size) { return -1; }
+  for (U64 i = string->size - reverse_start_pos - needle->size; i > 0; --i) {
+    String8 substr = String8Create(string->str, i + needle->size);
+    if (String8EndsWith(&substr, needle)) { return i; }
+  }
+  return -1;
+}
+
+String8 String8Concat(Arena* arena, String8* a, String8* b) {
+  String8 result = {0};
+  result.size = a->size + b->size;
+  result.str = ARENA_PUSH_ARRAY(arena, U8, a->size + b->size);
+  MEMORY_COPY(result.str, a->str, a->size);
+  MEMORY_COPY(result.str + a->size, b->str, b->size);
+  return result;
+}
+
+String8 String8FormatV(Arena* arena, U8* fmt, va_list args) {
+  va_list args_copy;
+  va_copy(args_copy, args);
+  U32 size = vsnprintf(NULL, 0, fmt, args_copy) + 1;
+  String8 result = {0};
+  result.size = size - 1;
+  result.str = ARENA_PUSH_ARRAY(arena, U8, size);
+  vsnprintf(result.str, size, fmt, args_copy);
+  va_end(args_copy);
+  ArenaPop(arena, 1); // NOTE: null terminator.
+  return result;
+}
+
+String8 String8Format(Arena* arena, U8* fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  String8 result = String8FormatV(arena, fmt, args);
+  va_end(args);
+  return result;
 }
 
 #endif // CDEFAULT_IMPLEMENTATION
