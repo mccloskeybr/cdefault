@@ -132,9 +132,9 @@ typedef double   F64;
 #define MEMORY_ZERO_STRUCT(s)       MEMORY_ZERO((s), sizeof(*(s)))
 #define MEMORY_ZERO_STATIC_ARRAY(a) MEMORY_ZERO((a), sizeof(a))
 
-#define IS_MEMORY_MATCH(a, b, size)       (MEMORY_COMPARE((a), (b), (size)) == 0)
-#define IS_MEMORY_MATCH_STRUCT(a, b)      IS_MEMORY_MATCH((a), (b), sizeof(*(a)))
-#define IS_MEMORY_MATCH_STATIC_ARRAY(a,b) IS_MEMORY_MATCH((a), (b), sizeof(a))
+#define IS_MEMORY_EQUAL(a, b, size)       (MEMORY_COMPARE((a), (b), (size)) == 0)
+#define IS_MEMORY_EQUAL_STRUCT(a, b)      IS_MEMORY_EQUAL((a), (b), sizeof(*(a)))
+#define IS_MEMORY_EQUAL_STATIC_ARRAY(a,b) IS_MEMORY_EQUAL((a), (b), sizeof(a))
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: List macros
@@ -219,6 +219,8 @@ typedef double   F64;
 #define DLL_BACK(list) (list)->dll_cont.tail
 #define DLL_NEXT(node) (node)->dll_node.next
 #define DLL_PREV(node) (node)->dll_node.prev
+#define DLL_FOR_EACH(T, node, list) \
+  for (T (node) = DLL_FRONT(list); (node) != NULL; (node) = DLL_NEXT(node))
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Log
@@ -247,7 +249,8 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...);
 #define TEST(func) \
   if (func) { LOG_INFO ("\t[" ANSI_COLOR_GREEN "SUCCESS" ANSI_COLOR_RESET "]: "#func); } \
   else      { LOG_ERROR("\t[" ANSI_COLOR_RED   "FAILURE" ANSI_COLOR_RESET "]: "#func); }
-#define TEST_EXPECT(expr) if (!(expr)) { LOG_ERROR("\tExpectation failed: "#expr); return false; }
+#define TEST_EXPECT(expr) \
+  if (!(expr)) { LOG_ERROR("\t" ANSI_COLOR_RED "Expectation failed: " ANSI_COLOR_RESET #expr); return false; }
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Arena
@@ -287,7 +290,18 @@ struct String8 {
   U64 size;
 };
 
-B32 CharIsSpace(U8 c);
+typedef struct String8Node String8Node;
+struct String8Node {
+  DLL_NODE(String8Node);
+  String8 string;
+};
+
+typedef struct String8List String8List;
+struct String8List {
+  DLL_CONTROLLER(String8Node);
+};
+
+B32 CharIsWhitespace(U8 c);
 B32 CharIsLower(U8 c);
 B32 CharIsUpper(U8 c);
 B32 CharIsAlpha(U8 c);
@@ -299,17 +313,27 @@ String8 String8Create(U8* str, U64 size);
 String8 String8CreateCString(U8* c_str);
 String8 String8CreateRange(U8* str, U8* one_past_last);
 #define String8CreateStatic(s) String8Create(s, sizeof(s) - 1)
+String8 String8Copy(Arena* arena, String8* string);
+
 String8 String8Substring(String8* s, U64 start, U64 end);
+String8 String8Trim(String8* s);
 
 B32 String8StartsWith(String8* a, String8* b); // NOTE: True iff a starts with b.
 B32 String8EndsWith(String8* a, String8* b); // NOTE: True iff a ens with b.
-B32 String8IsMatch(String8* a, String8* b);
+B32 String8Equals(String8* a, String8* b);
 S64 String8Find(String8* string, U64 start_pos, String8* needle); // NOTE: Returns -1 on failure.
 S64 String8FindReverse(String8* string, U64 reverse_start_pos, String8* needle); // NOTE: Returns -1 on failure.
 
+String8 String8ToUpper(Arena* arena, String8* s);
+String8 String8ToLower(Arena* arena, String8* s);
 String8 String8Concat(Arena* arena, String8* a, String8* b);
 String8 String8FormatV(Arena* arena, U8* fmt, va_list args);
 String8 String8Format(Arena* arena, U8* fmt, ...);
+
+void String8ListPrepend(String8List* list, String8Node* node);
+void String8ListAppend(String8List* list, String8Node* node);
+String8 String8ListJoin(Arena* arena, String8List* list);
+String8List String8Split(Arena* arena, String8* string, U8 c);
 
 #endif // CDEFAULT_H_
 
@@ -401,7 +425,7 @@ void ArenaTempEnd(ArenaTemp* temp) {
 // NOTE: String Implementation
 ///////////////////////////////////////////////////////////////////////////////
 
-B32 CharIsSpace(U8 c) {
+B32 CharIsWhitespace(U8 c) {
   return (c == ' '  || c == '\n' ||
           c == '\t' || c == '\r' ||
           c == '\f' || c == '\v');
@@ -457,14 +481,30 @@ String8 String8CreateRange(U8* str, U8* one_past_last) {
   return result;
 }
 
+String8 String8Copy(Arena* arena, String8* string) {
+  String8 result = {0};
+  result.size = string->size;
+  result.str = ARENA_PUSH_ARRAY(arena, U8, string->size);
+  MEMORY_COPY(result.str, string->str, string->size);
+  return result;
+}
+
 String8 String8Substring(String8* s, U64 start, U64 end) {
   ASSERT(end > start);
-  start = MIN(start, s->size);
-  end = MIN(end, s->size);
+  start = MIN(start, s->size - 1);
+  end = MIN(end, s->size - 1);
   String8 result = {0};
   result.str = s->str + start;
-  result.size = end - start;
+  result.size = end - start + 1;
   return result;
+}
+
+String8 String8Trim(String8* s) {
+  U64 start = 0;
+  while (CharIsWhitespace(s->str[start])) { ++start; }
+  U64 end = s->size - 1;
+  while (CharIsWhitespace(s->str[end])) { --end; }
+  return String8Substring(s, start, end);
 }
 
 B32 String8StartsWith(String8* a, String8* b) {
@@ -484,7 +524,7 @@ B32 String8EndsWith(String8* a, String8* b) {
   return true;
 }
 
-B32 String8IsMatch(String8* a, String8* b) {
+B32 String8Equals(String8* a, String8* b) {
   if (a->size != b->size) { return false; }
   return String8StartsWith(a, b);
 }
@@ -506,6 +546,22 @@ S64 String8FindReverse(String8* string, U64 reverse_start_pos, String8* needle) 
     if (String8EndsWith(&substr, needle)) { return i; }
   }
   return -1;
+}
+
+String8 String8ToUpper(Arena* arena, String8* s) {
+  String8 result = String8Copy(arena, s);
+  for (U64 i = 0; i < result.size; ++i) {
+    result.str[i] = CharToUpper(result.str[i]);
+  }
+  return result;
+}
+
+String8 String8ToLower(Arena* arena, String8* s) {
+  String8 result = String8Copy(arena, s);
+  for (U64 i = 0; i < result.size; ++i) {
+    result.str[i] = CharToLower(result.str[i]);
+  }
+  return result;
 }
 
 String8 String8Concat(Arena* arena, String8* a, String8* b) {
@@ -536,6 +592,47 @@ String8 String8Format(Arena* arena, U8* fmt, ...) {
   String8 result = String8FormatV(arena, fmt, args);
   va_end(args);
   return result;
+}
+
+void String8ListPrepend(String8List* list, String8Node* node) {
+  DLL_PUSH_FRONT(list, node);
+}
+
+void String8ListAppend(String8List* list, String8Node* node) {
+  DLL_PUSH_BACK(list, node);
+}
+
+String8 String8ListJoin(Arena* arena, String8List* list) {
+  U64 size = 0;
+  DLL_FOR_EACH(String8Node*, node, list) { size += node->string.size; }
+  String8 result = {0};
+  result.size = size;
+  result.str = ARENA_PUSH_ARRAY(arena, U8, size);
+  size = 0;
+  DLL_FOR_EACH(String8Node*, node, list) {
+    MEMORY_COPY(result.str + size, node->string.str, node->string.size);
+    size += node->string.size;
+  }
+  return result;
+}
+
+String8List String8Split(Arena* arena, String8* string, U8 c) {
+  String8List list = {0};
+  U8* substring_start = string->str;
+  for (U64 i = 0; i < string->size; ++i) {
+    if (string->str[i] == c) {
+      String8Node* node = ARENA_PUSH_STRUCT(arena, String8Node);
+      node->string = String8CreateRange(substring_start, &string->str[i]);
+      String8ListAppend(&list, node);
+      substring_start = &string->str[++i];
+    }
+  }
+  if (substring_start < string->str + string->size) {
+    String8Node* node = ARENA_PUSH_STRUCT(arena, String8Node);
+    node->string = String8CreateRange(substring_start, string->str + string->size);
+    String8ListAppend(&list, node);
+  }
+  return list;
 }
 
 #endif // CDEFAULT_IMPLEMENTATION

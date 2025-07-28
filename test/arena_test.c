@@ -43,7 +43,6 @@ B32 ArenaPushArrayTest(void) {
 }
 
 B32 TempArenaTest(void) {
-  TEST_EXPECT(true == false);
   Arena* arena = ArenaCreate(KB(1));
   U8* buffer = ARENA_PUSH_ARRAY(arena, U8, 32);
   ArenaTemp temp = ArenaTempBegin(arena);

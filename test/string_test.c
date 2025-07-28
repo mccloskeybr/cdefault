@@ -37,11 +37,18 @@ B32 CharTest(void) {
 B32 String8CreateTest(void) {
   String8 literal = String8CreateStatic("hello");
   TEST_EXPECT(literal.size == 5);
-  TEST_EXPECT(IS_MEMORY_MATCH(literal.str, "hello", 5));
+  TEST_EXPECT(IS_MEMORY_EQUAL(literal.str, "hello", 5));
   literal = String8CreateCString("hello");
   TEST_EXPECT(literal.size == 5);
-  TEST_EXPECT(IS_MEMORY_MATCH(literal.str, "hello", 5));
+  TEST_EXPECT(IS_MEMORY_EQUAL(literal.str, "hello", 5));
   return true;
+}
+
+B32 String8TrimTest(void) {
+  String8 literal = String8CreateStatic("  test  ");
+  String8 trimmed = String8Trim(&literal);
+  String8 expected = String8CreateStatic("test");
+  TEST_EXPECT(String8Equals(&trimmed, &expected));
 }
 
 B32 String8StartsWithTest(void) {
@@ -62,12 +69,12 @@ B32 String8EndsWithTest(void) {
   return true;
 }
 
-B32 String8IsMatchTest(void) {
+B32 String8EqualsTest(void) {
   String8 literal = String8CreateStatic("hello world");
   String8 same = String8CreateStatic("hello world");
   String8 not_same = String8CreateStatic("world");
-  TEST_EXPECT(String8IsMatch(&literal, &same));
-  TEST_EXPECT(!String8IsMatch(&literal, &not_same));
+  TEST_EXPECT(String8Equals(&literal, &same));
+  TEST_EXPECT(!String8Equals(&literal, &not_same));
   return true;
 }
 
@@ -103,7 +110,7 @@ B32 String8ConcatTest(void) {
   String8 b = String8CreateStatic("world");
   String8 c = String8Concat(arena, &a, &b);
   String8 expected = String8CreateStatic("hello world");
-  TEST_EXPECT(String8IsMatch(&c, &expected));
+  TEST_EXPECT(String8Equals(&c, &expected));
   ArenaRelease(arena);
   return true;
 }
@@ -112,7 +119,56 @@ B32 String8FormatTest(void) {
   Arena* arena = ArenaCreate(KB(1));
   String8 str = String8Format(arena, "hello %s %d", "world", 100);
   String8 expected = String8CreateStatic("hello world 100");
-  TEST_EXPECT(String8IsMatch(&str, &expected));
+  TEST_EXPECT(String8Equals(&str, &expected));
+  ArenaRelease(arena);
+  return true;
+}
+
+B32 String8ListBuildTest(void) {
+  String8Node* test = NULL;
+  String8List list = {0};
+  String8Node a = {0};
+  a.string = String8CreateStatic("hello");
+  String8Node b = {0};
+  b.string = String8CreateStatic(" ");
+  String8Node c = {0};
+  c.string = String8CreateStatic("world");
+  String8ListAppend(&list, &b);
+  String8ListPrepend(&list, &a);
+  String8ListAppend(&list, &c);
+  test = DLL_FRONT(&list);
+  TEST_EXPECT(IS_MEMORY_EQUAL(test, &a, sizeof(String8Node)));
+  test = DLL_NEXT(test);
+  TEST_EXPECT(IS_MEMORY_EQUAL(test, &b, sizeof(String8Node)));
+  test = DLL_NEXT(test);
+  TEST_EXPECT(IS_MEMORY_EQUAL(test, &c, sizeof(String8Node)));
+  Arena* arena = ArenaCreate(KB(1));
+  String8 combined = String8ListJoin(arena, &list);
+  String8 expected = String8CreateStatic("hello world");
+  TEST_EXPECT(String8Equals(&combined, &expected));
+  ArenaRelease(arena);
+  return true;
+}
+
+B32 String8SplitTest(void) {
+  String8 original = String8CreateStatic("hi hello world ");
+  String8 expected = {0};
+  String8Node* test = NULL;
+  Arena* arena = ArenaCreate(KB(1));
+  String8List list = String8Split(arena, &original, ' ');
+
+  test = DLL_FRONT(&list);
+  expected = String8CreateStatic("hi");
+  TEST_EXPECT(String8Equals(&test->string, &expected));
+
+  test = DLL_NEXT(test);
+  expected = String8CreateStatic("hello");
+  TEST_EXPECT(String8Equals(&test->string, &expected));
+
+  test = DLL_NEXT(test);
+  expected = String8CreateStatic("world");
+  TEST_EXPECT(String8Equals(&test->string, &expected));
+
   ArenaRelease(arena);
   return true;
 }
@@ -120,12 +176,15 @@ B32 String8FormatTest(void) {
 int main(void) {
   TEST(CharTest());
   TEST(String8CreateTest());
+  TEST(String8TrimTest());
   TEST(String8StartsWithTest());
   TEST(String8EndsWithTest());
-  TEST(String8IsMatchTest());
+  TEST(String8EqualsTest());
   TEST(String8FindTest());
   TEST(String8FindReverseTest());
   TEST(String8ConcatTest());
   TEST(String8FormatTest());
+  TEST(String8ListBuildTest());
+  TEST(String8SplitTest());
   return 0;
 }
