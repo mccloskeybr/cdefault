@@ -34,6 +34,26 @@ typedef double   F64;
 // NOTE: Gen purpose macros
 ///////////////////////////////////////////////////////////////////////////////
 
+#if defined(_WIN32)
+#  define OS_WINDOWS 1
+#elif defined(__gnu_linux__) || defined(__linux__)
+#  define OS_LINUX 1
+#elif defined(__APPLE__) && defined(__MACH__)
+#  define OS_MAC 1
+#else
+#  error Unknown operating system.
+#endif
+
+#if defined(__GNUC__) || defined(__GNUG__)
+#  define COMPILER_GCC 1
+#elif defined(__clang__)
+#  define COMPILER_CLANG 1
+#elif defined(__MSC_VER)
+#  define COMPILER_MSVC 1
+#else
+#  error Unknown compiler.
+#endif
+
 #define FILENAME (strrchr(__FILE__, '/')  ? strrchr(__FILE__, '/')  + 1 : \
                  (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : \
                  __FILE__))
@@ -75,9 +95,9 @@ typedef double   F64;
 #else
 #  define ASSERT(exp) (exp)
 #endif
-#if defined(__GNUC__) || defined(__clang__)
+#if defined(COMPILER_GCC) || defined(COMPILER_CLANG)
 #  define TRAP() __debugbreak()
-#elif defined(__MSC_VER)
+#elif defined(COMPILER_MSVC)
 #  define TRAP() __builtin_trap()
 #else
 #  error Unknown trap intrinsic for this compiler.
@@ -103,9 +123,9 @@ typedef double   F64;
 // NOTE: Alignment and offsets
 ///////////////////////////////////////////////////////////////////////////////
 
-#if defined(_MSC_VER) || defined(__clang__)
+#if defined(COMPILER_MSVC) || defined(COMPILER_CLANG)
 #  define ALIGN_OF(T) __alignof(T)
-#elif defined(__GNUC__)
+#elif defined(COMPILER_GCC)
 #  define ALIGN_OF(T) __alignof__(T)
 #else
 #  error ALIGN_OF not defined for this compiler.
@@ -140,87 +160,138 @@ typedef double   F64;
 // NOTE: List macros
 ///////////////////////////////////////////////////////////////////////////////
 
-// Doubly-linked list
+// NOTE: Singly-linked stack
 // E.g.
-// struct MyNodeManager { DLL_CONTROLLER(MyNode); }
-// struct MyNode { DLL_NODE(MyNode); S32 data; }
+// struct Node { Node* next; }
+// struct Stack { Node* front; }
 //
-// MyNodeManager manager = {0};
-// MyNodeManager node = {0};
-// DLL_PUSH_FRONT(&manager, &node);
-// DLL_POP_FRONT(&manager);
+// Stack stack = {0};
+// Node node = {0};
+// SLL_STACK_PUSH(stack.front, &node, next);
+// SLL_STACK_POP(stack.front, next);
 
-#define DLL_CONTROLLER(Node) \
-  struct {                   \
-    struct Node* head;       \
-    struct Node* tail;       \
-  } dll_cont;
-#define DLL_NODE(Node) \
-  struct {             \
-    struct Node* prev; \
-    struct Node* next; \
-  } dll_node;
+#define SLL_STACK_PUSH(front, curr_node, next) \
+  do {                                         \
+    (curr_node)->next = (front);               \
+    (front) = (curr_node);                     \
+  } while (0)
+#define SLL_STACK_POP(front, next) \
+  (front) = (front)->next
 
-#define DLL_INSERT(list, prev_node, node)                 \
-  do {                                                    \
-    if ((list)->dll_cont.head == NULL) {                  \
-      (list)->dll_cont.head = (node);                     \
-      (list)->dll_cont.tail = (node);                     \
-      (node)->dll_node.next = NULL;                       \
-      (node)->dll_node.prev = NULL;                       \
-    }                                                     \
-    else if ((prev_node) == NULL) {                       \
-      (node)->dll_node.next = (list)->dll_cont.head;      \
-      (list)->dll_cont.head->dll_node.prev = (node);      \
-      (list)->dll_cont.head = (node);                     \
-      (node)->dll_node.prev = NULL;                       \
-    }                                                     \
-    else if ((prev_node) == (list)->dll_cont.tail) {      \
-      (list)->dll_cont.tail->dll_node.next = (node);      \
-      (node)->dll_node.prev = (list)->dll_cont.tail;      \
-      (list)->dll_cont.tail = (node);                     \
-      (node)->dll_node.next = NULL;                       \
-    }                                                     \
-    else {                                                \
-      (prev_node)->dll_node.next->dll_node.prev = (node); \
-      (node)->dll_node.next = (prev_node)->dll_node.next; \
-      (prev_node)->dll_node.next = (node);                \
-      (node)->dll_node.prev = (prev_node);                \
-    }                                                     \
+// NOTE: Singly-linked queue
+// E.g.
+// struct Node { Node* next; }
+// struct Queue { Node* front, back; }
+//
+// Queue queue = {0};
+// Node node = {0};
+// SLL_QUEUE_PUSH(queue.front, queue.back, &node, next);
+// SLL_QUEUE_POP(queue.front, queue.back next);
+
+#define SLL_QUEUE_PUSH(front, back, curr_node, next) \
+  do {                                               \
+    if ((front) == NULL) {                           \
+      (front) = (curr_node);                         \
+      (back) = (curr_node);                          \
+      (curr_node)->next = NULL;                      \
+    }                                                \
+    else {                                           \
+      (back)->next = (curr_node);                    \
+      (back) = (curr_node);                          \
+      (curr_node)->next = NULL;                      \
+    }                                                \
   } while (0)
-#define DLL_REMOVE(list, node)                                      \
-  do {                                                              \
-    if ((node) == (list)->dll_cont.head) {                          \
-      (list)->dll_cont.head = (list)->dll_cont.head->dll_node.next; \
-    }                                                               \
-    if ((node) == (list)->dll_cont.tail) {                          \
-      (list)->dll_cont.tail = (list)->dll_cont.tail->dll_node.prev; \
-    }                                                               \
-    if ((node)->dll_node.prev != NULL) {                            \
-      (node)->dll_node.prev->dll_node.next = (node)->dll_node.next; \
-    }                                                               \
-    if ((node)->dll_node.next != NULL) {                            \
-      (node)->dll_node.next->dll_node.prev = (node)->dll_node.prev; \
-    }                                                               \
+#define SLL_QUEUE_PUSH_FRONT(front, back, curr_node, next) \
+  do {                                                     \
+    if ((front) == NULL) {                                 \
+      (front) = (curr_node);                               \
+      (back) = (curr_node);                                \
+      (curr_node)->next = NULL;                            \
+    }                                                      \
+    else {                                                 \
+      (curr_node)->next = (front);                         \
+      (front) = (curr_node);                               \
+    }                                                      \
   } while (0)
-#define DLL_PUSH_FRONT(list, node) DLL_INSERT(list, (typeof(node)) NULL, node)
-#define DLL_PUSH_BACK(list, node)  DLL_INSERT(list, DLL_BACK(list), node)
-#define DLL_POP_FRONT(list)                                           \
-  do {                                                                \
-    typeof((list)->dll_cont.head) _cdef_node = (list)->dll_cont.head; \
-    DLL_REMOVE(list, _cdef_node);                                     \
-  } while(0)
-#define DLL_POP_BACK(list)                                            \
-  do {                                                                \
-    typeof((list)->dll_cont.tail) _cdef_node = (list)->dll_cont.tail; \
-    DLL_REMOVE(list, _cdef_node);                                     \
-  } while(0)
-#define DLL_FRONT(list) (list)->dll_cont.head
-#define DLL_BACK(list) (list)->dll_cont.tail
-#define DLL_NEXT(node) (node)->dll_node.next
-#define DLL_PREV(node) (node)->dll_node.prev
-#define DLL_FOR_EACH(T, node, list) \
-  for (T (node) = DLL_FRONT(list); (node) != NULL; (node) = DLL_NEXT(node))
+#define SLL_QUEUE_POP(front, back, next) \
+  do {                                   \
+    if ((front) == (back)) {             \
+      (front) = NULL;                    \
+      (back) = NULL;                     \
+    }                                    \
+    else {                               \
+      (front) = (front)->next;           \
+    }                                    \
+  } while (0)
+
+// NOTE: Doubly-linked list
+// E.g.
+// struct Node { Node* prev, next; }
+// struct NodeManager { Node* front, back; }
+//
+// NodeManager man = {0};
+// NodeManager node = {0};
+// DLL_PUSH_BACK(man.front, man.back, &node, prev, next);
+// DLL_POP_BACK(man.front, man.back, prev, next);
+
+// NOTE: front, back, prev_node, curr_node are node pointers.
+// prev, next are the member field names.
+#define DLL_INSERT(front, back, prev_node, curr_node, prev, next) \
+  do {                                                            \
+    if ((front) == NULL) {                                        \
+      (front) = (curr_node);                                      \
+      (back) = (curr_node);                                       \
+      (curr_node)->next = NULL;                                   \
+      (curr_node)->prev = NULL;                                   \
+    }                                                             \
+    else if ((prev_node) == NULL) {                               \
+      (curr_node)->next = (front);                                \
+      (front)->prev = (curr_node);                                \
+      (front) = (curr_node);                                      \
+      (curr_node)->prev = NULL;                                   \
+    }                                                             \
+    else if ((prev_node) == (back)) {                             \
+      (back)->next = (curr_node);                                 \
+      (curr_node)->prev = (back);                                 \
+      (back) = (curr_node);                                       \
+      (curr_node)->next = NULL;                                   \
+    }                                                             \
+    else {                                                        \
+      (prev_node)->next->prev = (curr_node);                      \
+      (curr_node)->next = (prev_node)->next;                      \
+      (prev_node)->next = (curr_node);                            \
+      (curr_node)->prev = (prev_node);                            \
+    }                                                             \
+  } while (0)
+#define DLL_REMOVE(front, back, curr_node, prev, next) \
+  do {                                                 \
+    if ((curr_node) == (front)) {                      \
+      (front) = (front)->next;                         \
+    }                                                  \
+    if ((curr_node) == (back)) {                       \
+      (back) = (back)->prev;                           \
+    }                                                  \
+    if ((curr_node)->prev != NULL) {                   \
+      (curr_node)->prev->next = (curr_node)->next;     \
+    }                                                  \
+    if ((curr_node)->next != NULL) {                   \
+      (curr_node)->next->prev = (curr_node)->prev;     \
+    }                                                  \
+  } while (0)
+#define DLL_PUSH_FRONT(front, back, curr_node, prev, next) \
+  DLL_INSERT(front, back, (typeof(curr_node)) NULL, curr_node, prev, next)
+#define DLL_PUSH_BACK(front, back, curr_node, prev, next) \
+  DLL_INSERT(front, back, back, curr_node, prev, next)
+#define DLL_POP_FRONT(front, back, prev, next)                  \
+  do {                                                          \
+    typeof(front) __cdefault_front_copy = front;                \
+    DLL_REMOVE(front, back, __cdefault_front_copy, prev, next); \
+  } while (0)
+#define DLL_POP_BACK(front, back, prev, next)                   \
+  do {                                                          \
+    typeof(front) __cdefault_back_copy = back;                  \
+    DLL_REMOVE(front, back, __cdefault_back_copy, prev, next);  \
+  } while (0)
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Log
@@ -268,7 +339,7 @@ struct ArenaTemp {
   U64 pos;
 };
 
-Arena* ArenaCreate(U64 capacity);
+Arena* ArenaAllocate(U64 capacity);
 void ArenaRelease(Arena* arena);
 void* ArenaPush(Arena* arena, U64 size, U64 align);
 void ArenaPop(Arena* arena, U64 size);
@@ -290,15 +361,16 @@ struct String8 {
   U64 size;
 };
 
-typedef struct String8Node String8Node;
-struct String8Node {
-  DLL_NODE(String8Node);
+typedef struct String8ListNode String8ListNode;
+struct String8ListNode {
+  String8ListNode* next;
   String8 string;
 };
 
 typedef struct String8List String8List;
 struct String8List {
-  DLL_CONTROLLER(String8Node);
+  String8ListNode* front;
+  String8ListNode* back;
 };
 
 B32 CharIsWhitespace(U8 c);
@@ -330,8 +402,8 @@ String8 String8Concat(Arena* arena, String8* a, String8* b);
 String8 String8FormatV(Arena* arena, U8* fmt, va_list args);
 String8 String8Format(Arena* arena, U8* fmt, ...);
 
-void String8ListPrepend(String8List* list, String8Node* node);
-void String8ListAppend(String8List* list, String8Node* node);
+void String8ListPrepend(String8List* list, String8ListNode* node);
+void String8ListAppend(String8List* list, String8ListNode* node);
 String8 String8ListJoin(Arena* arena, String8List* list);
 String8List String8Split(Arena* arena, String8* string, U8 c);
 
@@ -353,22 +425,22 @@ struct LogConfig {
   mtx_t mtx;
   B8 is_initialized;
 };
-static LogConfig g_cdefault_log_config = {0};
+static LogConfig __g_cdefault_log_config = {0};
 
 void LogInit(FILE* fd) {
-  g_cdefault_log_config = (LogConfig) {0};
-  g_cdefault_log_config.fd = fd;
-  mtx_init(&g_cdefault_log_config.mtx, mtx_plain);
-  g_cdefault_log_config.is_initialized = true;
+  __g_cdefault_log_config = (LogConfig) {0};
+  __g_cdefault_log_config.fd = fd;
+  mtx_init(&__g_cdefault_log_config.mtx, mtx_plain);
+  __g_cdefault_log_config.is_initialized = true;
 }
 
 static void LogV(char* level, char* filename, U32 loc, char* fmt, va_list args) {
-  if (UNLIKELY(!g_cdefault_log_config.is_initialized)) { LogInit(stderr); }
-  mtx_lock(&g_cdefault_log_config.mtx);
-  fprintf(g_cdefault_log_config.fd, "[%s | %s:%d]: ", level, filename, loc);
-  vfprintf(g_cdefault_log_config.fd, fmt, args);
-  fprintf(g_cdefault_log_config.fd, "\n");
-  mtx_unlock(&g_cdefault_log_config.mtx);
+  if (UNLIKELY(!__g_cdefault_log_config.is_initialized)) { LogInit(stderr); }
+  mtx_lock(&__g_cdefault_log_config.mtx);
+  fprintf(__g_cdefault_log_config.fd, "[%s | %s:%d]: ", level, filename, loc);
+  vfprintf(__g_cdefault_log_config.fd, fmt, args);
+  fprintf(__g_cdefault_log_config.fd, "\n");
+  mtx_unlock(&__g_cdefault_log_config.mtx);
 }
 
 void Log(char* level, char* filename, U32 loc, char* fmt, ...) {
@@ -382,7 +454,7 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...) {
 // NOTE: Arena implementation
 ///////////////////////////////////////////////////////////////////////////////
 
-Arena* ArenaCreate(U64 capacity) {
+Arena* ArenaAllocate(U64 capacity) {
   Arena* arena = (Arena*) malloc(capacity + sizeof(Arena));
   ASSERT(arena != NULL);
   arena->capacity = capacity;
@@ -594,22 +666,24 @@ String8 String8Format(Arena* arena, U8* fmt, ...) {
   return result;
 }
 
-void String8ListPrepend(String8List* list, String8Node* node) {
-  DLL_PUSH_FRONT(list, node);
+void String8ListPrepend(String8List* list, String8ListNode* node) {
+  SLL_QUEUE_PUSH_FRONT(list->front, list->back, node, next);
 }
 
-void String8ListAppend(String8List* list, String8Node* node) {
-  DLL_PUSH_BACK(list, node);
+void String8ListAppend(String8List* list, String8ListNode* node) {
+  SLL_QUEUE_PUSH(list->front, list->back, node, next);
 }
 
 String8 String8ListJoin(Arena* arena, String8List* list) {
   U64 size = 0;
-  DLL_FOR_EACH(String8Node*, node, list) { size += node->string.size; }
+  for (String8ListNode* node = list->front; node != NULL; node = node->next) {
+    size += node->string.size;
+  }
   String8 result = {0};
   result.size = size;
   result.str = ARENA_PUSH_ARRAY(arena, U8, size);
   size = 0;
-  DLL_FOR_EACH(String8Node*, node, list) {
+  for (String8ListNode* node = list->front; node != NULL; node = node->next) {
     MEMORY_COPY(result.str + size, node->string.str, node->string.size);
     size += node->string.size;
   }
@@ -621,14 +695,14 @@ String8List String8Split(Arena* arena, String8* string, U8 c) {
   U8* substring_start = string->str;
   for (U64 i = 0; i < string->size; ++i) {
     if (string->str[i] == c) {
-      String8Node* node = ARENA_PUSH_STRUCT(arena, String8Node);
+      String8ListNode* node = ARENA_PUSH_STRUCT(arena, String8ListNode);
       node->string = String8CreateRange(substring_start, &string->str[i]);
       String8ListAppend(&list, node);
       substring_start = &string->str[++i];
     }
   }
   if (substring_start < string->str + string->size) {
-    String8Node* node = ARENA_PUSH_STRUCT(arena, String8Node);
+    String8ListNode* node = ARENA_PUSH_STRUCT(arena, String8ListNode);
     node->string = String8CreateRange(substring_start, string->str + string->size);
     String8ListAppend(&list, node);
   }

@@ -3,8 +3,8 @@
 
 struct TestStruct { U32 data; };
 
-B32 ArenaCreateTest(void) {
-  Arena* arena = ArenaCreate(KB(1));
+B32 ArenaAllocateTest(void) {
+  Arena* arena = ArenaAllocate(KB(1));
   TEST_EXPECT(arena->pos == 0);
   TEST_EXPECT(arena->capacity == KB(1));
   ArenaRelease(arena);
@@ -12,7 +12,7 @@ B32 ArenaCreateTest(void) {
 }
 
 B32 ArenaAlignTest(void) {
-  Arena* arena = ArenaCreate(KB(1));
+  Arena* arena = ArenaAllocate(KB(1));
   U8* test_arr = ARENA_PUSH_ARRAY(arena, U8, 15);
   TEST_EXPECT(test_arr == ((U8*) arena) + sizeof(Arena));
   TEST_EXPECT(arena->pos = sizeof(U8) * 15);
@@ -25,7 +25,7 @@ B32 ArenaAlignTest(void) {
 }
 
 B32 ArenaPushStructTest(void) {
-  Arena* arena = ArenaCreate(KB(1));
+  Arena* arena = ArenaAllocate(KB(1));
   struct TestStruct* test_struct = ARENA_PUSH_STRUCT(arena, struct TestStruct);
   TEST_EXPECT((U8*) test_struct == ((U8*) arena) + sizeof(Arena));
   TEST_EXPECT(arena->pos = sizeof(struct TestStruct));
@@ -34,7 +34,7 @@ B32 ArenaPushStructTest(void) {
 }
 
 B32 ArenaPushArrayTest(void) {
-  Arena* arena = ArenaCreate(KB(1));
+  Arena* arena = ArenaAllocate(KB(1));
   U8* test_arr = ARENA_PUSH_ARRAY(arena, U8, 32);
   TEST_EXPECT(test_arr == ((U8*) arena) + sizeof(Arena));
   TEST_EXPECT(arena->pos = sizeof(U8) * 32);
@@ -43,7 +43,7 @@ B32 ArenaPushArrayTest(void) {
 }
 
 B32 TempArenaTest(void) {
-  Arena* arena = ArenaCreate(KB(1));
+  Arena* arena = ArenaAllocate(KB(1));
   U8* buffer = ARENA_PUSH_ARRAY(arena, U8, 32);
   ArenaTemp temp = ArenaTempBegin(arena);
   U8* temp_buffer = ARENA_PUSH_ARRAY(temp.arena, U8, 32);
@@ -56,7 +56,7 @@ B32 TempArenaTest(void) {
 }
 
 int main(void) {
-  TEST(ArenaCreateTest());
+  TEST(ArenaAllocateTest());
   TEST(ArenaAlignTest());
   TEST(ArenaPushStructTest());
   TEST(ArenaPushArrayTest());

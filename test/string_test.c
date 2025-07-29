@@ -105,7 +105,7 @@ B32 String8FindReverseTest(void) {
 }
 
 B32 String8ConcatTest(void) {
-  Arena* arena = ArenaCreate(KB(1));
+  Arena* arena = ArenaAllocate(KB(1));
   String8 a = String8CreateStatic("hello ");
   String8 b = String8CreateStatic("world");
   String8 c = String8Concat(arena, &a, &b);
@@ -116,7 +116,7 @@ B32 String8ConcatTest(void) {
 }
 
 B32 String8FormatTest(void) {
-  Arena* arena = ArenaCreate(KB(1));
+  Arena* arena = ArenaAllocate(KB(1));
   String8 str = String8Format(arena, "hello %s %d", "world", 100);
   String8 expected = String8CreateStatic("hello world 100");
   TEST_EXPECT(String8Equals(&str, &expected));
@@ -125,24 +125,24 @@ B32 String8FormatTest(void) {
 }
 
 B32 String8ListBuildTest(void) {
-  String8Node* test = NULL;
+  String8ListNode* test = NULL;
   String8List list = {0};
-  String8Node a = {0};
+  String8ListNode a = {0};
   a.string = String8CreateStatic("hello");
-  String8Node b = {0};
+  String8ListNode b = {0};
   b.string = String8CreateStatic(" ");
-  String8Node c = {0};
+  String8ListNode c = {0};
   c.string = String8CreateStatic("world");
   String8ListAppend(&list, &b);
   String8ListPrepend(&list, &a);
   String8ListAppend(&list, &c);
-  test = DLL_FRONT(&list);
-  TEST_EXPECT(IS_MEMORY_EQUAL(test, &a, sizeof(String8Node)));
-  test = DLL_NEXT(test);
-  TEST_EXPECT(IS_MEMORY_EQUAL(test, &b, sizeof(String8Node)));
-  test = DLL_NEXT(test);
-  TEST_EXPECT(IS_MEMORY_EQUAL(test, &c, sizeof(String8Node)));
-  Arena* arena = ArenaCreate(KB(1));
+  test = list.front;
+  TEST_EXPECT(IS_MEMORY_EQUAL(test, &a, sizeof(String8ListNode)));
+  test = test->next;
+  TEST_EXPECT(IS_MEMORY_EQUAL(test, &b, sizeof(String8ListNode)));
+  test = test->next;
+  TEST_EXPECT(IS_MEMORY_EQUAL(test, &c, sizeof(String8ListNode)));
+  Arena* arena = ArenaAllocate(KB(1));
   String8 combined = String8ListJoin(arena, &list);
   String8 expected = String8CreateStatic("hello world");
   TEST_EXPECT(String8Equals(&combined, &expected));
@@ -153,19 +153,19 @@ B32 String8ListBuildTest(void) {
 B32 String8SplitTest(void) {
   String8 original = String8CreateStatic("hi hello world ");
   String8 expected = {0};
-  String8Node* test = NULL;
-  Arena* arena = ArenaCreate(KB(1));
+  String8ListNode* test = NULL;
+  Arena* arena = ArenaAllocate(KB(1));
   String8List list = String8Split(arena, &original, ' ');
 
-  test = DLL_FRONT(&list);
+  test = list.front;
   expected = String8CreateStatic("hi");
   TEST_EXPECT(String8Equals(&test->string, &expected));
 
-  test = DLL_NEXT(test);
+  test = test->next;
   expected = String8CreateStatic("hello");
   TEST_EXPECT(String8Equals(&test->string, &expected));
 
-  test = DLL_NEXT(test);
+  test = test->next;
   expected = String8CreateStatic("world");
   TEST_EXPECT(String8Equals(&test->string, &expected));
 
