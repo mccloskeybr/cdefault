@@ -105,7 +105,7 @@ B32 String8FindReverseTest(void) {
 }
 
 B32 String8ConcatTest(void) {
-  Arena* arena = ArenaAllocate(KB(1));
+  Arena* arena = ArenaAllocate();
   String8 a = String8CreateStatic("hello ");
   String8 b = String8CreateStatic("world");
   String8 c = String8Concat(arena, &a, &b);
@@ -116,7 +116,7 @@ B32 String8ConcatTest(void) {
 }
 
 B32 String8FormatTest(void) {
-  Arena* arena = ArenaAllocate(KB(1));
+  Arena* arena = ArenaAllocate();
   String8 str = String8Format(arena, "hello %s %d", "world", 100);
   String8 expected = String8CreateStatic("hello world 100");
   TEST_EXPECT(String8Equals(&str, &expected));
@@ -142,7 +142,7 @@ B32 String8ListBuildTest(void) {
   TEST_EXPECT(IS_MEMORY_EQUAL(test, &b, sizeof(String8ListNode)));
   test = test->next;
   TEST_EXPECT(IS_MEMORY_EQUAL(test, &c, sizeof(String8ListNode)));
-  Arena* arena = ArenaAllocate(KB(1));
+  Arena* arena = ArenaAllocate();
   String8 combined = String8ListJoin(arena, &list);
   String8 expected = String8CreateStatic("hello world");
   TEST_EXPECT(String8Equals(&combined, &expected));
@@ -154,7 +154,7 @@ B32 String8SplitTest(void) {
   String8 original = String8CreateStatic("hi hello world ");
   String8 expected = {0};
   String8ListNode* test = NULL;
-  Arena* arena = ArenaAllocate(KB(1));
+  Arena* arena = ArenaAllocate();
   String8List list = String8Split(arena, &original, ' ');
 
   test = list.front;

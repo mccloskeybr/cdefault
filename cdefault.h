@@ -91,9 +91,9 @@ typedef double   F64;
 ///////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
-#  define ASSERT(exp) assert(exp)
+#  define DEBUG_ASSERT(exp) assert(exp)
 #else
-#  define ASSERT(exp) (exp)
+#  define DEBUG_ASSERT(exp) (exp)
 #endif
 #if defined(COMPILER_GCC) || defined(COMPILER_CLANG)
 #  define TRAP() __debugbreak()
@@ -102,6 +102,7 @@ typedef double   F64;
 #else
 #  error Unknown trap intrinsic for this compiler.
 #endif
+#define ASSERT(exp) if (!(exp)) { *(int*)0 = 0; }
 #define STATIC_ASSERT(exp, msg) static_assert((exp), msg)
 #define UNIMPLEMENTED() ASSERT(false)
 #define UNREACHABLE() ASSERT(false)
@@ -327,9 +328,16 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...);
 // NOTE: Arena
 ///////////////////////////////////////////////////////////////////////////////
 
+typedef struct ArenaConfig ArenaConfig;
+struct ArenaConfig {
+  U64 capacity; // NOTE: How much space is allocated (bytes).
+};
+
 typedef struct Arena Arena;
 struct Arena {
+  Arena* current;
   U64 capacity;
+  U64 base_pos;
   U64 pos;
 };
 
@@ -339,9 +347,11 @@ struct ArenaTemp {
   U64 pos;
 };
 
-Arena* ArenaAllocate(U64 capacity);
+void ArenaInit(ArenaConfig config);
+Arena* ArenaAllocate(void);
 void ArenaRelease(Arena* arena);
 void* ArenaPush(Arena* arena, U64 size, U64 align);
+void ArenaPopTo(Arena* arena, U64 pos);
 void ArenaPop(Arena* arena, U64 size);
 void ArenaClear(Arena* arena);
 
@@ -454,32 +464,76 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...) {
 // NOTE: Arena implementation
 ///////////////////////////////////////////////////////////////////////////////
 
-Arena* ArenaAllocate(U64 capacity) {
-  Arena* arena = (Arena*) malloc(capacity + sizeof(Arena));
-  ASSERT(arena != NULL);
-  arena->capacity = capacity;
-  arena->pos = 0;
+static ArenaConfig __g_cdefault_arena_config = {
+  .capacity = KB(4),
+};
+void ArenaInit(ArenaConfig config) {
+  __g_cdefault_arena_config = config;
+}
+
+Arena* ArenaAllocate(void) {
+  Arena* arena = (Arena*) malloc(__g_cdefault_arena_config.capacity);
+  DEBUG_ASSERT(arena != NULL);
+  *arena = (Arena) {0};
+  arena->current = arena;
+  arena->capacity = __g_cdefault_arena_config.capacity;
+  return arena;
 }
 
 void ArenaRelease(Arena* arena) {
+  ArenaClear(arena);
   free(arena);
 }
 
 void* ArenaPush(Arena* arena, U64 size, U64 align) {
-  arena->pos = ALIGN_POW_2(arena->pos, align);
-  ASSERT(arena->pos + size < arena->capacity);
-  void* chunk = ((U8*) arena) + sizeof(Arena) + arena->pos;
-  arena->pos += size;
+  U64 pos_aligned = ALIGN_POW_2(arena->current->pos, align);
+  if (pos_aligned - arena->current->base_pos + size >
+      arena->current->capacity - sizeof(Arena)) {
+    Arena* new_arena = NULL;
+    if (__g_cdefault_arena_config.capacity < sizeof(Arena) + size) {
+      LOG_WARN(
+          "Allocating custom arena for extra large size: "
+          "%d (normal capacity is: %d).",
+          size, __g_cdefault_arena_config.capacity - sizeof(Arena));
+      U64 capacity_hold = __g_cdefault_arena_config.capacity;
+      __g_cdefault_arena_config.capacity = sizeof(Arena) + size;
+      new_arena = ArenaAllocate();
+      __g_cdefault_arena_config.capacity = capacity_hold;
+    } else {
+      new_arena = ArenaAllocate();
+    }
+    new_arena->base_pos = pos_aligned;
+    new_arena->current = arena->current;
+    arena->current = new_arena;
+  }
+  arena->current->pos = pos_aligned;
+  DEBUG_ASSERT((arena->current->pos - arena->current->base_pos +
+      sizeof(Arena) + size) <= arena->current->capacity);
+  void* chunk = ((U8*) arena) + sizeof(Arena) +
+    (arena->current->pos - arena->current->base_pos);
+  arena->current->pos += size;
+
   return chunk;
 }
 
+void ArenaPopTo(Arena* arena, U64 pos) {
+  Arena* current = arena->current;
+  while (pos < current->base_pos) {
+    Arena* next = current->current;
+    free(current);
+    DEBUG_ASSERT(current != next);
+    current = next;
+  }
+  current->pos = pos;
+  arena->current = current;
+}
+
 void ArenaPop(Arena* arena, U64 size) {
-  ASSERT(arena->pos > size);
-  arena->pos -= size;
+  ArenaPopTo(arena, arena->current->pos - size);
 }
 
 void ArenaClear(Arena* arena) {
-  arena->pos = 0;
+  ArenaPopTo(arena, 0);
 }
 
 ArenaTemp ArenaTempBegin(Arena* arena) {
@@ -490,7 +544,7 @@ ArenaTemp ArenaTempBegin(Arena* arena) {
 }
 
 void ArenaTempEnd(ArenaTemp* temp) {
-  temp->arena->pos = temp->pos;
+  ArenaPopTo(temp->arena, temp->pos);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -562,7 +616,7 @@ String8 String8Copy(Arena* arena, String8* string) {
 }
 
 String8 String8Substring(String8* s, U64 start, U64 end) {
-  ASSERT(end > start);
+  DEBUG_ASSERT(end > start);
   start = MIN(start, s->size - 1);
   end = MIN(end, s->size - 1);
   String8 result = {0};
