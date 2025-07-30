@@ -48,7 +48,7 @@ typedef double   F64;
 #  define COMPILER_GCC 1
 #elif defined(__clang__)
 #  define COMPILER_CLANG 1
-#elif defined(__MSC_VER)
+#elif defined(_MSC_VER)
 #  define COMPILER_MSVC 1
 #else
 #  error Unknown compiler.
@@ -115,7 +115,7 @@ typedef double   F64;
 #if defined(__GNUC__) || defined(__clang__)
 #  define BRANCH_EXPECT(expr, val) __builtin_expect((expr), (val))
 #else
-#  define BRANCH_EXPECT(expr) (expr)
+#  define BRANCH_EXPECT(expr, val) (expr)
 #endif
 #define LIKELY(expr) BRANCH_EXPECT(expr, true)
 #define UNLIKELY(expr) BRANCH_EXPECT(expr, false)
@@ -319,7 +319,7 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...);
 // NOTE: Wrap test functions in TEST() from main, expectations in TEST_EXPECT().
 
 #define TEST(func) \
-  if (func) { LOG_INFO ("\t[" ANSI_COLOR_GREEN "SUCCESS" ANSI_COLOR_RESET "]: "#func); } \
+  if ((func)) { LOG_INFO ("\t[" ANSI_COLOR_GREEN "SUCCESS" ANSI_COLOR_RESET "]: "#func); } \
   else      { LOG_ERROR("\t[" ANSI_COLOR_RED   "FAILURE" ANSI_COLOR_RESET "]: "#func); }
 #define TEST_EXPECT(expr) \
   if (!(expr)) { LOG_ERROR("\t" ANSI_COLOR_RED "Expectation failed: " ANSI_COLOR_RESET #expr); return false; }
