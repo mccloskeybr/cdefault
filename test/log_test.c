@@ -2,8 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define CDEFAULT_IMPLEMENTATION
-#include "../cdefault.h"
+#define CDEFAULT_STD_IMPLEMENTATION
+#include "../cdefault_std.h"
 
 B32 LogCustomFileTest(void) {
 #ifdef OS_LINUX

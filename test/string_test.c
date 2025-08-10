@@ -1,5 +1,5 @@
-#define CDEFAULT_IMPLEMENTATION
-#include "../cdefault.h"
+#define CDEFAULT_STD_IMPLEMENTATION
+#include "../cdefault_std.h"
 
 B32 CharTest(void) {
   TEST_EXPECT(CharIsUpper('A'));

@@ -1,5 +1,5 @@
-#ifndef CDEFAULT_H_
-#define CDEFAULT_H_
+#ifndef CDEFAULT_STD_H_
+#define CDEFAULT_STD_H_
 
 #include <assert.h>
 #include <inttypes.h>
@@ -60,15 +60,17 @@ typedef double   F64;
 
 #define STATIC_ARRAY_LEN(arr) (sizeof(arr) / sizeof((arr)[0]))
 
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#define MIN3(a, b, c) (MIN(MIN((a), (b)), (c)))
+#define MAX(a, b) (((a) < (b)) ? (b) : (a))
+#define MAX3(a, b, c) (MAX(MAX((a), (b)), (c)))
+#define CLAMP(a, x, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
+
 #define BIT(idx) (1 << (idx))
 #define EXTRACT_BIT(word, idx) (((word) >> (idx)) & 1)
 #define EXTRACT_U8(word, pos) (((word) >> ((pos) * 8)) & 0xff)
 #define EXTRACT_U16(word, pos) (((word) >> ((pos) * 16)) & 0xffff)
 #define EXTRACT_U32(word, pos) (((word) >> ((pos) * 32)) & 0xffffffff)
-
-#define MIN(a, b) (((a) < (b)) ? (a) : (b))
-#define MAX(a, b) (((a) < (b)) ? (b) : (a))
-#define CLAMP(a, x, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
 
 #define KB(n)       (((U64)(n)) << 10)
 #define MB(n)       (((U64)(n)) << 20)
@@ -92,8 +94,10 @@ typedef double   F64;
 
 #ifndef NDEBUG
 #  define DEBUG_ASSERT(exp) assert(exp)
+#  define ASSERT(exp) DEBUG_ASSERT(exp)
 #else
 #  define DEBUG_ASSERT(exp) (exp)
+#  define ASSERT(exp) if (!(exp)) { *(int*)0 = 0; }
 #endif
 #if defined(COMPILER_GCC) || defined(COMPILER_CLANG)
 #  define TRAP() __debugbreak()
@@ -102,7 +106,6 @@ typedef double   F64;
 #else
 #  error Unknown trap intrinsic for this compiler.
 #endif
-#define ASSERT(exp) if (!(exp)) { *(int*)0 = 0; }
 #define STATIC_ASSERT(exp, msg) static_assert((exp), msg)
 #define UNIMPLEMENTED() ASSERT(false)
 #define UNREACHABLE() ASSERT(false)
@@ -149,7 +152,7 @@ typedef double   F64;
 #define MEMORY_COPY_STRUCT(d, s)       MEMORY_COPY((d), (s), sizeof(*(d)))
 #define MEMORY_COPY_STATIC_ARRAY(d, s) MEMORY_COPY((d), (s), sizeof(d))
 
-#define MEMORY_ZERO(dest, size)     MEMORY_SET(dst, 0, size)
+#define MEMORY_ZERO(dest, size)     MEMORY_SET(dest, 0, size)
 #define MEMORY_ZERO_STRUCT(s)       MEMORY_ZERO((s), sizeof(*(s)))
 #define MEMORY_ZERO_STATIC_ARRAY(a) MEMORY_ZERO((a), sizeof(a))
 
@@ -423,7 +426,7 @@ String8List String8Split(Arena* arena, String8* string, U8 c);
 // NOTE: Implementation
 ///////////////////////////////////////////////////////////////////////////////
 
-#ifdef CDEFAULT_IMPLEMENTATION
+#ifdef CDEFAULT_STD_IMPLEMENTATION
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Log implementation
@@ -763,4 +766,5 @@ String8List String8Split(Arena* arena, String8* string, U8 c) {
   return list;
 }
 
-#endif // CDEFAULT_IMPLEMENTATION
+#undef CDEFAULT_STD_IMPLEMENTATION
+#endif // CDEFAULT_STD_IMPLEMENTATION
