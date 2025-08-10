@@ -427,6 +427,7 @@ String8List String8Split(Arena* arena, String8* string, U8 c);
 ///////////////////////////////////////////////////////////////////////////////
 
 #ifdef CDEFAULT_STD_IMPLEMENTATION
+#undef CDEFAULT_STD_IMPLEMENTATION
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Log implementation
@@ -766,5 +767,4 @@ String8List String8Split(Arena* arena, String8* string, U8 c) {
   return list;
 }
 
-#undef CDEFAULT_STD_IMPLEMENTATION
 #endif // CDEFAULT_STD_IMPLEMENTATION

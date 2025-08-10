@@ -59,6 +59,7 @@ V2 V2SubV2(V2 x, V2 y);
 V2 V2SubF32(V2 x, F32 c);
 V2 V2MultF32(V2 x, F32 c);
 V2 V2DivF32(V2 x, F32 c);
+B32 V2ApproxEq(V2 x, V2 y);
 V2 V2HadamardV2(V2 x, V2 y);
 F32 V2DotV2(V2 x, V2 y);
 F32 V2InnerMultV2(V2 x, V2 y);
@@ -101,6 +102,7 @@ V3 V3SubV3(V3 x, V3 y);
 V3 V3SubF32(V3 x, F32 c);
 V3 V3MultF32(V3 x, F32 c);
 V3 V3DivF32(V3 x, F32 c);
+B32 V3ApproxEq(V3 x, V3 y);
 F32 V3LengthSq(V3 x);
 F32 V3Length(V3 x);
 V3 V3HadamardV3(V3 x, V3 y);
@@ -158,13 +160,13 @@ V4 V4SubV4(V4 x, V4 y);
 V4 V4SubF32(V4 x, F32 c);
 V4 V4MultF32(V4 x, F32 c);
 V4 V4DivF32(V4 x, F32 c);
+B32 V4ApproxEq(V4 a, V4 b);
 F32 V4LengthSq(V4 x);
 F32 V4Length(V4 x);
 V4 V4HadamardV4(V4 x, V4 y);
 F32 V4InnerMultV4(V4 x, V4 y);
 F32 V4DotV4(V4 x, V4 y);
 V4 V4Normalize(V4 x);
-B32 V4Equal(V4 a, V4 b);
 V4 V4Lerp(V4 a, V4 b, F32 t);
 V4 V4Slerp(V4 a, V4 b, F32 t);
 V4 V4RotateAroundAxis(V3 axis, F32 theta);
@@ -215,6 +217,7 @@ M4 LookAt(V3 eye, V3 target, V3 up);
 #endif // CDEFAULT_MATH_H_
 
 #ifdef CDEFAULT_MATH_IMPLEMENTATION
+#undef CDEFAULT_MATH_IMPLEMENTATION
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Num implementation
@@ -314,6 +317,11 @@ V2 V2DivF32(V2 x, F32 c) {
   return result;
 }
 
+B32 V2ApproxEq(V2 x, V2 y) {
+  return F32ApproxEq(x.x, y.x) &&
+         F32ApproxEq(x.y, y.y);
+}
+
 V2 V2HadamardV2(V2 x, V2 y) {
   V2 result;
   result.x = x.x * y.x;
@@ -392,6 +400,12 @@ V3 V3DivF32(V3 x, F32 c) {
   result.y = x.y / c;
   result.z = x.z / c;
   return result;
+}
+
+B32 V3ApproxEq(V3 x, V3 y) {
+  return F32ApproxEq(x.x, y.x) &&
+         F32ApproxEq(x.y, y.y) &&
+         F32ApproxEq(x.z, y.z);
 }
 
 F32 V3LengthSq(V3 x) {
@@ -602,6 +616,13 @@ V4 V4DivF32(V4 x, F32 c) {
   result.w = x.w / c;
   return result;
 }
+B32 V4ApproxEq(V4 x, V4 y) {
+  return F32ApproxEq(x.x, y.x) &&
+         F32ApproxEq(x.y, y.y) &&
+         F32ApproxEq(x.z, y.z) &&
+         F32ApproxEq(x.w, y.w);
+}
+
 
 F32 V4LengthSq(V4 x) {
   return V4DotV4(x, x);
@@ -630,10 +651,6 @@ F32 V4DotV4(V4 x, V4 y) {
 
 V4 V4Normalize(V4 x) {
   return V4DivF32(x, V4Length(x));
-}
-
-B32 V4Equal(V4 a, V4 b) {
-  return (a.x == b.x) && (a.y == b.y) && (a.z == b.z) && (a.w == b.w);
 }
 
 V4 V4Lerp(V4 a, V4 b, F32 t) {
@@ -857,5 +874,4 @@ M4 LookAt(V3 eye, V3 target, V3 up) {
   };
 }
 
-#undef CDEFAULT_MATH_IMPLEMENTATION
 #endif // CDEFAULT_MATH_IMPLEMENTATION
