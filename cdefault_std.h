@@ -582,12 +582,12 @@ B32 CharIsDigit(U8 c, U32 base) {
 }
 
 U8 CharToLower(U8 c) {
-  if (CharIsUpper(c)) { c += 'a' - 'A'; }
+  if (CharIsUpper(c)) { c += (U8)('a' - 'A'); }
   return c;
 }
 
 U8 CharToUpper(U8 c) {
-  if (CharIsLower(c)) { c += 'A' - 'a'; }
+  if (CharIsLower(c)) { c += (U8)('A' - 'a'); }
   return c;
 }
 
@@ -706,11 +706,11 @@ String8 String8Concat(Arena* arena, String8* a, String8* b) {
 String8 String8FormatV(Arena* arena, U8* fmt, va_list args) {
   va_list args_copy;
   va_copy(args_copy, args);
-  U32 size = vsnprintf(NULL, 0, fmt, args_copy) + 1;
+  U32 size = vsnprintf(NULL, 0, (const char* const) fmt, args_copy) + 1;
   String8 result = {0};
   result.size = size - 1;
   result.str = ARENA_PUSH_ARRAY(arena, U8, size);
-  vsnprintf(result.str, size, fmt, args_copy);
+  vsnprintf((char* const) result.str, size, (char* const) fmt, args_copy);
   va_end(args_copy);
   ArenaPop(arena, 1); // NOTE: null terminator.
   return result;

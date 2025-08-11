@@ -5,44 +5,6 @@
 #include "cdefault_std.h"
 
 ///////////////////////////////////////////////////////////////////////////////
-// NOTE: Aabb3
-///////////////////////////////////////////////////////////////////////////////
-
-typedef struct Aabb3 Aabb3;
-struct Aabb3 {
-  V3 center_point;
-  V3 size;
-};
-
-void Aabb3FromMinMax(const V3* min, const V3* max, Aabb3* out_aabb3);
-void Aabb3GetMinMax(const Aabb3* aabb, V3* out_min, V3* out_max);
-void Aabb3RelativeNormal(const Aabb3* aabb, const V3* pt, V3* normal);
-B32 Aabb3ContainsPoint(const Aabb3* aabb, const V3* pos);
-
-///////////////////////////////////////////////////////////////////////////////
-// NOTE: Tri3
-///////////////////////////////////////////////////////////////////////////////
-
-typedef struct Tri3 Tri3;
-struct Tri3 {
-  V3 points[3];
-};
-
-void Tri3Offset(const Tri3* src, const V3* offset, Tri3* out_dest);
-B32 Tri3CreatePlane3(const Tri3* t, struct Plane3* out_plane);
-B32 Tri3ContainsPoint(const Tri3* t, const V3* point);
-
-///////////////////////////////////////////////////////////////////////////////
-// NOTE: Sphere3
-///////////////////////////////////////////////////////////////////////////////
-
-typedef struct Sphere3 Sphere3;
-struct Sphere3 {
-  V3 center_point;
-  F32 radius;
-};
-
-///////////////////////////////////////////////////////////////////////////////
 // NOTE: Ray3
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -73,6 +35,44 @@ void Plane3Flip(const Plane3* plane, Plane3* out_flipped_plane);
 B32 Plane3ApproxEq(const Plane3* a, const Plane3* b);
 
 ///////////////////////////////////////////////////////////////////////////////
+// NOTE: Aabb3
+///////////////////////////////////////////////////////////////////////////////
+
+typedef struct Aabb3 Aabb3;
+struct Aabb3 {
+  V3 center_point;
+  V3 size;
+};
+
+void Aabb3FromMinMax(const V3* min, const V3* max, Aabb3* out_aabb3);
+void Aabb3GetMinMax(const Aabb3* aabb, V3* out_min, V3* out_max);
+void Aabb3RelativeNormal(const Aabb3* aabb, const V3* pt, V3* normal);
+B32 Aabb3ContainsPoint(const Aabb3* aabb, const V3* pos);
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Tri3
+///////////////////////////////////////////////////////////////////////////////
+
+typedef struct Tri3 Tri3;
+struct Tri3 {
+  V3 points[3];
+};
+
+void Tri3Offset(const Tri3* src, const V3* offset, Tri3* out_dest);
+B32 Tri3CreatePlane3(const Tri3* t, Plane3* out_plane);
+B32 Tri3ContainsPoint(const Tri3* t, const V3* point);
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Sphere3
+///////////////////////////////////////////////////////////////////////////////
+
+typedef struct Sphere3 Sphere3;
+struct Sphere3 {
+  V3 center_point;
+  F32 radius;
+};
+
+///////////////////////////////////////////////////////////////////////////////
 // NOTE: Intersection
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -94,6 +94,67 @@ B32 IntersectionAabb3Aabb3(const Aabb3* a, const Aabb3* b, IntersectionManifold3
 
 #ifdef CDEFAULT_3DGEOMETRY_IMPLEMENTATION
 #undef CDEFAULT_3DGEOMETRY_IMPLEMENTATION
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Ray3 implementation
+///////////////////////////////////////////////////////////////////////////////
+
+void Ray3DirInv(const Ray3* r, V3* out_dir_inv) {
+  out_dir_inv->x = 1.0f / r->dir.x;
+  out_dir_inv->y = 1.0f / r->dir.y;
+  out_dir_inv->z = 1.0f / r->dir.z;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Plane3 implementation
+///////////////////////////////////////////////////////////////////////////////
+
+// https://mathinsight.org/distance_point_plane
+void Plane3WithAnchor(const V3* anchor, const V3* normal, Plane3* out_plane) {
+  out_plane->normal = *normal;
+  out_plane->d = V3DotV3(anchor, normal);
+}
+
+// https://math.stackexchange.com/questions/1702572/how-to-find-the-basis-of-a-plane-or-a-line
+// NOTE: *not* orthonormal.
+void Plane3Basis(const Plane3* plane, V3* out_u, V3* out_v) {
+  if (plane->normal.x != 0) {
+    *out_u = (V3) {(plane->d - plane->normal.z) / plane->normal.x, 0, 1};
+    *out_v = (V3) {(plane->d - plane->normal.y) / plane->normal.x, 1, 0};
+  } else if (plane->normal.y != 0) {
+    *out_u = (V3) {1, (plane->d - plane->normal.x) / plane->normal.y, 0};
+    *out_v = (V3) {0, (plane->d - plane->normal.z) / plane->normal.y, 1};
+  } else if (plane->normal.z != 0) {
+    *out_u = (V3) {1, 0, (plane->d - plane->normal.x) / plane->normal.z};
+    *out_v = (V3) {0, 1, (plane->d - plane->normal.y) / plane->normal.z};
+  } else { UNREACHABLE(); }
+}
+
+B32 Plane3IsPointAbove(const Plane3* plane, const V3* point) {
+  V3 point_on_plane, vec;
+  Plane3CreatePoint(plane, &point_on_plane);
+  V3SubV3(point, &point_on_plane, &vec);
+  return V3DotV3(&plane->normal, &vec) > 0;
+}
+
+B32 Plane3ContainsPoint(const Plane3* plane, const V3* point) {
+  return V3DotV3(&plane->normal, point) == plane->d;
+}
+
+// https://math.stackexchange.com/questions/723937/find-the-point-on-a-plane-3x-4y-z-1-that-is-closest-to-1-0-1
+void Plane3CreatePoint(const Plane3* plane, V3* out_point) {
+  F32 t = plane->d / V3DotV3(&plane->normal, &plane->normal);
+  V3MultF32(&plane->normal, t, out_point);
+}
+
+void Plane3Flip(const Plane3* plane, Plane3* out_flipped_plane) {
+  V3MultF32(&plane->normal, -1, &out_flipped_plane->normal);
+  out_flipped_plane->d = plane->d * -1;
+}
+
+B32 Plane3ApproxEq(const Plane3* a, const Plane3* b) {
+  return V3ApproxEq(&a->normal, &b->normal) && F32ApproxEq(a->d, b->d);
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Aabb3 implementation
@@ -192,67 +253,6 @@ B32 Tri3ContainsPoint(const Tri3* t, const V3* point) {
   if (V3DotV3(&a, &v) < 0) { return false; }
   if (V3DotV3(&u, &w) < 0) { return false; }
   return true;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// NOTE: Ray3 implementation
-///////////////////////////////////////////////////////////////////////////////
-
-void Ray3DirInv(const Ray3* r, V3* out_dir_inv) {
-  out_dir_inv->x = 1.0f / r->dir.x;
-  out_dir_inv->y = 1.0f / r->dir.y;
-  out_dir_inv->z = 1.0f / r->dir.z;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// NOTE: Plane3 implementation
-///////////////////////////////////////////////////////////////////////////////
-
-// https://mathinsight.org/distance_point_plane
-void Plane3WithAnchor(const V3* anchor, const V3* normal, Plane3* out_plane) {
-  out_plane->normal = *normal;
-  out_plane->d = V3DotV3(anchor, normal);
-}
-
-// https://math.stackexchange.com/questions/1702572/how-to-find-the-basis-of-a-plane-or-a-line
-// NOTE: *not* orthonormal.
-void Plane3Basis(const Plane3* plane, V3* out_u, V3* out_v) {
-  if (plane->normal.x != 0) {
-    *out_u = (V3) {(plane->d - plane->normal.z) / plane->normal.x, 0, 1};
-    *out_v = (V3) {(plane->d - plane->normal.y) / plane->normal.x, 1, 0};
-  } else if (plane->normal.y != 0) {
-    *out_u = (V3) {1, (plane->d - plane->normal.x) / plane->normal.y, 0};
-    *out_v = (V3) {0, (plane->d - plane->normal.z) / plane->normal.y, 1};
-  } else if (plane->normal.z != 0) {
-    *out_u = (V3) {1, 0, (plane->d - plane->normal.x) / plane->normal.z};
-    *out_v = (V3) {0, 1, (plane->d - plane->normal.y) / plane->normal.z};
-  } else { UNREACHABLE(); }
-}
-
-B32 Plane3IsPointAbove(const Plane3* plane, const V3* point) {
-  V3 point_on_plane, vec;
-  Plane3CreatePoint(plane, &point_on_plane);
-  V3SubV3(point, &point_on_plane, &vec);
-  return V3DotV3(&plane->normal, &vec) > 0;
-}
-
-B32 Plane3ContainsPoint(const Plane3* plane, const V3* point) {
-  return V3DotV3(&plane->normal, point) == plane->d;
-}
-
-// https://math.stackexchange.com/questions/723937/find-the-point-on-a-plane-3x-4y-z-1-that-is-closest-to-1-0-1
-void Plane3CreatePoint(const Plane3* plane, V3* out_point) {
-  F32 t = plane->d / V3DotV3(&plane->normal, &plane->normal);
-  V3MultF32(&plane->normal, t, out_point);
-}
-
-void Plane3Flip(const Plane3* plane, Plane3* out_flipped_plane) {
-  V3MultF32(&plane->normal, -1, &out_flipped_plane->normal);
-  out_flipped_plane->d = plane->d * -1;
-}
-
-B32 Plane3ApproxEq(const Plane3* a, const Plane3* b) {
-  return V3ApproxEq(&a->normal, &b->normal) && F32ApproxEq(a->d, b->d);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

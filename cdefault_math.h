@@ -25,6 +25,8 @@ F32 F32ArcSin(F32 x);
 F32 F32ArcCos(F32 x);
 F32 F32ArcTan(F32 x);
 F32 F32ArcTan2(F32 y, F32 x);
+F32 F32ToRad(F32 deg);
+F32 F32ToDeg(F32 rad);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Random
@@ -122,9 +124,8 @@ void V3Clamp(const V3* x, F32 min, F32 max, V3* out);
 B32 V3AreCollinear(const V3* x, const V3* y, const V3* z);
 V3 V3Splat(F32 c);
 F32 V3AngleBetween(const V3* x, const V3* y);
-F32 V3AngleBetween360(const V3* a, const V3* b, const V3* normal);
 void V3Lerp(const V3* x, const V3* y, F32 t, V3* out);
-void V3RotateAroundAxis(const V3* x, const V3* axis, F32 theta, V3* out);
+void V3RotateAroundAxis(const V3* x, const V3* axis, F32 angle_rad, V3* out);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: V4
@@ -169,7 +170,7 @@ F32 V4DotV4(const V4* x, const V4* y);
 void V4Normalize(const V4* x, V4* out);
 void V4Lerp(const V4* a, const V4* b, F32 t, V4* out);
 void V4Slerp(const V4* a, const V4* b, F32 t, V4* out);
-void V4RotateAroundAxis(const V3* axis, F32 theta, V4* out);
+void V4RotateAroundAxis(const V3* axis, F32 angle_rad, V4* out);
 void V4LookInDir(const V3* dir, V4* out);
 void V4LookAt(const V3* pos, const V3* target, V4* out);
 
@@ -224,7 +225,7 @@ void LookAt(const V3* eye, const V3* target, const V3* up, M4* out);
 ///////////////////////////////////////////////////////////////////////////////
 
 B32 F32ApproxEq(F32 a, F32 b) { return F32Abs(a - b) < 0.00001f; }
-F32 F32Abs(F32 x) { return abs(x); }
+F32 F32Abs(F32 x) { return fabsf(x); }
 F32 F32Pow(F32 x, F32 y) { return powf(x, y); }
 F32 F32Sqrt(F32 x) { return sqrtf(x); }
 F32 F32Sin(F32 x) { return sinf(x); }
@@ -235,6 +236,8 @@ F32 F32ArcCos(F32 x) { return acosf(x); }
 F32 F32ArcTan(F32 x) { return atanf(x); }
 F32 F32ArcTan2(F32 y, F32 x) { return atan2f(y, x); }
 F32 F32Lerp(F32 x, F32 y, F32 t) { return (x * (1 - t)) + (y * t); }
+F32 F32ToRad(F32 deg) { return deg * (F32_PI / 180.0f); }
+F32 F32ToDeg(F32 rad) { return rad * (180.0f / F32_PI); }
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Random implementation
@@ -264,7 +267,7 @@ S32 RandS32(RandomSeries* rand, S32 min, S32 max) {
 F32 RandF32(RandomSeries* rand, F32 min, F32 max) {
   ASSERT(min < max);
   rand->state = XOrShift32(rand->state);
-  F32 r = (F32)rand->state / (F32)U32_MAX;
+  F32 r = (F32) rand->state / (F32) U32_MAX;
   r *= (max - min);
   r += min;
   return r;
@@ -411,6 +414,8 @@ F32 V3DotV3(const V3* x, const V3* y) {
 }
 
 void V3CrossV3(const V3* x, const V3* y, V3* out) {
+  DEBUG_ASSERT(x != out);
+  DEBUG_ASSERT(y != out);
   out->x = x->y * y->z - x->z * y->y;
   out->y = x->z * y->x - x->x * y->z;
   out->z = x->x * y->y - x->y * y->x;
@@ -447,6 +452,7 @@ void V3Project(const V3* x, const V3* dest, V3* out) {
 }
 
 void V3RotateX(const V3* x, F32 angle_rad, V3* out_v) {
+  DEBUG_ASSERT(x != out_v);
   F32 c = F32Cos(angle_rad);
   F32 s = F32Sin(angle_rad);
   out_v->x = x->x;
@@ -455,6 +461,7 @@ void V3RotateX(const V3* x, F32 angle_rad, V3* out_v) {
 }
 
 void V3RotateY(const V3* x, F32 angle_rad, V3* out_v) {
+  DEBUG_ASSERT(x != out_v);
   F32 c = F32Cos(angle_rad);
   F32 s = F32Sin(angle_rad);
   out_v->x = x->x * c + x->z * s;
@@ -463,6 +470,7 @@ void V3RotateY(const V3* x, F32 angle_rad, V3* out_v) {
 }
 
 void V3RotateZ(const V3* x, F32 angle_rad, V3* out_v) {
+  DEBUG_ASSERT(x != out_v);
   F32 c = F32Cos(angle_rad);
   F32 s = F32Sin(angle_rad);
   out_v->x = x->x * c - x->y * s;
@@ -497,16 +505,6 @@ F32 V3AngleBetween(const V3* x, const V3* y) {
   return F32ArcCos(V3DotV3(x, y));
 }
 
-// https://stackoverflow.com/questions/43493711/the-angle-between-two-3d-vectors-with-a-result-range-0-360
-F32 V3AngleBetween360(const V3* x, const V3* y, const V3* normal) {
-  V3 cross;
-  V3CrossV3(x, y, &cross);
-  F32 dot = V3DotV3(x, y);
-  F32 angle = F32ArcTan2(V3Length(&cross), dot);
-  if (V3DotV3(normal, &cross) < 0) { angle = -angle; }
-  return angle;
-}
-
 void V3Lerp(const V3* x, const V3* y, F32 t, V3* out) {
   out->x = F32Lerp(x->x, y->x, t);
   out->y = F32Lerp(x->y, y->y, t);
@@ -514,13 +512,13 @@ void V3Lerp(const V3* x, const V3* y, F32 t, V3* out) {
 }
 
 // https://stackoverflow.com/questions/69245724/rotate-a-vector-around-an-axis-in-3d-space
-void V3RotateAroundAxis(const V3* v, const V3* axis, F32 theta, V3* out) {
+void V3RotateAroundAxis(const V3* v, const V3* axis, F32 angle_rad, V3* out) {
   V3 cross, double_cross;
   V3CrossV3(axis, v, &cross);
   V3CrossV3(axis, &cross, &double_cross);
   V3 a, b;
-  V3MultF32(&cross, F32Sin(theta), &a);
-  V3MultF32(&double_cross, (1.0f - F32Cos(theta)), &b);
+  V3MultF32(&cross, F32Sin(angle_rad), &a);
+  V3MultF32(&double_cross, (1.0f - F32Cos(angle_rad)), &b);
   out->x = v->x + a.x + b.x;
   out->y = v->y + a.y + b.y;
   out->z = v->z + a.z + b.z;
@@ -599,7 +597,7 @@ F32 V4InnerMultV4(const V4* x, const V4* y) {
 }
 
 F32 V4DotV4(const V4* x, const V4* y) {
-  return (x->x + y->x) + (x->y + y->y) + (x->z + y->z) + (x->w + y->w);
+  return (x->x * y->x) + (x->y * y->y) + (x->z * y->z) + (x->w * y->w);
 }
 
 void V4Normalize(const V4* x, V4* out) {
@@ -627,21 +625,21 @@ void V4Slerp(const V4* a, const V4* b, F32 t, V4* out) {
     return;
   }
 
-  F32 theta = F32ArcCos(dot);
-  F32 a_scalar = F32Sin((1.0f - t) * theta) / F32Sin(theta);
-  F32 b_scalar = F32Sin(t * theta) / F32Sin(theta);
+  F32 angle_rad = F32ArcCos(dot);
+  F32 a_scalar = F32Sin((1.0f - t) * angle_rad) / F32Sin(angle_rad);
+  F32 b_scalar = F32Sin(t * angle_rad) / F32Sin(angle_rad);
 
   V4MultF32(&a_copy, a_scalar, &a_copy);
   V4MultF32(&b_copy, b_scalar, &b_copy);
   V4AddV4(&a_copy, &b_copy, out);
 }
 
-void V4RotateAroundAxis(const V3* axis, F32 theta, V4* out) {
-  F32 factor = F32Sin(theta / 2.0f);
+void V4RotateAroundAxis(const V3* axis, F32 angle_rad, V4* out) {
+  F32 factor = F32Sin(angle_rad / 2.0f);
   out->x = factor * axis->x;
   out->y = factor * axis->y;
   out->z = factor * axis->z;
-  out->w = F32Cos(theta / 2.0f);
+  out->w = F32Cos(angle_rad / 2.0f);
   V4Normalize(out, out);
 }
 
@@ -681,6 +679,8 @@ void V4LookAt(const V3* pos, const V3* target, V4* out) {
 ///////////////////////////////////////////////////////////////////////////////
 
 void M3MultM3(const M3* x, const M3* y, M3* out) {
+  DEBUG_ASSERT(x != out);
+  DEBUG_ASSERT(y != out);
   M3 y_t;
   M3Transpose(y, &y_t);
   for (U32 i = 0; i < 3; i++) {
@@ -693,6 +693,7 @@ void M3MultM3(const M3* x, const M3* y, M3* out) {
 }
 
 void M3MultV3(const M3* x, const V3* y, V3* out) {
+  DEBUG_ASSERT(y != out);
   for (U32 i = 0; i < 3; i++) {
     V3* x_sub = (V3*) &x->e[i][0];
     out->e[i] = V3DotV3(x_sub, y);
@@ -700,6 +701,7 @@ void M3MultV3(const M3* x, const V3* y, V3* out) {
 }
 
 void M3Transpose(const M3* x, M3* out) {
+  DEBUG_ASSERT(x != out);
   for (U32 i = 0; i < 3; i++) {
     for (U32 j = 0; j < 3; j++) {
       out->e[j][i] = x->e[i][j];
@@ -712,6 +714,8 @@ void M3Transpose(const M3* x, M3* out) {
 ///////////////////////////////////////////////////////////////////////////////
 
 void M4MultM4(const M4* x, const M4* y, M4* out) {
+  DEBUG_ASSERT(x != out);
+  DEBUG_ASSERT(y != out);
   M4 y_t;
   M4Transpose(y, &y_t);
   for (int32_t i = 0; i < 4; i++) {
@@ -724,6 +728,7 @@ void M4MultM4(const M4* x, const M4* y, M4* out) {
 }
 
 void M4MultV4(const M4* x, const V4* y, V4* out) {
+  DEBUG_ASSERT(y != out);
   for (int32_t j = 0; j < 4; j++) {
     V4* x_sub = (V4*) &x->e[j][0];
     out->e[j] = V4DotV4(x_sub, y);
@@ -731,6 +736,7 @@ void M4MultV4(const M4* x, const V4* y, V4* out) {
 }
 
 void M4Transpose(const M4* x, M4* out) {
+  DEBUG_ASSERT(x != out);
   for (U32 i = 0; i < 4; i++) {
     for (U32 j = 0; j < 4; j++) {
       out->e[j][i] = x->e[i][j];
