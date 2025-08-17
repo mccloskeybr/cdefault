@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <threads.h>
+#include <stdatomic.h>
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Types
@@ -36,17 +37,17 @@ typedef double   F64;
 
 #if defined(_WIN32)
 #  define OS_WINDOWS 1
-#elif defined(__gnu_linux__) || defined(__linux__)
+#elif defined(_gnu_linux_) || defined(_linux_)
 #  define OS_LINUX 1
-#elif defined(__APPLE__) && defined(__MACH__)
+#elif defined(_APPLE_) && defined(_MACH_)
 #  define OS_MAC 1
 #else
 #  error Unknown operating system.
 #endif
 
-#if defined(__GNUC__) || defined(__GNUG__)
+#if defined(_GNUC_) || defined(_GNUG_)
 #  define COMPILER_GCC 1
-#elif defined(__clang__)
+#elif defined(_clang_)
 #  define COMPILER_CLANG 1
 #elif defined(_MSC_VER)
 #  define COMPILER_MSVC 1
@@ -54,6 +55,7 @@ typedef double   F64;
 #  error Unknown compiler.
 #endif
 
+#define GLUE(a, b) a ## b
 #define FILENAME (strrchr(__FILE__, '/')  ? strrchr(__FILE__, '/')  + 1 : \
                  (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : \
                  __FILE__))
@@ -89,20 +91,32 @@ typedef double   F64;
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
 ///////////////////////////////////////////////////////////////////////////////
+// NOTE: Branch prediction
+///////////////////////////////////////////////////////////////////////////////
+
+#if defined(_GNUC_) || defined(_clang_)
+#  define BRANCH_EXPECT(expr, val) _builtin_expect((expr), (val))
+#else
+#  define BRANCH_EXPECT(expr, val) (expr)
+#endif
+#define LIKELY(expr) BRANCH_EXPECT(expr, true)
+#define UNLIKELY(expr) BRANCH_EXPECT(expr, false)
+
+///////////////////////////////////////////////////////////////////////////////
 // NOTE: Assertions
 ///////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
-#  define DEBUG_ASSERT(exp) assert(exp)
-#  define ASSERT(exp) DEBUG_ASSERT(exp)
+#  define DEBUG_ASSERT(exp) assert(UNLIKELY(exp))
+#  define ASSERT(exp) DEBUG_ASSERT(UNLIKELY(exp))
 #else
 #  define DEBUG_ASSERT(exp) (exp)
-#  define ASSERT(exp) if (!(exp)) { *(int*)0 = 0; }
+#  define ASSERT(exp) if (UNLIKELY(!(exp))) { *(int*)0 = 0; }
 #endif
 #if defined(COMPILER_GCC) || defined(COMPILER_CLANG)
-#  define TRAP() __debugbreak()
+#  define TRAP() _debugbreak()
 #elif defined(COMPILER_MSVC)
-#  define TRAP() __builtin_trap()
+#  define TRAP() _builtin_trap()
 #else
 #  error Unknown trap intrinsic for this compiler.
 #endif
@@ -112,25 +126,13 @@ typedef double   F64;
 #define TODO() ASSERT(false)
 
 ///////////////////////////////////////////////////////////////////////////////
-// NOTE: Branch prediction
-///////////////////////////////////////////////////////////////////////////////
-
-#if defined(__GNUC__) || defined(__clang__)
-#  define BRANCH_EXPECT(expr, val) __builtin_expect((expr), (val))
-#else
-#  define BRANCH_EXPECT(expr, val) (expr)
-#endif
-#define LIKELY(expr) BRANCH_EXPECT(expr, true)
-#define UNLIKELY(expr) BRANCH_EXPECT(expr, false)
-
-///////////////////////////////////////////////////////////////////////////////
 // NOTE: Alignment and offsets
 ///////////////////////////////////////////////////////////////////////////////
 
 #if defined(COMPILER_MSVC) || defined(COMPILER_CLANG)
-#  define ALIGN_OF(T) __alignof(T)
+#  define ALIGN_OF(T) _alignof(T)
 #elif defined(COMPILER_GCC)
-#  define ALIGN_OF(T) __alignof__(T)
+#  define ALIGN_OF(T) _alignof_(T)
 #else
 #  error ALIGN_OF not defined for this compiler.
 #endif
@@ -288,13 +290,13 @@ typedef double   F64;
   DLL_INSERT(front, back, back, curr_node, prev, next)
 #define DLL_POP_FRONT(front, back, prev, next)                  \
   do {                                                          \
-    typeof(front) __cdefault_front_copy = front;                \
-    DLL_REMOVE(front, back, __cdefault_front_copy, prev, next); \
+    typeof(front) _cdefault_front_copy = front;                \
+    DLL_REMOVE(front, back, _cdefault_front_copy, prev, next); \
   } while (0)
 #define DLL_POP_BACK(front, back, prev, next)                   \
   do {                                                          \
-    typeof(front) __cdefault_back_copy = back;                  \
-    DLL_REMOVE(front, back, __cdefault_back_copy, prev, next);  \
+    typeof(front) _cdefault_back_copy = back;                  \
+    DLL_REMOVE(front, back, _cdefault_back_copy, prev, next);  \
   } while (0)
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -309,7 +311,7 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...);
 #define LOG_ERROR(fmt, ...) Log("ERROR", FILENAME, __LINE__, fmt, ##__VA_ARGS__)
 
 #ifndef NDEBUG
-#  define LOG_DEBUG(fmt, ...) Log("DEBUG", FILENAME, fmt, __VA_ARGS__)
+#  define LOG_DEBUG(fmt, ...) Log("DEBUG", FILENAME, fmt, _VA_ARGS_)
 #else
 #  define LOG_DEBUG(fmt, ...)
 #endif
@@ -350,7 +352,7 @@ struct ArenaTemp {
   U64 pos;
 };
 
-void ArenaInit(ArenaConfig config);
+void ArenaConfigure(ArenaConfig config);
 Arena* ArenaAllocate(void);
 void ArenaRelease(Arena* arena);
 void* ArenaPush(Arena* arena, U64 size, U64 align);
@@ -363,6 +365,64 @@ void ArenaTempEnd(ArenaTemp* temp);
 
 #define ARENA_PUSH_ARRAY(arena, type, count) (type*) ArenaPush(arena, sizeof(type) * count, MAX(8, ALIGN_OF(type)))
 #define ARENA_PUSH_STRUCT(arena, type) ARENA_PUSH_ARRAY(arena, type, 1)
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Thread
+///////////////////////////////////////////////////////////////////////////////
+
+typedef struct Thread Thread;
+struct Thread { thrd_t thread; };
+typedef S32 ThreadStartFunc(void*);
+
+void ThreadCreate(Thread* thread, ThreadStartFunc* entry, void* arg);
+void ThreadDetatch(Thread* thread);
+S32 ThreadJoin(Thread* thread);
+B8 ThreadEqual(Thread* a, Thread* b);
+
+typedef struct Mutex Mutex;
+struct Mutex { mtx_t mutex; };
+
+void MutexInit(Mutex* mutex);
+void MutexDeinit(Mutex* mutex);
+void MutexLock(Mutex* mutex);
+void MutexUnlock(Mutex* mutex);
+
+typedef struct CV CV;
+struct CV { cnd_t cv; };
+
+void CVInit(CV* cv);
+void CVDeinit(CV* cv);
+void CVSignal(CV* cv);
+void CVBroadcast(CV* cv);
+void CVWait(CV* cv, Mutex* mutex);
+
+typedef struct Sem Sem;
+struct Sem {
+  Mutex mutex;
+  CV cv;
+  S8 count;
+};
+
+void SemInit(Sem* sem, S8 count);
+void SemDeinit(Sem* sem);
+void SemSignal(Sem* sem);
+void SemWait(Sem* sem);
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Atomic
+///////////////////////////////////////////////////////////////////////////////
+
+typedef _Atomic(U32) AtomicU32;
+void AtomicU32Init(AtomicU32* a, U32 desired);
+void AtomicU32Store(AtomicU32* a, U32 desired);
+U32 AtomicU32Load(AtomicU32* a);
+U32 AtomicU32Exchange(AtomicU32* a, U32 desired);
+B8 AtomicU32CompareExchange(AtomicU32* a, U32* expected, U32 desired);
+U32 AtomicU32FetchAdd(AtomicU32* a, U32 b);
+U32 AtomicU32FetchSub(AtomicU32* a, U32 b);
+U32 AtomicU32FetchOr(AtomicU32* a, U32 b);
+U32 AtomicU32FetchXor(AtomicU32* a, U32 b);
+U32 AtomicU32FetchAnd(AtomicU32* a, U32 b);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: String
@@ -402,6 +462,8 @@ String8 String8Copy(Arena* arena, String8* string);
 
 String8 String8Substring(String8* s, U64 start, U64 end);
 String8 String8Trim(String8* s);
+String8 String8ToUpper(Arena* arena, String8* s);
+String8 String8ToLower(Arena* arena, String8* s);
 
 B32 String8StartsWith(String8* a, String8* b); // NOTE: True iff a starts with b.
 B32 String8EndsWith(String8* a, String8* b); // NOTE: True iff a ens with b.
@@ -409,8 +471,6 @@ B32 String8Equals(String8* a, String8* b);
 S64 String8Find(String8* string, U64 start_pos, String8* needle); // NOTE: Returns -1 on failure.
 S64 String8FindReverse(String8* string, U64 reverse_start_pos, String8* needle); // NOTE: Returns -1 on failure.
 
-String8 String8ToUpper(Arena* arena, String8* s);
-String8 String8ToLower(Arena* arena, String8* s);
 String8 String8Concat(Arena* arena, String8* a, String8* b);
 String8 String8FormatV(Arena* arena, U8* fmt, va_list args);
 String8 String8Format(Arena* arena, U8* fmt, ...);
@@ -419,6 +479,8 @@ void String8ListPrepend(String8List* list, String8ListNode* node);
 void String8ListAppend(String8List* list, String8ListNode* node);
 String8 String8ListJoin(Arena* arena, String8List* list);
 String8List String8Split(Arena* arena, String8* string, U8 c);
+
+S32 String8Hash(String8* s);
 
 #endif // CDEFAULT_H_
 
@@ -436,25 +498,25 @@ String8List String8Split(Arena* arena, String8* string, U8 c);
 typedef struct LogConfig LogConfig;
 struct LogConfig {
   FILE* fd;
-  mtx_t mtx;
+  Mutex mtx;
   B8 is_initialized;
 };
-static LogConfig __g_cdefault_log_config = {0};
+static LogConfig _cdef_log_config;
 
 void LogInit(FILE* fd) {
-  __g_cdefault_log_config = (LogConfig) {0};
-  __g_cdefault_log_config.fd = fd;
-  mtx_init(&__g_cdefault_log_config.mtx, mtx_plain);
-  __g_cdefault_log_config.is_initialized = true;
+  MEMORY_ZERO_STRUCT(&_cdef_log_config);
+  _cdef_log_config.fd = fd;
+  MutexInit(&_cdef_log_config.mtx);
+  _cdef_log_config.is_initialized = true;
 }
 
 static void LogV(char* level, char* filename, U32 loc, char* fmt, va_list args) {
-  if (UNLIKELY(!__g_cdefault_log_config.is_initialized)) { LogInit(stderr); }
-  mtx_lock(&__g_cdefault_log_config.mtx);
-  fprintf(__g_cdefault_log_config.fd, "[%s | %s:%d]: ", level, filename, loc);
-  vfprintf(__g_cdefault_log_config.fd, fmt, args);
-  fprintf(__g_cdefault_log_config.fd, "\n");
-  mtx_unlock(&__g_cdefault_log_config.mtx);
+  if (UNLIKELY(!_cdef_log_config.is_initialized)) { LogInit(stderr); }
+  MutexLock(&_cdef_log_config.mtx);
+  fprintf(_cdef_log_config.fd, "[%s | %s:%d]: ", level, filename, loc);
+  vfprintf(_cdef_log_config.fd, fmt, args);
+  fprintf(_cdef_log_config.fd, "\n");
+  MutexUnlock(&_cdef_log_config.mtx);
 }
 
 void Log(char* level, char* filename, U32 loc, char* fmt, ...) {
@@ -468,23 +530,24 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...) {
 // NOTE: Arena implementation
 ///////////////////////////////////////////////////////////////////////////////
 
-static ArenaConfig __g_cdefault_arena_config = {
+static ArenaConfig _cdef_arena_config = {
   .capacity = KB(4),
 };
-void ArenaInit(ArenaConfig config) {
-  __g_cdefault_arena_config = config;
+void ArenaConfigure(ArenaConfig config) {
+  _cdef_arena_config = config;
 }
 
 Arena* ArenaAllocate(void) {
-  Arena* arena = (Arena*) malloc(__g_cdefault_arena_config.capacity);
+  Arena* arena = (Arena*) malloc(_cdef_arena_config.capacity);
   DEBUG_ASSERT(arena != NULL);
-  *arena = (Arena) {0};
+  MEMORY_ZERO_STRUCT(arena);
   arena->current = arena;
-  arena->capacity = __g_cdefault_arena_config.capacity;
+  arena->capacity = _cdef_arena_config.capacity;
   return arena;
 }
 
 void ArenaRelease(Arena* arena) {
+  if (UNLIKELY(arena == NULL)) { return; }
   ArenaClear(arena);
   free(arena);
 }
@@ -494,15 +557,15 @@ void* ArenaPush(Arena* arena, U64 size, U64 align) {
   if (pos_aligned - arena->current->base_pos + size >
       arena->current->capacity - sizeof(Arena)) {
     Arena* new_arena = NULL;
-    if (__g_cdefault_arena_config.capacity < sizeof(Arena) + size) {
+    if (_cdef_arena_config.capacity < sizeof(Arena) + size) {
       LOG_WARN(
           "Allocating custom arena for extra large size: "
           "%d (normal capacity is: %d).",
-          size, __g_cdefault_arena_config.capacity - sizeof(Arena));
-      U64 capacity_hold = __g_cdefault_arena_config.capacity;
-      __g_cdefault_arena_config.capacity = sizeof(Arena) + size;
+          size, _cdef_arena_config.capacity - sizeof(Arena));
+      U64 capacity_hold = _cdef_arena_config.capacity;
+      _cdef_arena_config.capacity = sizeof(Arena) + size;
       new_arena = ArenaAllocate();
-      __g_cdefault_arena_config.capacity = capacity_hold;
+      _cdef_arena_config.capacity = capacity_hold;
     } else {
       new_arena = ArenaAllocate();
     }
@@ -541,7 +604,8 @@ void ArenaClear(Arena* arena) {
 }
 
 ArenaTemp ArenaTempBegin(Arena* arena) {
-  ArenaTemp temp = {0};
+  ArenaTemp temp;
+  MEMORY_ZERO_STRUCT(&temp);
   temp.arena = arena;
   temp.pos = arena->pos;
   return temp;
@@ -550,6 +614,121 @@ ArenaTemp ArenaTempBegin(Arena* arena) {
 void ArenaTempEnd(ArenaTemp* temp) {
   ArenaPopTo(temp->arena, temp->pos);
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Thread Implementation
+///////////////////////////////////////////////////////////////////////////////
+
+void ThreadCreate(Thread* thread, ThreadStartFunc* entry, void* arg) {
+  MEMORY_ZERO_STRUCT(thread);
+  S32 result = thrd_create(&thread->thread, entry, arg);
+  ASSERT(result == thrd_success);
+}
+
+void ThreadDetatch(Thread* thread) {
+  S32 result = thrd_detach(thread->thread);
+  ASSERT(result == thrd_success);
+}
+
+S32 ThreadJoin(Thread* thread) {
+  S32 out;
+  S32 result = thrd_join(thread->thread, &out);
+  ASSERT(result == thrd_success);
+  return out;
+}
+
+B8 ThreadEqual(Thread* a, Thread* b) {
+  B8 result = thrd_equal(a->thread, b->thread) != 0;
+  return result;
+}
+
+void MutexInit(Mutex* mutex) {
+  MEMORY_ZERO_STRUCT(mutex);
+  S32 result = mtx_init(&mutex->mutex, mtx_plain);
+  ASSERT(result == thrd_success);
+}
+
+void MutexDeinit(Mutex* mutex) {
+  mtx_destroy(&mutex->mutex);
+}
+
+void MutexLock(Mutex* mutex) {
+  S32 result = mtx_lock(&mutex->mutex);
+  ASSERT(result == thrd_success);
+}
+
+void MutexUnlock(Mutex* mutex) {
+  S32 result = mtx_unlock(&mutex->mutex);
+  ASSERT(result == thrd_success);
+}
+
+void CVInit(CV* cv) {
+  MEMORY_ZERO_STRUCT(cv);
+  S32 result = cnd_init(&cv->cv);
+  ASSERT(result == thrd_success);
+}
+
+void CVDeinit(CV* cv) {
+  cnd_destroy(&cv->cv);
+}
+
+void CVSignal(CV* cv) {
+  S32 result = cnd_signal(&cv->cv);
+  ASSERT(result == thrd_success);
+}
+
+void CVBroadcast(CV* cv) {
+  S32 result = cnd_broadcast(&cv->cv);
+  ASSERT(result == thrd_success);
+}
+
+void CVWait(CV* cv, Mutex* mutex) {
+  S32 result = cnd_wait(&cv->cv, &mutex->mutex);
+  ASSERT(result == thrd_success);
+}
+
+void SemInit(Sem* sem, S8 count) {
+  ASSERT(count >= 0);
+  MEMORY_ZERO_STRUCT(sem);
+  MutexInit(&sem->mutex);
+  CVInit(&sem->cv);
+  sem->count = count;
+}
+
+void SemDeinit(Sem* sem) {
+  MutexDeinit(&sem->mutex);
+  CVDeinit(&sem->cv);
+}
+
+void SemSignal(Sem* sem) {
+  MutexLock(&sem->mutex);
+  sem->count += 1;
+  CVSignal(&sem->cv);
+  MutexUnlock(&sem->mutex);
+}
+
+void SemWait(Sem* sem) {
+  MutexLock(&sem->mutex);
+  while (sem->count <= 0) { CVWait(&sem->cv, &sem->mutex); }
+  sem->count -= 1;
+  MutexUnlock(&sem->mutex);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Atomic Implementation
+///////////////////////////////////////////////////////////////////////////////
+
+void AtomicU32Init(AtomicU32* a, U32 desired) { atomic_init(a, desired); }
+void AtomicU32Store(AtomicU32* a, U32 desired) { atomic_store(a, desired); }
+U32 AtomicU32Load(AtomicU32* a) { return atomic_load(a); }
+U32 AtomicU32Exchange(AtomicU32* a, U32 desired) { return atomic_exchange(a, desired); }
+B8 AtomicU32CompareExchange(AtomicU32* a, U32* expected, U32 desired) {
+  return atomic_compare_exchange_strong(a, expected, desired); }
+U32 AtomicU32FetchAdd(AtomicU32* a, U32 b) { return atomic_fetch_add(a, b); }
+U32 AtomicU32FetchSub(AtomicU32* a, U32 b) { return atomic_fetch_sub(a, b); }
+U32 AtomicU32FetchOr(AtomicU32* a, U32 b) { return atomic_fetch_or(a, b); }
+U32 AtomicU32FetchXor(AtomicU32* a, U32 b) { return atomic_fetch_xor(a, b); }
+U32 AtomicU32FetchAnd(AtomicU32* a, U32 b) { return atomic_fetch_and(a, b); }
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: String Implementation
@@ -592,7 +771,8 @@ U8 CharToUpper(U8 c) {
 }
 
 String8 String8Create(U8* str, U64 size) {
-  String8 result = {0};
+  String8 result;
+  MEMORY_ZERO_STRUCT(&result);
   result.str = str;
   result.size = size;
   return result;
@@ -605,14 +785,16 @@ String8 String8CreateCString(U8* c_str) {
 }
 
 String8 String8CreateRange(U8* str, U8* one_past_last) {
-  String8 result = {0};
+  String8 result;
+  MEMORY_ZERO_STRUCT(&result);
   result.str = str;
   result.size = (U64) (one_past_last - str);
   return result;
 }
 
 String8 String8Copy(Arena* arena, String8* string) {
-  String8 result = {0};
+  String8 result;
+  MEMORY_ZERO_STRUCT(&result);
   result.size = string->size;
   result.str = ARENA_PUSH_ARRAY(arena, U8, string->size);
   MEMORY_COPY(result.str, string->str, string->size);
@@ -623,7 +805,8 @@ String8 String8Substring(String8* s, U64 start, U64 end) {
   DEBUG_ASSERT(end > start);
   start = MIN(start, s->size - 1);
   end = MIN(end, s->size - 1);
-  String8 result = {0};
+  String8 result;
+  MEMORY_ZERO_STRUCT(&result);
   result.str = s->str + start;
   result.size = end - start + 1;
   return result;
@@ -695,7 +878,8 @@ String8 String8ToLower(Arena* arena, String8* s) {
 }
 
 String8 String8Concat(Arena* arena, String8* a, String8* b) {
-  String8 result = {0};
+  String8 result;
+  MEMORY_ZERO_STRUCT(&result);
   result.size = a->size + b->size;
   result.str = ARENA_PUSH_ARRAY(arena, U8, a->size + b->size);
   MEMORY_COPY(result.str, a->str, a->size);
@@ -707,7 +891,8 @@ String8 String8FormatV(Arena* arena, U8* fmt, va_list args) {
   va_list args_copy;
   va_copy(args_copy, args);
   U32 size = vsnprintf(NULL, 0, (const char* const) fmt, args_copy) + 1;
-  String8 result = {0};
+  String8 result;
+  MEMORY_ZERO_STRUCT(&result);
   result.size = size - 1;
   result.str = ARENA_PUSH_ARRAY(arena, U8, size);
   vsnprintf((char* const) result.str, size, (char* const) fmt, args_copy);
@@ -737,7 +922,8 @@ String8 String8ListJoin(Arena* arena, String8List* list) {
   for (String8ListNode* node = list->front; node != NULL; node = node->next) {
     size += node->string.size;
   }
-  String8 result = {0};
+  String8 result;
+  MEMORY_ZERO_STRUCT(&result);
   result.size = size;
   result.str = ARENA_PUSH_ARRAY(arena, U8, size);
   size = 0;
@@ -749,7 +935,8 @@ String8 String8ListJoin(Arena* arena, String8List* list) {
 }
 
 String8List String8Split(Arena* arena, String8* string, U8 c) {
-  String8List list = {0};
+  String8List list;
+  MEMORY_ZERO_STRUCT(&list);
   U8* substring_start = string->str;
   for (U64 i = 0; i < string->size; ++i) {
     if (string->str[i] == c) {
@@ -765,6 +952,19 @@ String8List String8Split(Arena* arena, String8* string, U8 c) {
     String8ListAppend(&list, node);
   }
   return list;
+}
+
+S32 String8Hash(String8* s) {
+  S32 hash = 0;
+  for (S32 i = 0; i < s->size; i++) {
+    hash += s->str[i];
+    hash += hash << 10;
+    hash ^= hash >> 6;
+  }
+  hash += hash << 3;
+  hash ^= hash >> 11;
+  hash += hash << 15;
+  return hash;
 }
 
 #endif // CDEFAULT_STD_IMPLEMENTATION
