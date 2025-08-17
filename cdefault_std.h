@@ -1,6 +1,39 @@
 #ifndef CDEFAULT_STD_H_
 #define CDEFAULT_STD_H_
 
+#if defined(_WIN32)
+#  define OS_WINDOWS 1
+#elif defined(__gnu_linux__) || defined(__linux__)
+#  define OS_LINUX 1
+#elif defined(__APPLE__) && defined(__MACH__)
+#  define OS_MAC 1
+#else
+#  error Unknown operating system.
+#endif
+
+#if defined(__GNUC__) || defined(__GNUG__)
+#  define COMPILER_GCC 1
+#elif defined(__clang__)
+#  define COMPILER_CLANG 1
+#elif defined(_MSC_VER)
+#  define COMPILER_MSVC 1
+#else
+#  error Unknown compiler.
+#endif
+
+#if defined(OS_WINDOWS)
+
+#include <windows.h>
+
+#elif defined(OS_LINUX) || defined(OS_MAC)
+
+#include <sys/mman.h>
+#include <threads.h>
+#include <stdatomic.h>
+#include <stdlib.h>
+
+#endif
+
 #include <assert.h>
 #include <stdint.h>
 #include <stdarg.h>
@@ -31,26 +64,6 @@ typedef double   F64;
 // NOTE: Gen purpose macros
 ///////////////////////////////////////////////////////////////////////////////
 
-#if defined(_WIN32)
-#  define OS_WINDOWS 1
-#elif defined(__gnu_linux__) || defined(__linux__)
-#  define OS_LINUX 1
-#elif defined(__APPLE__) && defined(__MACH__)
-#  define OS_MAC 1
-#else
-#  error Unknown operating system.
-#endif
-
-#if defined(__GNUC__) || defined(__GNUG__)
-#  define COMPILER_GCC 1
-#elif defined(__clang__)
-#  define COMPILER_CLANG 1
-#elif defined(_MSC_VER)
-#  define COMPILER_MSVC 1
-#else
-#  error Unknown compiler.
-#endif
-
 #define GLUE(a, b) a ## b
 #define FILENAME (strrchr(__FILE__, '/')  ? strrchr(__FILE__, '/')  + 1 : \
                  (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : \
@@ -63,6 +76,8 @@ typedef double   F64;
 #define MAX(a, b) (((a) < (b)) ? (b) : (a))
 #define MAX3(a, b, c) (MAX(MAX((a), (b)), (c)))
 #define CLAMP(a, x, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
+#define CLAMP_TOP(a, x) MIN((a), (x))
+#define CLAMP_BOT(x, b) MAX((x), (b))
 
 #define BIT(idx) (1 << (idx))
 #define EXTRACT_BIT(word, idx) (((word) >> (idx)) & 1)
@@ -157,6 +172,11 @@ typedef double   F64;
 #define IS_MEMORY_EQUAL(a, b, size)       (MEMORY_COMPARE((a), (b), (size)) == 0)
 #define IS_MEMORY_EQUAL_STRUCT(a, b)      IS_MEMORY_EQUAL((a), (b), sizeof(*(a)))
 #define IS_MEMORY_EQUAL_STATIC_ARRAY(a,b) IS_MEMORY_EQUAL((a), (b), sizeof(a))
+
+void* MemoryReserve(U64 size);
+B32 MemoryCommit(void* ptr, U64 size);
+void MemoryRelease(void* ptr, U64 size);
+void MemoryDecommit(void* ptr, U64 size);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: List macros
@@ -329,13 +349,15 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...);
 // NOTE: Arena
 ///////////////////////////////////////////////////////////////////////////////
 
-#define CDEFAULT_ARENA_CAPACITY KB(4)
+#define PAGE_SIZE KB(4)
+#define CDEFAULT_ARENA_RESERVE_SIZE ALIGN_POW_2(MB(64), PAGE_SIZE)
+#define CDEFAULT_ARENA_COMMIT_SIZE  ALIGN_POW_2(KB(64), PAGE_SIZE)
 
 typedef struct Arena Arena;
 struct Arena {
-  Arena* current;
-  U64 capacity;
-  U64 base_pos;
+  U64 reserve_size;
+  U64 commit_size;
+  U64 commit;
   U64 pos;
 };
 
@@ -345,8 +367,8 @@ struct ArenaTemp {
   U64 pos;
 };
 
-Arena* ArenaAllocate_(U64 capacity);
-#define ArenaAllocate() ArenaAllocate_(CDEFAULT_ARENA_CAPACITY)
+Arena* _ArenaAllocate(U64 reserve_size, U64 commit_size);
+#define ArenaAllocate() _ArenaAllocate(CDEFAULT_ARENA_RESERVE_SIZE, CDEFAULT_ARENA_COMMIT_SIZE)
 void ArenaRelease(Arena* arena);
 void* ArenaPush(Arena* arena, U64 size, U64 align);
 void ArenaPopTo(Arena* arena, U64 pos);
@@ -364,13 +386,10 @@ void ArenaTempEnd(ArenaTemp* temp);
 ///////////////////////////////////////////////////////////////////////////////
 
 #if defined(OS_WINDOWS)
-#include <windows.h>
-#include <handleapi.h>
 typedef HANDLE Thread;
 typedef CRITICAL_SECTION Mutex;
 typedef CONDITION_VARIABLE CV;
 #else
-#include <threads.h>
 typedef thrd_t Thread;
 typedef mtx_t Mutex;
 typedef cnd_t cv;
@@ -409,11 +428,9 @@ void SemWait(Sem* sem);
 ///////////////////////////////////////////////////////////////////////////////
 
 #ifdef OS_WINDOWS
-#include <windows.h>
 typedef volatile LONG64 AtomicS64;
 typedef volatile LONG AtomicS32;
 #else
-#include <stdatomic.h>
 typedef _Atomic(S64) AtomicS64;
 typedef _Atomic(S32) AtomicS32;
 #endif
@@ -472,8 +489,8 @@ U8 CharToUpper(U8 c);
 
 String8 String8Create(U8* str, U64 size);
 String8 String8CreateRange(U8* str, U8* one_past_last);
-String8 String8CreateCString_(U8* c_str);
-#define String8CreateCString(s) String8CreateCString_((U8*) s)
+String8 _String8CreateCString(U8* c_str);
+#define String8CreateCString(s) _String8CreateCString((U8*) s)
 #define String8CreateStatic(s) String8Create((U8*)s, sizeof(s) - 1)
 String8 String8Copy(Arena* arena, String8* string);
 
@@ -490,8 +507,8 @@ S64 String8FindReverse(String8* string, U64 reverse_start_pos, String8* needle);
 
 String8 String8Concat(Arena* arena, String8* a, String8* b);
 String8 String8FormatV(Arena* arena, U8* fmt, va_list args);
-String8 String8Format_(Arena* arena, U8* fmt, ...);
-#define String8Format(a, fmt, ...) String8Format_(a, (U8*) fmt, ##__VA_ARGS__)
+String8 _String8Format(Arena* arena, U8* fmt, ...);
+#define String8Format(a, fmt, ...) _String8Format(a, (U8*) fmt, ##__VA_ARGS__)
 
 void String8ListPrepend(String8List* list, String8ListNode* node);
 void String8ListAppend(String8List* list, String8ListNode* node);
@@ -508,6 +525,47 @@ S32 String8Hash(String8* s);
 
 #ifdef CDEFAULT_STD_IMPLEMENTATION
 #undef CDEFAULT_STD_IMPLEMENTATION
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Memory implementation
+///////////////////////////////////////////////////////////////////////////////
+
+void* MemoryReserve(U64 size) {
+#if defined(OS_WINDOWS)
+  return VirtualAlloc(0, size, MEM_RESERVE, PAGE_READWRITE);
+#elif defined(OS_LINUX) || defined(OS_MAC)
+  void* result = mmap(0, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (result == MAP_FAILED) { result = NULL; }
+  return result;
+#endif
+}
+
+B32 MemoryCommit(void* ptr, U64 size) {
+#if defined(OS_WINDOWS)
+  return (VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE) != 0);
+#elif defined(OS_LINUX) || defined(OS_MAC)
+  mprotect(ptr, size, PROT_READ | PROT_WRITE);
+  return true;
+#endif
+}
+
+void MemoryRelease(void* ptr, U64 size) {
+#if defined(OS_WINDOWS)
+  size = size;
+  VirtualFree(ptr, 0, MEM_RELEASE);
+#elif defined(OS_LINUX) || defined(OS_MAC)
+  munmap(ptr, size);
+#endif
+}
+
+void MemoryDecommit(void* ptr, U64 size) {
+#if defined(OS_WINDOWS)
+  VirtualFree(ptr, size, MEM_DECOMMIT);
+#elif defined(OS_LINUX) || defined(OS_MAC)
+  madvise(ptr, size, MADV_DONTNEED);
+  mprotect(ptr, size, PROT_NONE);
+#endif
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Log implementation
@@ -548,63 +606,62 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...) {
 // NOTE: Arena implementation
 ///////////////////////////////////////////////////////////////////////////////
 
-Arena* ArenaAllocate_(U64 capacity) {
-  Arena* arena = (Arena*) malloc(capacity);
-  DEBUG_ASSERT(arena != NULL);
+STATIC_ASSERT(
+    sizeof(Arena) < CDEFAULT_ARENA_COMMIT_SIZE,
+    "sizeof(Arena) must be less than CDEFAULT_ARENA_COMMIT_SIZE.");
+STATIC_ASSERT(
+    CDEFAULT_ARENA_COMMIT_SIZE < CDEFAULT_ARENA_RESERVE_SIZE,
+    "CDEFAULT_ARENA_COMMIT_SIZE must be less than CDEFAULT_ARENA_RESERVE_SIZE.");
+
+Arena* _ArenaAllocate(U64 reserve_size, U64 commit_size) {
+  reserve_size = ALIGN_POW_2(reserve_size, PAGE_SIZE);
+  commit_size = ALIGN_POW_2(commit_size, PAGE_SIZE);
+
+  void* base = MemoryReserve(CDEFAULT_ARENA_RESERVE_SIZE);
+  DEBUG_ASSERT(base != NULL);
+  MemoryCommit(base, CDEFAULT_ARENA_COMMIT_SIZE);
+
+  Arena* arena = (Arena*) base;
   MEMORY_ZERO_STRUCT(arena);
-  arena->current = arena;
-  arena->capacity = capacity;
+  arena->reserve_size = reserve_size;
+  arena->commit_size = commit_size;
+  arena->commit = commit_size;
+  arena->pos = sizeof(Arena);
   return arena;
 }
 
 void ArenaRelease(Arena* arena) {
   if (UNLIKELY(arena == NULL)) { return; }
-  ArenaClear(arena);
-  free(arena);
+  MemoryRelease(arena, CDEFAULT_ARENA_RESERVE_SIZE);
 }
 
 void* ArenaPush(Arena* arena, U64 size, U64 align) {
-  U64 pos_aligned = ALIGN_POW_2(arena->current->pos, align);
-  if (pos_aligned - arena->current->base_pos + size >
-      arena->current->capacity - sizeof(Arena)) {
-    Arena* new_arena = NULL;
-    if (CDEFAULT_ARENA_CAPACITY < sizeof(Arena) + size) {
-      LOG_WARN(
-          "Allocating custom arena for extra large size: "
-          "%d (normal capacity is: %d).",
-          size, CDEFAULT_ARENA_CAPACITY - sizeof(Arena));
-      new_arena = ArenaAllocate_(sizeof(Arena) + size);
-    } else {
-      new_arena = ArenaAllocate();
-    }
-    new_arena->base_pos = pos_aligned;
-    new_arena->current = arena->current;
-    arena->current = new_arena;
-  }
-  arena->current->pos = pos_aligned;
-  DEBUG_ASSERT((arena->current->pos - arena->current->base_pos +
-      sizeof(Arena) + size) <= arena->current->capacity);
-  void* chunk = ((U8*) arena) + sizeof(Arena) +
-    (arena->current->pos - arena->current->base_pos);
-  arena->current->pos += size;
+  U64 pos = ALIGN_POW_2(arena->pos, align);
+  U64 pos_after = pos + size;
 
-  return chunk;
+  ASSERT(pos_after <= arena->reserve_size); // If hit, increase reserve size?
+  if (arena->commit < pos_after) {
+    U64 commit = pos_after + arena->commit_size - 1;
+    commit -= commit % arena->commit;
+    U64 commit_clamped = CLAMP_TOP(commit, arena->reserve_size);
+    U64 commit_size = commit_clamped - arena->commit;
+    MemoryCommit((U8*) arena + arena->commit, commit_size);
+    arena->commit = commit_clamped;
+  }
+  ASSERT(pos_after <= arena->commit);
+
+  void* result = ((U8*)arena) + pos;
+  arena->pos = pos_after;
+  return result;
 }
 
 void ArenaPopTo(Arena* arena, U64 pos) {
-  Arena* current = arena->current;
-  while (pos < current->base_pos) {
-    Arena* next = current->current;
-    free(current);
-    DEBUG_ASSERT(current != next);
-    current = next;
-  }
-  current->pos = pos;
-  arena->current = current;
+  ASSERT(pos < arena->pos);
+  arena->pos = pos;
 }
 
 void ArenaPop(Arena* arena, U64 size) {
-  ArenaPopTo(arena, arena->current->pos - size);
+  ArenaPopTo(arena, arena->pos - size);
 }
 
 void ArenaClear(Arena* arena) {
@@ -882,7 +939,7 @@ String8 String8Create(U8* str, U64 size) {
   return result;
 }
 
-String8 String8CreateCString_(U8* c_str) {
+String8 _String8CreateCString(U8* c_str) {
   U8* c = c_str;
   while (*c != '\0') { c += 1; }
   return String8CreateRange(c_str, c);
@@ -1005,7 +1062,7 @@ String8 String8FormatV(Arena* arena, U8* fmt, va_list args) {
   return result;
 }
 
-String8 String8Format_(Arena* arena, U8* fmt, ...) {
+String8 _String8Format(Arena* arena, U8* fmt, ...) {
   va_list args;
   va_start(args, fmt);
   String8 result = String8FormatV(arena, fmt, args);
