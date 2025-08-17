@@ -44,7 +44,7 @@ struct AudioDriver {
   Arena* arena;
   Mutex mutex;
   CV cv;
-  AtomicU32 next_device_id;
+  AtomicS32 next_device_id;
   AudioDevice* devices;
   AudioDriverWorkItem* pending_work_items;
   AudioDriverWorkItem* free_work_items;
@@ -304,7 +304,7 @@ void AudioDeviceDeinit(AudioDevice* device) {
 
 void AudioDriverRegisterDevice(AudioDriver* driver, AudioDevice* device) {
   // todo: check if handle is already present, or something?
-  device->id = AtomicU32FetchAdd(&driver->next_device_id, 1);
+  device->id = AtomicS32FetchAdd(&driver->next_device_id, 1);
   SLL_STACK_PUSH(driver->devices, device, next);
 }
 

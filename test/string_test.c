@@ -49,6 +49,7 @@ B32 String8TrimTest(void) {
   String8 trimmed = String8Trim(&literal);
   String8 expected = String8CreateStatic("test");
   TEST_EXPECT(String8Equals(&trimmed, &expected));
+  return true;
 }
 
 B32 String8StartsWithTest(void) {

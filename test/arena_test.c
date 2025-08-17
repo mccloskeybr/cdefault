@@ -108,7 +108,7 @@ B32 ArenaPushArrayTest(void) {
 
 B32 TempArenaTest(void) {
   Arena* arena = ArenaAllocate();
-  U8* buffer = ARENA_PUSH_ARRAY(arena, U8, 32);
+  U8* buffer [[maybe_unused]] = ARENA_PUSH_ARRAY(arena, U8, 32);
   ArenaTemp temp = ArenaTempBegin(arena);
   U8* temp_buffer = ARENA_PUSH_ARRAY(temp.arena, U8, 32);
   TEST_EXPECT(temp_buffer == ((U8*) arena) + sizeof(Arena) + 32);

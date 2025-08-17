@@ -2,13 +2,9 @@
 #define CDEFAULT_STD_H_
 
 #include <assert.h>
-#include <inttypes.h>
+#include <stdint.h>
 #include <stdarg.h>
-#include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
-#include <threads.h>
-#include <stdatomic.h>
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Types
@@ -28,8 +24,8 @@ typedef S32      B32;
 typedef S64      B64;
 typedef float    F32;
 typedef double   F64;
-#define true 1
-#define false 0
+#define true     1
+#define false    0
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Gen purpose macros
@@ -37,17 +33,17 @@ typedef double   F64;
 
 #if defined(_WIN32)
 #  define OS_WINDOWS 1
-#elif defined(_gnu_linux_) || defined(_linux_)
+#elif defined(__gnu_linux__) || defined(__linux__)
 #  define OS_LINUX 1
-#elif defined(_APPLE_) && defined(_MACH_)
+#elif defined(__APPLE__) && defined(__MACH__)
 #  define OS_MAC 1
 #else
 #  error Unknown operating system.
 #endif
 
-#if defined(_GNUC_) || defined(_GNUG_)
+#if defined(__GNUC__) || defined(__GNUG__)
 #  define COMPILER_GCC 1
-#elif defined(_clang_)
+#elif defined(__clang__)
 #  define COMPILER_CLANG 1
 #elif defined(_MSC_VER)
 #  define COMPILER_MSVC 1
@@ -70,7 +66,7 @@ typedef double   F64;
 
 #define BIT(idx) (1 << (idx))
 #define EXTRACT_BIT(word, idx) (((word) >> (idx)) & 1)
-#define EXTRACT_U8(word, pos) (((word) >> ((pos) * 8)) & 0xff)
+#define EXTRACT_U8(word, pos)  (((word) >> ((pos) * 8)) & 0xff)
 #define EXTRACT_U16(word, pos) (((word) >> ((pos) * 16)) & 0xffff)
 #define EXTRACT_U32(word, pos) (((word) >> ((pos) * 32)) & 0xffffffff)
 
@@ -94,8 +90,8 @@ typedef double   F64;
 // NOTE: Branch prediction
 ///////////////////////////////////////////////////////////////////////////////
 
-#if defined(_GNUC_) || defined(_clang_)
-#  define BRANCH_EXPECT(expr, val) _builtin_expect((expr), (val))
+#if defined(COMPILER_GCC) || defined(COMPILER_CLANG)
+#  define BRANCH_EXPECT(expr, val) __builtin_expect((expr), (val))
 #else
 #  define BRANCH_EXPECT(expr, val) (expr)
 #endif
@@ -107,16 +103,16 @@ typedef double   F64;
 ///////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
-#  define DEBUG_ASSERT(exp) assert(UNLIKELY(exp))
-#  define ASSERT(exp) DEBUG_ASSERT(UNLIKELY(exp))
+#  define DEBUG_ASSERT(exp) assert(LIKELY(exp))
+#  define ASSERT(exp) DEBUG_ASSERT(LIKELY(exp))
 #else
 #  define DEBUG_ASSERT(exp) (exp)
-#  define ASSERT(exp) if (UNLIKELY(!(exp))) { *(int*)0 = 0; }
+#  define ASSERT(exp) if (LIKELY(!(exp))) { *(int*)0 = 0; }
 #endif
 #if defined(COMPILER_GCC) || defined(COMPILER_CLANG)
-#  define TRAP() _debugbreak()
+#  define TRAP() __debugbreak()
 #elif defined(COMPILER_MSVC)
-#  define TRAP() _builtin_trap()
+#  define TRAP() __builtin_trap()
 #else
 #  error Unknown trap intrinsic for this compiler.
 #endif
@@ -130,16 +126,16 @@ typedef double   F64;
 ///////////////////////////////////////////////////////////////////////////////
 
 #if defined(COMPILER_MSVC) || defined(COMPILER_CLANG)
-#  define ALIGN_OF(T) _alignof(T)
+#  define ALIGN_OF(T) __alignof(T)
 #elif defined(COMPILER_GCC)
-#  define ALIGN_OF(T) _alignof_(T)
+#  define ALIGN_OF(T) __alignof__(T)
 #else
 #  error ALIGN_OF not defined for this compiler.
 #endif
 #define ALIGN_POW_2(x, b) (((x) + (b) - 1) & (~((b) - 1)))
 
 #define MEMBER(T, m)                    (((T*) 0)->m)
-#define OFFSET_OF(T, m)                 (size_t) (&MEMBER(T,m))
+#define OFFSET_OF(T, m)                 (U64) (&MEMBER(T,m))
 #define MEMBER_FROM_OFFSET(T, ptr, off) (T)((((U8*) ptr) + (off)))
 #define CAST_FROM_MEMBER(T, m, ptr)     (T*)(((U8*) ptr) - OFFSET_OF(T, m))
 
@@ -311,7 +307,7 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...);
 #define LOG_ERROR(fmt, ...) Log("ERROR", FILENAME, __LINE__, fmt, ##__VA_ARGS__)
 
 #ifndef NDEBUG
-#  define LOG_DEBUG(fmt, ...) Log("DEBUG", FILENAME, fmt, _VA_ARGS_)
+#  define LOG_DEBUG(fmt, ...) Log("DEBUG", FILENAME, fmt, ##__VA_ARGS__)
 #else
 #  define LOG_DEBUG(fmt, ...)
 #endif
@@ -324,8 +320,8 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...);
 // NOTE: Wrap test functions in TEST() from main, expectations in TEST_EXPECT().
 
 #define TEST(func) \
-  if ((func)) { LOG_INFO ("\t[" ANSI_COLOR_GREEN "SUCCESS" ANSI_COLOR_RESET "]: "#func); } \
-  else      { LOG_ERROR("\t[" ANSI_COLOR_RED   "FAILURE" ANSI_COLOR_RESET "]: "#func); }
+  if ((func))  { LOG_INFO ("\t[" ANSI_COLOR_GREEN "SUCCESS" ANSI_COLOR_RESET "]: "#func); } \
+  else         { LOG_ERROR("\t[" ANSI_COLOR_RED   "FAILURE" ANSI_COLOR_RESET "]: "#func); }
 #define TEST_EXPECT(expr) \
   if (!(expr)) { LOG_ERROR("\t" ANSI_COLOR_RED "Expectation failed: " ANSI_COLOR_RESET #expr); return false; }
 
@@ -333,10 +329,7 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...);
 // NOTE: Arena
 ///////////////////////////////////////////////////////////////////////////////
 
-typedef struct ArenaConfig ArenaConfig;
-struct ArenaConfig {
-  U64 capacity; // NOTE: How much space is allocated (bytes).
-};
+#define CDEFAULT_ARENA_CAPACITY KB(4)
 
 typedef struct Arena Arena;
 struct Arena {
@@ -352,8 +345,8 @@ struct ArenaTemp {
   U64 pos;
 };
 
-void ArenaConfigure(ArenaConfig config);
-Arena* ArenaAllocate(void);
+Arena* ArenaAllocate_(U64 capacity);
+#define ArenaAllocate() ArenaAllocate_(CDEFAULT_ARENA_CAPACITY)
 void ArenaRelease(Arena* arena);
 void* ArenaPush(Arena* arena, U64 size, U64 align);
 void ArenaPopTo(Arena* arena, U64 pos);
@@ -370,25 +363,28 @@ void ArenaTempEnd(ArenaTemp* temp);
 // NOTE: Thread
 ///////////////////////////////////////////////////////////////////////////////
 
-typedef struct Thread Thread;
-struct Thread { thrd_t thread; };
+#if defined(OS_WINDOWS)
+#include <windows.h>
+#include <handleapi.h>
+typedef HANDLE Thread;
+typedef CRITICAL_SECTION Mutex;
+typedef CONDITION_VARIABLE CV;
+#else
+#include <threads.h>
+typedef thrd_t Thread;
+typedef mtx_t Mutex;
+typedef cnd_t cv;
+#endif
 typedef S32 ThreadStartFunc(void*);
 
 void ThreadCreate(Thread* thread, ThreadStartFunc* entry, void* arg);
 void ThreadDetatch(Thread* thread);
 S32 ThreadJoin(Thread* thread);
-B8 ThreadEqual(Thread* a, Thread* b);
-
-typedef struct Mutex Mutex;
-struct Mutex { mtx_t mutex; };
 
 void MutexInit(Mutex* mutex);
 void MutexDeinit(Mutex* mutex);
 void MutexLock(Mutex* mutex);
 void MutexUnlock(Mutex* mutex);
-
-typedef struct CV CV;
-struct CV { cnd_t cv; };
 
 void CVInit(CV* cv);
 void CVDeinit(CV* cv);
@@ -412,17 +408,37 @@ void SemWait(Sem* sem);
 // NOTE: Atomic
 ///////////////////////////////////////////////////////////////////////////////
 
-typedef _Atomic(U32) AtomicU32;
-void AtomicU32Init(AtomicU32* a, U32 desired);
-void AtomicU32Store(AtomicU32* a, U32 desired);
-U32 AtomicU32Load(AtomicU32* a);
-U32 AtomicU32Exchange(AtomicU32* a, U32 desired);
-B8 AtomicU32CompareExchange(AtomicU32* a, U32* expected, U32 desired);
-U32 AtomicU32FetchAdd(AtomicU32* a, U32 b);
-U32 AtomicU32FetchSub(AtomicU32* a, U32 b);
-U32 AtomicU32FetchOr(AtomicU32* a, U32 b);
-U32 AtomicU32FetchXor(AtomicU32* a, U32 b);
-U32 AtomicU32FetchAnd(AtomicU32* a, U32 b);
+#ifdef OS_WINDOWS
+#include <windows.h>
+typedef volatile LONG64 AtomicS64;
+typedef volatile LONG AtomicS32;
+#else
+#include <stdatomic.h>
+typedef _Atomic(S64) AtomicS64;
+typedef _Atomic(S32) AtomicS32;
+#endif
+
+void AtomicS64Init(AtomicS64* a, S64 desired);
+void AtomicS64Store(AtomicS64* a, S64 desired);
+S64 AtomicS64Load(AtomicS64* a);
+S64 AtomicS64Exchange(AtomicS64* a, S64 desired);
+B8 AtomicS64CompareExchange(AtomicS64* a, S64* expected, S64 desired);
+S64 AtomicS64FetchAdd(AtomicS64* a, S64 b);
+S64 AtomicS64FetchSub(AtomicS64* a, S64 b);
+S64 AtomicS64FetchOr(AtomicS64* a, S64 b);
+S64 AtomicS64FetchXor(AtomicS64* a, S64 b);
+S64 AtomicS64FetchAnd(AtomicS64* a, S64 b);
+
+void AtomicS32Init(AtomicS32* a, S32 desired);
+void AtomicS32Store(AtomicS32* a, S32 desired);
+S32 AtomicS32Load(AtomicS32* a);
+S32 AtomicS32Exchange(AtomicS32* a, S32 desired);
+B8 AtomicS32CompareExchange(AtomicS32* a, S32* expected, S32 desired);
+S32 AtomicS32FetchAdd(AtomicS32* a, S32 b);
+S32 AtomicS32FetchSub(AtomicS32* a, S32 b);
+S32 AtomicS32FetchOr(AtomicS32* a, S32 b);
+S32 AtomicS32FetchXor(AtomicS32* a, S32 b);
+S32 AtomicS32FetchAnd(AtomicS32* a, S32 b);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: String
@@ -455,9 +471,10 @@ U8 CharToLower(U8 c);
 U8 CharToUpper(U8 c);
 
 String8 String8Create(U8* str, U64 size);
-String8 String8CreateCString(U8* c_str);
 String8 String8CreateRange(U8* str, U8* one_past_last);
-#define String8CreateStatic(s) String8Create(s, sizeof(s) - 1)
+String8 String8CreateCString_(U8* c_str);
+#define String8CreateCString(s) String8CreateCString_((U8*) s)
+#define String8CreateStatic(s) String8Create((U8*)s, sizeof(s) - 1)
 String8 String8Copy(Arena* arena, String8* string);
 
 String8 String8Substring(String8* s, U64 start, U64 end);
@@ -473,7 +490,8 @@ S64 String8FindReverse(String8* string, U64 reverse_start_pos, String8* needle);
 
 String8 String8Concat(Arena* arena, String8* a, String8* b);
 String8 String8FormatV(Arena* arena, U8* fmt, va_list args);
-String8 String8Format(Arena* arena, U8* fmt, ...);
+String8 String8Format_(Arena* arena, U8* fmt, ...);
+#define String8Format(a, fmt, ...) String8Format_(a, (U8*) fmt, ##__VA_ARGS__)
 
 void String8ListPrepend(String8List* list, String8ListNode* node);
 void String8ListAppend(String8List* list, String8ListNode* node);
@@ -530,19 +548,12 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...) {
 // NOTE: Arena implementation
 ///////////////////////////////////////////////////////////////////////////////
 
-static ArenaConfig _cdef_arena_config = {
-  .capacity = KB(4),
-};
-void ArenaConfigure(ArenaConfig config) {
-  _cdef_arena_config = config;
-}
-
-Arena* ArenaAllocate(void) {
-  Arena* arena = (Arena*) malloc(_cdef_arena_config.capacity);
+Arena* ArenaAllocate_(U64 capacity) {
+  Arena* arena = (Arena*) malloc(capacity);
   DEBUG_ASSERT(arena != NULL);
   MEMORY_ZERO_STRUCT(arena);
   arena->current = arena;
-  arena->capacity = _cdef_arena_config.capacity;
+  arena->capacity = capacity;
   return arena;
 }
 
@@ -557,15 +568,12 @@ void* ArenaPush(Arena* arena, U64 size, U64 align) {
   if (pos_aligned - arena->current->base_pos + size >
       arena->current->capacity - sizeof(Arena)) {
     Arena* new_arena = NULL;
-    if (_cdef_arena_config.capacity < sizeof(Arena) + size) {
+    if (CDEFAULT_ARENA_CAPACITY < sizeof(Arena) + size) {
       LOG_WARN(
           "Allocating custom arena for extra large size: "
           "%d (normal capacity is: %d).",
-          size, _cdef_arena_config.capacity - sizeof(Arena));
-      U64 capacity_hold = _cdef_arena_config.capacity;
-      _cdef_arena_config.capacity = sizeof(Arena) + size;
-      new_arena = ArenaAllocate();
-      _cdef_arena_config.capacity = capacity_hold;
+          size, CDEFAULT_ARENA_CAPACITY - sizeof(Arena));
+      new_arena = ArenaAllocate_(sizeof(Arena) + size);
     } else {
       new_arena = ArenaAllocate();
     }
@@ -620,71 +628,119 @@ void ArenaTempEnd(ArenaTemp* temp) {
 ///////////////////////////////////////////////////////////////////////////////
 
 void ThreadCreate(Thread* thread, ThreadStartFunc* entry, void* arg) {
-  MEMORY_ZERO_STRUCT(thread);
+#if defined(OS_WINDOWS)
+  *thread = CreateThread(0, 0, (LPTHREAD_START_ROUTINE) entry, arg, 0, 0);
+  ASSERT(*thread != NULL);
+#else
   S32 result = thrd_create(&thread->thread, entry, arg);
   ASSERT(result == thrd_success);
+#endif
 }
 
 void ThreadDetatch(Thread* thread) {
+#if defined(OS_WINDOWS)
+  CloseHandle(*thread);
+#else
   S32 result = thrd_detach(thread->thread);
   ASSERT(result == thrd_success);
+#endif
 }
 
 S32 ThreadJoin(Thread* thread) {
+#if defined(OS_WINDOWS)
+  DWORD result = WaitForSingleObject(*thread, INFINITE);
+  ASSERT(result == WAIT_OBJECT_0);
+  DWORD exit_code;
+  GetExitCodeThread(*thread, &exit_code);
+  CloseHandle(*thread);
+  return (S32) exit_code;
+#else
   S32 out;
   S32 result = thrd_join(thread->thread, &out);
   ASSERT(result == thrd_success);
   return out;
-}
-
-B8 ThreadEqual(Thread* a, Thread* b) {
-  B8 result = thrd_equal(a->thread, b->thread) != 0;
-  return result;
+#endif
 }
 
 void MutexInit(Mutex* mutex) {
-  MEMORY_ZERO_STRUCT(mutex);
+#if defined(OS_WINDOWS)
+  InitializeCriticalSection(mutex);
+#else
   S32 result = mtx_init(&mutex->mutex, mtx_plain);
   ASSERT(result == thrd_success);
+#endif
 }
 
 void MutexDeinit(Mutex* mutex) {
+#if defined(OS_WINDOWS)
+  DeleteCriticalSection(mutex);
+#else
   mtx_destroy(&mutex->mutex);
+#endif
 }
 
 void MutexLock(Mutex* mutex) {
+#if defined(OS_WINDOWS)
+  EnterCriticalSection(mutex);
+#else
   S32 result = mtx_lock(&mutex->mutex);
   ASSERT(result == thrd_success);
+#endif
 }
 
 void MutexUnlock(Mutex* mutex) {
+#if defined(OS_WINDOWS)
+  LeaveCriticalSection(mutex);
+#else
   S32 result = mtx_unlock(&mutex->mutex);
   ASSERT(result == thrd_success);
+#endif
 }
 
 void CVInit(CV* cv) {
-  MEMORY_ZERO_STRUCT(cv);
+#if defined(OS_WINDOWS)
+  InitializeConditionVariable(cv);
+#else
   S32 result = cnd_init(&cv->cv);
   ASSERT(result == thrd_success);
+#endif
 }
 
 void CVDeinit(CV* cv) {
+#if defined(OS_WINDOWS)
+  cv = cv; // NOTE: silence unused compiler warnings.
+#else
   cnd_destroy(&cv->cv);
+#endif
 }
 
 void CVSignal(CV* cv) {
+#if defined(OS_WINDOWS)
+  WakeConditionVariable(cv);
+#else
   S32 result = cnd_signal(&cv->cv);
   ASSERT(result == thrd_success);
+#endif
 }
 
+
 void CVBroadcast(CV* cv) {
+#if defined(OS_WINDOWS)
+  WakeAllConditionVariable(cv);
+#else
   S32 result = cnd_broadcast(&cv->cv);
   ASSERT(result == thrd_success);
+#endif
 }
 
 void CVWait(CV* cv, Mutex* mutex) {
-  S32 result = cnd_wait(&cv->cv, &mutex->mutex);
+#if defined(OS_WINDOWS)
+  BOOL result = SleepConditionVariableCS(cv, mutex, INFINITE);
+  ASSERT(result == true);
+#else
+  S32 result = cnd_wait(&cv->cv, mutex);
   ASSERT(result == thrd_success);
+#endif
 }
 
 void SemInit(Sem* sem, S8 count) {
@@ -718,17 +774,65 @@ void SemWait(Sem* sem) {
 // NOTE: Atomic Implementation
 ///////////////////////////////////////////////////////////////////////////////
 
-void AtomicU32Init(AtomicU32* a, U32 desired) { atomic_init(a, desired); }
-void AtomicU32Store(AtomicU32* a, U32 desired) { atomic_store(a, desired); }
-U32 AtomicU32Load(AtomicU32* a) { return atomic_load(a); }
-U32 AtomicU32Exchange(AtomicU32* a, U32 desired) { return atomic_exchange(a, desired); }
-B8 AtomicU32CompareExchange(AtomicU32* a, U32* expected, U32 desired) {
-  return atomic_compare_exchange_strong(a, expected, desired); }
-U32 AtomicU32FetchAdd(AtomicU32* a, U32 b) { return atomic_fetch_add(a, b); }
-U32 AtomicU32FetchSub(AtomicU32* a, U32 b) { return atomic_fetch_sub(a, b); }
-U32 AtomicU32FetchOr(AtomicU32* a, U32 b) { return atomic_fetch_or(a, b); }
-U32 AtomicU32FetchXor(AtomicU32* a, U32 b) { return atomic_fetch_xor(a, b); }
-U32 AtomicU32FetchAnd(AtomicU32* a, U32 b) { return atomic_fetch_and(a, b); }
+#ifdef OS_WINDOWS
+
+void AtomicS64Init(AtomicS64* a, S64 desired) { InterlockedExchange64(a, desired); }
+void AtomicS64Store(AtomicS64* a, S64 desired) { InterlockedExchange64(a, desired); }
+S64 AtomicS64Load(AtomicS64* a) { return InterlockedCompareExchange64(a, 0, 0); }
+S64 AtomicS64Exchange(AtomicS64* a, S64 desired) { return InterlockedExchange64(a, desired); }
+S64 AtomicS64FetchAdd(AtomicS64* a, S64 b) { return InterlockedExchangeAdd64(a, b); }
+S64 AtomicS64FetchSub(AtomicS64* a, S64 b) { return InterlockedExchangeAdd64(a, -b); }
+S64 AtomicS64FetchOr(AtomicS64* a, S64 b) { return InterlockedOr64(a, b); }
+S64 AtomicS64FetchXor(AtomicS64* a, S64 b) { return InterlockedXor64(a, b); }
+S64 AtomicS64FetchAnd(AtomicS64* a, S64 b) { return InterlockedAnd64(a, b); }
+B8 AtomicS64CompareExchange(AtomicS64* a, S64* expected, S64 desired) {
+  S64 result = InterlockedCompareExchange64(a, *expected, desired);
+  return (result == *expected);
+}
+
+void AtomicS32Init(AtomicS32* a, S32 desired) { InterlockedExchange(a, desired); }
+void AtomicS32Store(AtomicS32* a, S32 desired) { InterlockedExchange(a, desired); }
+S32 AtomicS32Load(AtomicS32* a) { return InterlockedCompareExchange(a, 0, 0); }
+S32 AtomicS32Exchange(AtomicS32* a, S32 desired) { return InterlockedExchange(a, desired); }
+S32 AtomicS32FetchAdd(AtomicS32* a, S32 b) { return InterlockedExchangeAdd(a, b); }
+S32 AtomicS32FetchSub(AtomicS32* a, S32 b) { return InterlockedExchangeAdd(a, -b); }
+S32 AtomicS32FetchOr(AtomicS32* a, S32 b) { return InterlockedOr(a, b); }
+S32 AtomicS32FetchXor(AtomicS32* a, S32 b) { return InterlockedXor(a, b); }
+S32 AtomicS32FetchAnd(AtomicS32* a, S32 b) { return InterlockedAnd(a, b); }
+B8 AtomicS32CompareExchange(AtomicS32* a, S32* expected, S32 desired) {
+  S32 result = InterlockedCompareExchange(a, *expected, desired);
+  return (result == *expected);
+}
+
+#else
+
+void AtomicS64Init(AtomicS64* a, S64 desired) { atomic_init(a, desired); }
+void AtomicS64Store(AtomicS64* a, S64 desired) { atomic_store(a, desired); }
+S64 AtomicS64Load(AtomicS64* a) { return atomic_load(a); }
+S64 AtomicS64Exchange(AtomicS64* a, S64 desired) { return atomic_exchange(a, desired); }
+S64 AtomicS64FetchAdd(AtomicS64* a, S64 b) { return atomic_fetch_add(a, b); }
+S64 AtomicS64FetchSub(AtomicS64* a, S64 b) { return atomic_fetch_sub(a, b); }
+S64 AtomicS64FetchOr(AtomicS64* a, S64 b) { return atomic_fetch_or(a, b); }
+S64 AtomicS64FetchXor(AtomicS64* a, S64 b) { return atomic_fetch_xor(a, b); }
+S64 AtomicS64FetchAnd(AtomicS64* a, S64 b) { return atomic_fetch_and(a, b); }
+B8 AtomicS64CompareExchange(AtomicS64* a, S64* expected, S64 desired) {
+  return atomic_compare_exchange_strong(a, expected, desired);
+}
+
+void AtomicS32Init(AtomicS32* a, S32 desired) { atomic_init(a, desired); }
+void AtomicS32Store(AtomicS32* a, S32 desired) { atomic_store(a, desired); }
+S32 AtomicS32Load(AtomicS32* a) { return atomic_load(a); }
+S32 AtomicS32Exchange(AtomicS32* a, S32 desired) { return atomic_exchange(a, desired); }
+S32 AtomicS32FetchAdd(AtomicS32* a, S32 b) { return atomic_fetch_add(a, b); }
+S32 AtomicS32FetchSub(AtomicS32* a, S32 b) { return atomic_fetch_sub(a, b); }
+S32 AtomicS32FetchOr(AtomicS32* a, S32 b) { return atomic_fetch_or(a, b); }
+S32 AtomicS32FetchXor(AtomicS32* a, S32 b) { return atomic_fetch_xor(a, b); }
+S32 AtomicS32FetchAnd(AtomicS32* a, S32 b) { return atomic_fetch_and(a, b); }
+B8 AtomicS32CompareExchange(AtomicS32* a, S32* expected, S32 desired) {
+  return atomic_compare_exchange_strong(a, expected, desired);
+}
+
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: String Implementation
@@ -778,7 +882,7 @@ String8 String8Create(U8* str, U64 size) {
   return result;
 }
 
-String8 String8CreateCString(U8* c_str) {
+String8 String8CreateCString_(U8* c_str) {
   U8* c = c_str;
   while (*c != '\0') { c += 1; }
   return String8CreateRange(c_str, c);
@@ -901,7 +1005,7 @@ String8 String8FormatV(Arena* arena, U8* fmt, va_list args) {
   return result;
 }
 
-String8 String8Format(Arena* arena, U8* fmt, ...) {
+String8 String8Format_(Arena* arena, U8* fmt, ...) {
   va_list args;
   va_start(args, fmt);
   String8 result = String8FormatV(arena, fmt, args);
