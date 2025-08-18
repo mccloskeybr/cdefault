@@ -27,6 +27,8 @@ F32 F32ArcTan(F32 x);
 F32 F32ArcTan2(F32 y, F32 x);
 F32 F32ToRad(F32 deg);
 F32 F32ToDeg(F32 rad);
+F32 F32Ceil(F32 x);
+F32 F32Floor(F32 x);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Random
@@ -238,6 +240,8 @@ F32 F32ArcTan2(F32 y, F32 x) { return atan2f(y, x); }
 F32 F32Lerp(F32 x, F32 y, F32 t) { return (x * (1 - t)) + (y * t); }
 F32 F32ToRad(F32 deg) { return deg * (F32_PI / 180.0f); }
 F32 F32ToDeg(F32 rad) { return rad * (180.0f / F32_PI); }
+F32 F32Ceil(F32 x) { return ceilf(x); }
+F32 F32Floor(F32 x) { return floorf(x); }
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Random implementation

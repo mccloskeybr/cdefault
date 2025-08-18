@@ -2,6 +2,7 @@
 #define CDEFAULT_AUDIO_H_
 
 #include "cdefault_std.h"
+#include "cdefault_math.h"
 
 ///////////////////////////////////////////////////////////////////////////////
 // Public API
@@ -9,28 +10,23 @@
 
 typedef S32 AudioDeviceID;
 
-B8 AudioInit(void);
-void AudioDeinit(void);
-
-///////////////////////////////////////////////////////////////////////////////
-// Internal API
-///////////////////////////////////////////////////////////////////////////////
-
 typedef struct AudioSpec AudioSpec;
 struct AudioSpec {
   S32 frequency;
   U8 channels;
 };
 
+B8   AudioInit(void);
+void AudioDeinit(void);
+
+///////////////////////////////////////////////////////////////////////////////
+// Internal API
+///////////////////////////////////////////////////////////////////////////////
+
+// NOTE: Different for each driver implementation.
+// TODO: Likely do want some of this to be public, e.g. id, device name, etc.
 typedef struct AudioDevice AudioDevice;
-struct AudioDevice {
-  Arena* arena;
-  AudioDeviceID id;
-  String8 name;
-  AudioSpec spec;
-  void* handle;
-  AudioDevice* next;
-};
+struct AudioDevice;
 
 typedef struct AudioDriverWorkItem AudioDriverWorkItem;
 struct AudioDriverWorkItem {
@@ -51,21 +47,11 @@ struct AudioDriver {
   B8 initialized;
 };
 
-typedef struct AudioContext AudioContext;
-struct AudioContext {
-  AudioDriver driver;
-  Thread thread;
-  B8 thread_terminate;
-  B8 initialized;
-};
-
-void AudioDeviceInit(AudioDevice* device);
-void AudioDeviceDeinit(AudioDevice* device);
 void AudioDriverRegisterDevice(AudioDriver* driver, AudioDevice* device);
 AudioDevice* AudioDriverGetDevice(AudioDriver* driver, AudioDeviceID id);
 
 #ifdef OS_WINDOWS
-// NOTE: need to link with ole32.lib.
+// NOTE: need to link with ole32.lib for COM objects.
 #  define CDEFAULT_AUDIO_DRIVER_WASAPI
 #else
 #  define CDEFAULT_AUDIO_DRIVER_FAKE
@@ -80,8 +66,13 @@ AudioDevice* AudioDriverGetDevice(AudioDriver* driver, AudioDeviceID id);
 #endif
 #define CDEFAULT_AUDIO_DRIVER_FN_IMPL(ns, fn) GLUE(ns, fn)
 #define CDEFAULT_AUDIO_DRIVER_FN(x) CDEFAULT_AUDIO_DRIVER_FN_IMPL(CDEFAULT_AUDIO_DRIVER_NAMESPACE, x)
-B8 CDEFAULT_AUDIO_DRIVER_FN(AudioDriverInitialize)(AudioDriver* driver);
+
+B8   CDEFAULT_AUDIO_DRIVER_FN(AudioThreadInit)(void);
+void CDEFAULT_AUDIO_DRIVER_FN(AudioThreadDeinit)(void);
 void CDEFAULT_AUDIO_DRIVER_FN(AudioDriverDetectDevices)(AudioDriver* driver);
+B8   CDEFAULT_AUDIO_DRIVER_FN(AudioDeviceActivate)(AudioDevice* device);
+B8   CDEFAULT_AUDIO_DRIVER_FN(AudioDeviceMaybeGetBuffer)(AudioDevice* device, U8** buffer);
+B8   CDEFAULT_AUDIO_DRIVER_FN(AudioDevicePlayBuffer)(AudioDevice* device); // TODO: not portable?
 
 #endif // CDEFAULT_AUDIO_H_
 
@@ -110,45 +101,75 @@ static const CLSID _cdef_CLSID_MMDeviceEnumerator            = { 0xbcde0395, 0xe
 
 static IMMDeviceEnumerator* _cdef_audio_enum = NULL;
 
-typedef struct WASAPI_Handle WASAPI_Handle;
-struct WASAPI_Handle {
-  GUID d_sound_guid;
+struct AudioDevice {
+  Arena* arena;
+  AudioDevice* next;
+
+  AudioDeviceID id;
   LPWSTR imm_device_id;
+  String8 name;
+
+  AudioSpec spec;
+  WAVEFORMATEX* format;
+  U32 sample_frames;
+  U64 buffer_size;
+
+  HANDLE event;
+  IAudioClient* client;
+  IAudioRenderClient* render;
 };
 
-B8 WASAPI_AudioDriverInitialize(AudioDriver* driver) {
-  LOG_INFO("[AUDIO] Initializing WASAPI.");
+static void WASAPI_LogHresultError(HRESULT hresult) {
+  char err_buffer[1024];
+  err_buffer[0] = '\0';
+  FormatMessageA(
+      FORMAT_MESSAGE_FROM_SYSTEM, NULL, hresult, 0,
+      err_buffer, STATIC_ARRAY_LEN(err_buffer), NULL);
+  LOG_ERROR("[AUDIO] %s", err_buffer);
+}
 
+B8 WASAPI_AudioThreadInit(void) {
+  LOG_INFO("[AUDIO] Initializing WASAPI.");
   HRESULT result = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
   if (result == RPC_E_CHANGED_MODE) { result = CoInitializeEx(NULL, COINIT_MULTITHREADED); }
   if (FAILED(result)) {
     LOG_ERROR("[AUDIO] Unable to initialize windows concurrency model.");
+    WASAPI_LogHresultError(result);
     return false;
   }
 
-  if (FAILED(CoCreateInstance(&_cdef_CLSID_MMDeviceEnumerator, NULL, CLSCTX_INPROC_SERVER, &_cdef_IID_IMMDeviceEnumerator, (LPVOID*)&_cdef_audio_enum))) {
+  result = CoCreateInstance(&_cdef_CLSID_MMDeviceEnumerator, NULL, CLSCTX_INPROC_SERVER, &_cdef_IID_IMMDeviceEnumerator, (LPVOID*)&_cdef_audio_enum);
+  if (FAILED(result)) {
     LOG_ERROR("[AUDIO] Unable to initialize audio device enumerator.");
+    WASAPI_LogHresultError(result);
     return false;
   }
 
-  MutexLock(&driver->mutex);
-  driver->initialized = true;
-  MutexUnlock(&driver->mutex);
   return true;
+}
+
+void WASAPI_AudioThreadDeinit(void) {
+  CoUninitialize();
 }
 
 void WASAPI_AudioDriverDetectDevices(AudioDriver* driver) {
   ASSERT(driver->initialized);
 
   IMMDeviceCollection* imm_devices = NULL;
-  if (FAILED(IMMDeviceEnumerator_EnumAudioEndpoints(_cdef_audio_enum, eRender, DEVICE_STATE_ACTIVE, &imm_devices))) {
-    LOG_WARN("[AUDIO] Unable to enumerate audio endpoints.");
+  HRESULT result;
+
+  result = IMMDeviceEnumerator_EnumAudioEndpoints(_cdef_audio_enum, eRender, DEVICE_STATE_ACTIVE, &imm_devices);
+  if (FAILED(result)) {
+    LOG_ERROR("[AUDIO] Unable to enumerate audio endpoints.");
+    WASAPI_LogHresultError(result);
     return;
   }
 
   UINT num_imm_devices;
-  if (FAILED(IMMDeviceCollection_GetCount(imm_devices, &num_imm_devices))) {
-    LOG_WARN("[AUDIO] Unable determine count of connected devices.");
+  result = IMMDeviceCollection_GetCount(imm_devices, &num_imm_devices);
+  if (FAILED(result)) {
+    LOG_ERROR("[AUDIO] Unable determine count of connected devices.");
+    WASAPI_LogHresultError(result);
     IMMDeviceCollection_Release(imm_devices);
     return;
   }
@@ -161,34 +182,41 @@ void WASAPI_AudioDriverDetectDevices(AudioDriver* driver) {
     B8 success = false; U64 pop_to = driver->arena->pos;
 
     AudioDevice* device = ARENA_PUSH_STRUCT(driver->arena, AudioDevice);
-    AudioDeviceInit(device);
-    device->handle = ARENA_PUSH_STRUCT(device->arena, WASAPI_Handle);
-    MEMORY_ZERO(device->handle, sizeof(WASAPI_Handle));
-    WASAPI_Handle* device_handle = (WASAPI_Handle*) device->handle;
+    MEMORY_ZERO_STRUCT(device);
+    device->arena = ArenaAllocate();
 
     // NOTE: Retrieve device.
-    if (FAILED(IMMDeviceCollection_Item(imm_devices, i, &imm_device))) {
-      LOG_WARN("[AUDIO] Unable to retrieve device from collection.");
+    result = IMMDeviceCollection_Item(imm_devices, i, &imm_device);
+    if (FAILED(result)) {
+      LOG_ERROR("[AUDIO] Unable to retrieve device from collection.");
+      WASAPI_LogHresultError(result);
       goto cleanup_and_continue;
     }
-    if (FAILED(IMMDevice_GetId(imm_device, &imm_device_id))) {
-      LOG_WARN("[AUDIO] Unable to get device id.");
+
+    result = IMMDevice_GetId(imm_device, &imm_device_id);
+    if (FAILED(result)) {
+      LOG_ERROR("[AUDIO] Unable to get device id.");
+      WASAPI_LogHresultError(result);
       goto cleanup_and_continue;
     }
     U64 imm_device_id_len = wcslen(imm_device_id) + 1;
-    device_handle->imm_device_id = ARENA_PUSH_ARRAY(device->arena, wchar_t, imm_device_id_len);
-    wcscpy_s(device_handle->imm_device_id, imm_device_id_len, imm_device_id);
+    device->imm_device_id = ARENA_PUSH_ARRAY(device->arena, wchar_t, imm_device_id_len);
+    wcscpy_s(device->imm_device_id, imm_device_id_len, imm_device_id);
 
     // NOTE: Retrieve device properties
-    if (FAILED(IMMDevice_OpenPropertyStore(imm_device, STGM_READ, &imm_device_properties))) {
-      LOG_WARN("[AUDIO] Unable to open device property store.");
+    result = IMMDevice_OpenPropertyStore(imm_device, STGM_READ, &imm_device_properties);
+    if (FAILED(result)) {
+      LOG_ERROR("[AUDIO] Unable to open device property store.");
+      WASAPI_LogHresultError(result);
       goto cleanup_and_continue;
     }
 
     PROPVARIANT var;
     PropVariantInit(&var);
-    if (FAILED(IPropertyStore_GetValue(imm_device_properties, &_cdef_PKEY_Device_FriendlyName, &var))) {
-      LOG_WARN("[AUDIO] Unable to read device name.");
+    result = IPropertyStore_GetValue(imm_device_properties, &_cdef_PKEY_Device_FriendlyName, &var);
+    if (FAILED(result)) {
+      LOG_ERROR("[AUDIO] Unable to read device name.");
+      WASAPI_LogHresultError(result);
       goto cleanup_and_continue;
     }
     S32 utf8_size = WideCharToMultiByte(CP_UTF8, 0, var.pwszVal, -1, NULL, 0, NULL, NULL) - 1;
@@ -197,8 +225,10 @@ void WASAPI_AudioDriverDetectDevices(AudioDriver* driver) {
     WideCharToMultiByte(CP_UTF8, 0, var.pwszVal, -1, (LPSTR) device->name.str, utf8_size, NULL, NULL);
 
     PropVariantClear(&var);
-    if (FAILED(IPropertyStore_GetValue(imm_device_properties, &_cdef_PKEY_AudioEngine_DeviceFormat, &var))) {
-      LOG_WARN("[AUDIO] Unable to read device format.");
+    result = IPropertyStore_GetValue(imm_device_properties, &_cdef_PKEY_AudioEngine_DeviceFormat, &var);
+    if (FAILED(result)) {
+      LOG_ERROR("[AUDIO] Unable to read device format.");
+      WASAPI_LogHresultError(result);
       goto cleanup_and_continue;
     }
     WAVEFORMATEXTENSIBLE format;
@@ -206,14 +236,6 @@ void WASAPI_AudioDriverDetectDevices(AudioDriver* driver) {
     MEMORY_COPY(&format, var.blob.pBlobData, MIN(sizeof(WAVEFORMATEXTENSIBLE), sizeof(var.blob.cbSize)));
     device->spec.channels = (U8) format.Format.nChannels;
     device->spec.frequency = format.Format.nSamplesPerSec;
-
-    PropVariantClear(&var);
-    if (FAILED(IPropertyStore_GetValue(imm_device_properties, &_cdef_PKEY_AudioEndpoint_GUID, &var))) {
-      LOG_WARN("[AUDIO] Unable to read DSound GUID.");
-      goto cleanup_and_continue;
-    }
-    CLSIDFromString(var.pwszVal, &device_handle->d_sound_guid);
-    PropVariantClear(&var);
 
     success = true;
     AudioDriverRegisterDevice(driver, device);
@@ -230,11 +252,125 @@ cleanup_and_continue:
   MutexUnlock(&driver->mutex);
 }
 
+B8 WASAPI_AudioDeviceActivate(AudioDevice* device) {
+  IMMDevice* imm_device;
+  HRESULT result;
+
+  result = IMMDeviceEnumerator_GetDevice(_cdef_audio_enum, device->imm_device_id, &imm_device);
+  if (FAILED(result)) {
+    LOG_ERROR("[AUDIO] Failed to get device: %.*s", device->name.size, device->name.str);
+    WASAPI_LogHresultError(result);
+    return false;
+  }
+
+  result = IMMDevice_Activate(imm_device, &_cdef_IID_IAudioClient, CLSCTX_ALL, NULL, (void**)& device->client);
+  IMMDevice_Release(imm_device);
+  if (FAILED(result)) {
+    LOG_ERROR("[AUDIO] Failed to activate device: %.*s", device->name.size, device->name.str);
+    WASAPI_LogHresultError(result);
+    return false;
+  }
+
+  device->event = CreateEvent(NULL, FALSE, FALSE, NULL);
+  if (device->event == NULL) {
+    LOG_ERROR("[AUDIO] Failed to create event for device: %.*s", device->name.size, device->name.str);
+    return false;
+  }
+
+  WAVEFORMATEX* format = NULL;
+  result = IAudioClient_GetMixFormat(device->client, &format);
+  if (FAILED(result)) {
+    LOG_ERROR("[AUDIO] Failed to get mix format for device: %.*s", device->name.size, device->name.str);
+    WASAPI_LogHresultError(result);
+    return false;
+  }
+  device->format = format;
+  device->spec.channels = (U8) format->nChannels;
+
+  // TODO: test / verify formats
+
+  REFERENCE_TIME period;
+  result = IAudioClient_GetDevicePeriod(device->client, &period, NULL);
+  if (FAILED(result)) {
+    LOG_ERROR("[AUDIO] Failed to get minimumx period for device: %.*s", device->name.size, device->name.str);
+    WASAPI_LogHresultError(result);
+    return false;
+  }
+
+  DWORD stream_flags = 0;
+  stream_flags |= AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
+  if ((DWORD) device->spec.frequency != format->nSamplesPerSec) {
+    stream_flags |= AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM;
+    stream_flags |= AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
+    // TODO:
+    // format->nSamplesPerSec = device->spec.frequency;
+    // format->nAvgBytesPerSec = format->nSamplesPerSec * format->nChannels * (format->wBitsPerSample / 8);
+  }
+  result = IAudioClient_Initialize(device->client, AUDCLNT_SHAREMODE_SHARED, stream_flags, 0, 0, format, NULL);
+  if (FAILED(result)) {
+    LOG_ERROR("[AUDIO] Unable to initialize the audio client for device: %.*s", device->name.size, device->name.str);
+    WASAPI_LogHresultError(result);
+    return false;
+  }
+
+  result = IAudioClient_SetEventHandle(device->client, device->event);
+  if (FAILED(result)) {
+    LOG_ERROR("[AUDIO] Unable to set event handle for device: %.*s", device->name.size, device->name.str);
+    WASAPI_LogHresultError(result);
+    return false;
+  }
+
+  U32 buffer_size;
+  result = IAudioClient_GetBufferSize(device->client, &buffer_size);
+  if (FAILED(result)) {
+    LOG_ERROR("[AUDIO] Unable to determine buffer size for device: %.*s", device->name.size, device->name.str);
+    WASAPI_LogHresultError(result);
+    return false;
+  }
+
+  F32 period_millis = period / 10000.0f;
+  F32 period_frames = period_millis * format->nSamplesPerSec / 1000.0f;
+  U32 sample_frames = (U32) F32Ceil(period_frames);
+  sample_frames = CLAMP_TOP(sample_frames, buffer_size);
+  device->sample_frames = sample_frames;
+  device->buffer_size = sample_frames * format->nSamplesPerSec * format->nChannels;
+
+  result = IAudioClient_GetService(device->client, &_cdef_IID_IAudioRenderClient, (void**)&device->render);
+  if (FAILED(result)) {
+    LOG_ERROR("[AUDIO] Unable to get render client for device: %.*s", device->name.size, device->name.str);
+    WASAPI_LogHresultError(result);
+    return false;
+  }
+
+  result = IAudioClient_Start(device->client);
+  if (FAILED(result)) {
+    LOG_ERROR("[AUDIO] Failed to start client for device: %.*s", device->name.size, device->name.str);
+    WASAPI_LogHresultError(result);
+    return false;
+  }
+
+  LOG_INFO("[AUDIO] Activated device: %.*s", device->name.size, device->name.str);
+
+  return true;
+}
+
+B8 WASAPI_AudioDeviceMaybeGetBuffer(AudioDevice* device, U8** buffer) {
+  ASSERT(device->render != NULL);
+  // TODO: retries / recovery plan
+  HRESULT result = IAudioRenderClient_GetBuffer(device->render, device->sample_frames, buffer);
+  return SUCCEEDED(result);
+}
+
+B8 WASAPI_AudioDevicePlayBuffer(AudioDevice* device) {
+  HRESULT result = IAudioRenderClient_ReleaseBuffer(device->render, device->sample_frames, 0);
+  return SUCCEEDED(result);
+}
+
 #elif defined(CDEFAULT_AUDIO_DRIVER_FAKE)
 
-B8 FAKE_AudioDriverInitialize(AudioDriver* driver) {
+B8 FAKE_AudioThreadInit(void) {
   driver->initialized = true;
-  LOG_WARN("[AUDIO] No supported audio driver implementation found, installing fakes.");
+  LOG_ERROR("[AUDIO] No supported audio driver implementation found, installing fakes.");
   return true;
 }
 void FAKE_AudioDriverDetectDevices(AudioDriver* driver) {}
@@ -243,18 +379,53 @@ void FAKE_AudioDriverDetectDevices(AudioDriver* driver) {}
 # error CDEFAULT_AUDIO: Unknown or unsupported driver detected.
 #endif
 
+typedef struct AudioContext AudioContext;
+struct AudioContext {
+  AudioDriver driver;
+  Thread thread;
+  B8 thread_terminate;
+  B8 initialized;
+};
 static AudioContext _cdef_audio_context;
+
+#define SAMPLE_RATE 44100 // Common sample rate in Hz
+#define MIDDLE_C_FREQUENCY 261.626f // Frequency of Middle C in Hz
+#define DURATION_SECONDS 1 // Duration of the sine wave in seconds
+
+// TODO: remove
+static void GenerateSineWave(F32 *buffer, U64 numSamples, F32 amplitude) {
+  for (U64 i = 0; i < numSamples; i++) {
+    F32 t = ((F32)i) / SAMPLE_RATE;
+    buffer[i] = amplitude * F32Sin(2.0f * F32_PI * MIDDLE_C_FREQUENCY * t);
+  }
+}
 
 static S32 AudioThreadEntry(void* user_data) {
   Sem* init_done = (Sem*) user_data;
   AudioContext* ctx = &_cdef_audio_context;
 
+  ASSERT(CDEFAULT_AUDIO_DRIVER_FN(AudioThreadInit)());
+
   // NOTE: initialize audio driver.
+  MEMORY_ZERO_STRUCT(&ctx->driver);
   ctx->driver.arena = ArenaAllocate();
   MutexInit(&ctx->driver.mutex);
   CVInit(&ctx->driver.cv);
-  CDEFAULT_AUDIO_DRIVER_FN(AudioDriverInitialize)(&ctx->driver);
+  ctx->driver.initialized = true;
+
   CDEFAULT_AUDIO_DRIVER_FN(AudioDriverDetectDevices)(&ctx->driver);
+  CDEFAULT_AUDIO_DRIVER_FN(AudioDeviceActivate)(ctx->driver.devices);
+
+  // TODO: remove
+  while(true) {
+    U8* buffer = NULL;
+    if (!WASAPI_AudioDeviceMaybeGetBuffer(ctx->driver.devices, &buffer)) {
+      continue;
+    }
+    GenerateSineWave((F32*) buffer, ctx->driver.devices->buffer_size / 100000, 0.05f);
+    WASAPI_AudioDevicePlayBuffer(ctx->driver.devices);
+  }
+
   SemSignal(init_done);
 
   // NOTE: audio driver main loop.
@@ -272,6 +443,8 @@ static S32 AudioThreadEntry(void* user_data) {
     MutexUnlock(&ctx->driver.mutex);
     (work->entry)(work->args);
   }
+
+  CDEFAULT_AUDIO_DRIVER_FN(AudioThreadDeinit)();
   return 0;
 }
 
@@ -291,15 +464,6 @@ static void AudioDriverPushWork(AudioDriver* driver, ThreadStartFunc* entry, voi
 
   MutexUnlock(&driver->mutex);
   CVSignal(&driver->cv);
-}
-
-void AudioDeviceInit(AudioDevice* device) {
-  MEMORY_ZERO_STRUCT(device);
-  device->arena = ArenaAllocate();
-}
-
-void AudioDeviceDeinit(AudioDevice* device) {
-  ArenaRelease(device->arena);
 }
 
 void AudioDriverRegisterDevice(AudioDriver* driver, AudioDevice* device) {
