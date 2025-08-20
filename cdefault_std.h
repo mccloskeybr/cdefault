@@ -64,6 +64,14 @@ typedef double   F64;
 // NOTE: Gen purpose macros
 ///////////////////////////////////////////////////////////////////////////////
 
+#if defined(COMPILER_MSVC)
+#  define UNUSED(x) x [[maybe_unused]]
+#elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
+#  define UNUSED(x) x __attribute__((unused))
+#else
+#  define UNUSED(x) x
+#endif
+
 #define GLUE(a, b) a ## b
 #define FILENAME (strrchr(__FILE__, '/')  ? strrchr(__FILE__, '/')  + 1 : \
                  (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : \
@@ -395,6 +403,7 @@ typedef mtx_t Mutex;
 typedef cnd_t cv;
 #endif
 typedef S32 ThreadStartFunc(void*);
+typedef S32 LockWitness;
 
 void ThreadCreate(Thread* thread, ThreadStartFunc* entry, void* arg);
 void ThreadDetatch(Thread* thread);
@@ -402,7 +411,7 @@ S32 ThreadJoin(Thread* thread);
 
 void MutexInit(Mutex* mutex);
 void MutexDeinit(Mutex* mutex);
-void MutexLock(Mutex* mutex);
+LockWitness MutexLock(Mutex* mutex);
 void MutexUnlock(Mutex* mutex);
 
 void CVInit(CV* cv);
@@ -430,9 +439,11 @@ void SemWait(Sem* sem);
 #ifdef OS_WINDOWS
 typedef volatile LONG64 AtomicS64;
 typedef volatile LONG AtomicS32;
+typedef volatile LONG AtomicB32;
 #else
 typedef _Atomic(S64) AtomicS64;
 typedef _Atomic(S32) AtomicS32;
+typedef _Atomic(B32) AtomicB32;
 #endif
 
 void AtomicS64Init(AtomicS64* a, S64 desired);
@@ -456,6 +467,15 @@ S32 AtomicS32FetchSub(AtomicS32* a, S32 b);
 S32 AtomicS32FetchOr(AtomicS32* a, S32 b);
 S32 AtomicS32FetchXor(AtomicS32* a, S32 b);
 S32 AtomicS32FetchAnd(AtomicS32* a, S32 b);
+
+void AtomicB32Init(AtomicB32* a, B32 desired);
+void AtomicB32Store(AtomicB32* a, B32 desired);
+B32 AtomicB32Load(AtomicB32* a);
+B32 AtomicB32Exchange(AtomicB32* a, B32 desired);
+B8 AtomicB32CompareExchange(AtomicB32* a, B32* expected, B32 desired);
+B32 AtomicB32FetchOr(AtomicB32* a, B32 b);
+B32 AtomicB32FetchXor(AtomicB32* a, B32 b);
+B32 AtomicB32FetchAnd(AtomicB32* a, B32 b);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: String
@@ -736,12 +756,14 @@ void MutexDeinit(Mutex* mutex) {
 #endif
 }
 
-void MutexLock(Mutex* mutex) {
+S32 MutexLock(Mutex* mutex) {
 #if defined(OS_WINDOWS)
   EnterCriticalSection(mutex);
+  return 0;
 #else
   S32 result = mtx_lock(&mutex->mutex);
   ASSERT(result == thrd_success);
+  return 0;
 #endif
 }
 
@@ -861,6 +883,18 @@ B8 AtomicS32CompareExchange(AtomicS32* a, S32* expected, S32 desired) {
   return (result == *expected);
 }
 
+void AtomicB32Init(AtomicB32* a, B32 desired) { InterlockedExchange(a, desired); }
+void AtomicB32Store(AtomicB32* a, B32 desired) { InterlockedExchange(a, desired); }
+B32 AtomicB32Load(AtomicB32* a) { return InterlockedCompareExchange(a, 0, 0); }
+B32 AtomicB32Exchange(AtomicB32* a, B32 desired) { return InterlockedExchange(a, desired); }
+B32 AtomicB32FetchOr(AtomicB32* a, B32 b) { return InterlockedOr(a, b); }
+B32 AtomicB32FetchXor(AtomicB32* a, B32 b) { return InterlockedXor(a, b); }
+B32 AtomicB32FetchAnd(AtomicB32* a, B32 b) { return InterlockedAnd(a, b); }
+B8 AtomicB32CompareExchange(AtomicB32* a, B32* expected, B32 desired) {
+  B32 result = InterlockedCompareExchange(a, *expected, desired);
+  return (result == *expected);
+}
+
 #else
 
 void AtomicS64Init(AtomicS64* a, S64 desired) { atomic_init(a, desired); }
@@ -886,6 +920,17 @@ S32 AtomicS32FetchOr(AtomicS32* a, S32 b) { return atomic_fetch_or(a, b); }
 S32 AtomicS32FetchXor(AtomicS32* a, S32 b) { return atomic_fetch_xor(a, b); }
 S32 AtomicS32FetchAnd(AtomicS32* a, S32 b) { return atomic_fetch_and(a, b); }
 B8 AtomicS32CompareExchange(AtomicS32* a, S32* expected, S32 desired) {
+  return atomic_compare_exchange_strong(a, expected, desired);
+}
+
+void AtomicB32Init(AtomicB32* a, B32 desired) { atomic_init(a, desired); }
+void AtomicB32Store(AtomicB32* a, B32 desired) { atomic_store(a, desired); }
+B32 AtomicB32Load(AtomicB32* a) { return atomic_load(a); }
+B32 AtomicB32Exchange(AtomicB32* a, B32 desired) { return atomic_exchange(a, desired); }
+B32 AtomicB32FetchOr(AtomicB32* a, B32 b) { return atomic_fetch_or(a, b); }
+B32 AtomicB32FetchXor(AtomicB32* a, B32 b) { return atomic_fetch_xor(a, b); }
+B32 AtomicB32FetchAnd(AtomicB32* a, B32 b) { return atomic_fetch_and(a, b); }
+B8 AtomicB32CompareExchange(AtomicB32* a, B32* expected, B32 desired) {
   return atomic_compare_exchange_strong(a, expected, desired);
 }
 
