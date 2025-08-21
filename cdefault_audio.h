@@ -10,13 +10,16 @@ struct AudioSpec {
   U8 channels;
 };
 
-// TODO: query for device that matches spec
-// TODO: automatically handle device closure
+// TODO: support more than just F32 format
+// TODO: manual selection of devices
+// TODO: double check failure case logic
 // TODO: query information about device
+// TODO: support other backends
+
 B32  AudioInit(void);
 void AudioDeinit(void);
-B32  AudioDeviceActivate(S32 device_id);
-B32  AudioDeviceMaybeGetBuffer(S32 device_id, U8** buffer);
+S32  AudioGetDefaultDevice(void);
+B32  AudioDeviceMaybeGetBuffer(S32 device_id, U8** buffer, U32* buffer_size);
 B32  AudioDevicePlayBuffer(S32 device_id);
 
 #endif // CDEFAULT_AUDIO_H_
@@ -51,6 +54,7 @@ struct WASAPI_NotificationClient {
 typedef struct WASAPI_AudioDevice WASAPI_AudioDevice;
 struct WASAPI_AudioDevice {
   Arena* arena;
+  WASAPI_AudioDevice* prev;
   WASAPI_AudioDevice* next;
 
   // NOTE: Available once the device has first been detected.
@@ -73,7 +77,9 @@ struct WASAPI_AudioContext {
   Arena* arena;
   Mutex mutex;
   AtomicS32 next_device_id;
-  WASAPI_AudioDevice* devices;
+  WASAPI_AudioDevice* default_device;
+  WASAPI_AudioDevice* devices_front;
+  WASAPI_AudioDevice* devices_back;
   WASAPI_AudioDevice* devices_free_list;
   AtomicB32 initialized;
 };
@@ -98,11 +104,10 @@ static const PROPERTYKEY _wasapi_PKEY_Device_FriendlyName      = { { 0xa45c254e,
 static const PROPERTYKEY _wasapi_PKEY_AudioEngine_DeviceFormat = { { 0xf19f064d, 0x82c,  0x4e27, { 0xbc, 0x73, 0x68, 0x82, 0xa1, 0xbb, 0x8e, 0x4c, } }, 0  };
 static const PROPERTYKEY _wasapi_PKEY_AudioEndpoint_GUID       = { { 0x1da5d803, 0xd492, 0x4edd, { 0x8c, 0x23, 0xe0, 0xc0, 0xff, 0xee, 0x7f, 0x0e, } }, 4  };
 static const CLSID _wasapi_CLSID_MMDeviceEnumerator            = { 0xbcde0395, 0xe52f, 0x467c, { 0x8e, 0x3d, 0xc4, 0x57, 0x92, 0x91, 0x69, 0x2e } };
+static const ERole _wasapi_role = eConsole;
 
 static WASAPI_AudioContext _wasapi_ctx;
 static WASAPI_NotificationClient _wasapi_notification_client;
-static Thread _wasapi_thread;
-static AtomicB32 _wasapi_thread_terminate;
 static IMMDeviceEnumerator* _wasapi_enum = NULL;
 
 static WASAPI_AudioDevice* WASAPI_ContextAllocateDevice(WASAPI_AudioContext* ctx, LockWitness UNUSED(witness)) {
@@ -115,16 +120,26 @@ static WASAPI_AudioDevice* WASAPI_ContextAllocateDevice(WASAPI_AudioContext* ctx
   }
   MEMORY_ZERO_STRUCT(device);
   device->arena = ArenaAllocate();
+  DLL_PUSH_BACK(ctx->devices_front, ctx->devices_back, device, prev, next);
   return device;
 }
 
 static void WASAPI_ContextReleaseDevice(WASAPI_AudioContext* ctx, LockWitness UNUSED(witness), WASAPI_AudioDevice* device) {
+  LOG_INFO("[AUDIO] Releasing device: %.*s", device->name.size, device->name.str);
   ArenaRelease(device->arena);
+  if (device->client != NULL) {
+    IAudioClient_Stop(device->client);
+    IAudioClient_Release(device->client);
+  }
+  if (device->render != NULL) {
+    IAudioRenderClient_Release(device->render);
+  }
+  DLL_REMOVE(ctx->devices_front, ctx->devices_back, device, prev, next);
   SLL_STACK_PUSH(ctx->devices_free_list, device, next);
 }
 
 static WASAPI_AudioDevice* WASAPI_ContextFindByDeviceId(WASAPI_AudioContext* ctx, LockWitness UNUSED(witness), S32 device_id) {
-  for (WASAPI_AudioDevice* device = ctx->devices; device != NULL; device = device->next) {
+  for (WASAPI_AudioDevice* device = ctx->devices_front; device != NULL; device = device->next) {
     if (device->id == device_id) {
       return device;
     }
@@ -133,7 +148,7 @@ static WASAPI_AudioDevice* WASAPI_ContextFindByDeviceId(WASAPI_AudioContext* ctx
 }
 
 static WASAPI_AudioDevice* WASAPI_ContextFindByImmDeviceId(WASAPI_AudioContext* ctx, LockWitness UNUSED(witness), LPWSTR imm_device_id) {
-  for (WASAPI_AudioDevice* device = ctx->devices; device != NULL; device = device->next) {
+  for (WASAPI_AudioDevice* device = ctx->devices_front; device != NULL; device = device->next) {
     if (wcscmp(device->imm_device_id, imm_device_id) == 0) {
       return device;
     }
@@ -142,10 +157,10 @@ static WASAPI_AudioDevice* WASAPI_ContextFindByImmDeviceId(WASAPI_AudioContext* 
 }
 
 static B32 WASAPI_ContextTryAddDevice(WASAPI_AudioContext* ctx, LockWitness witness, IMMDevice* imm_device) {
-  WASAPI_AudioDevice* device = WASAPI_ContextAllocateDevice(ctx, witness);
+  WASAPI_AudioDevice* device = NULL;
   HRESULT result;
   B32 success = false;
-  LPWSTR imm_device_id                  = NULL;
+  LPWSTR imm_device_id = NULL;
   IPropertyStore* imm_device_properties = NULL;
 
   result = IMMDevice_GetId(imm_device, &imm_device_id);
@@ -153,6 +168,15 @@ static B32 WASAPI_ContextTryAddDevice(WASAPI_AudioContext* ctx, LockWitness witn
     WASAPI_LOG_ERROR(result, "[AUDIO] Unable to get imm_device_id.");
     goto audio_device_initialize_exit;
   }
+
+  // TODO: is this the best place to put this? should there be different behavior?
+  WASAPI_AudioDevice* duplicate_device = WASAPI_ContextFindByImmDeviceId(ctx, witness, imm_device_id);
+  if (duplicate_device != NULL)  {
+    LOG_WARN("[AUDIO] Duplicate device detected: %.*s", duplicate_device->name.size, duplicate_device->name.str);
+    WASAPI_ContextReleaseDevice(ctx, witness, duplicate_device);
+  }
+  device = WASAPI_ContextAllocateDevice(ctx, witness);
+
   U64 imm_device_id_len = wcslen(imm_device_id) + 1;
   device->imm_device_id = ARENA_PUSH_ARRAY(device->arena, wchar_t, imm_device_id_len);
   wcscpy_s(device->imm_device_id, imm_device_id_len, imm_device_id);
@@ -188,207 +212,102 @@ static B32 WASAPI_ContextTryAddDevice(WASAPI_AudioContext* ctx, LockWitness witn
   device->spec.frequency = format.Format.nSamplesPerSec;
 
   device->id = AtomicS32FetchAdd(&ctx->next_device_id, 1);
-
-  // TODO: is this the best place to put this? should there be different behavior?
-  WASAPI_AudioDevice* duplicate_device = WASAPI_ContextFindByImmDeviceId(ctx, witness, imm_device_id);
-  if (duplicate_device != NULL) {
-    // TEMP log?
-    LOG_WARN("[AUDIO] Duplicate device detected: %.*s", duplicate_device->name.size, duplicate_device->name.str);
-    WASAPI_ContextReleaseDevice(ctx, witness, duplicate_device);
-  }
-  SLL_STACK_PUSH(ctx->devices, device, next);
-
-  success = true;
   LOG_INFO("[AUDIO] Added device: %.*s", device->name.size, device->name.str);
+  success = true;
 
 audio_device_initialize_exit:
   if (imm_device_properties != NULL) { IPropertyStore_Release(imm_device_properties);   }
   if (imm_device_id != NULL) { CoTaskMemFree(imm_device_id); }
-  if (!success) { WASAPI_ContextReleaseDevice(ctx, witness, device); }
+  if (!success && device != NULL) { WASAPI_ContextReleaseDevice(ctx, witness, device); }
   return success;
 }
 
-static void WASAPI_ContextDetectDevices(WASAPI_AudioContext* ctx, LockWitness witness) {
+static B32 WASAPI_ContextDetectDevices(WASAPI_AudioContext* ctx, LockWitness witness) {
   IMMDeviceCollection* imm_device_collection = NULL;
-
+  IMMDevice* imm_device = NULL;
+  LPWSTR imm_device_id = NULL;
   HRESULT result;
+  B32 found_device = false;
+  B32 found_default_device = false;
+
+  // NOTE: Detect currently connected devices.
   result = IMMDeviceEnumerator_EnumAudioEndpoints(_wasapi_enum, eRender, DEVICE_STATE_ACTIVE, &imm_device_collection);
   if (FAILED(result)) {
     WASAPI_LOG_ERROR(result, "[AUDIO] Unable to enumerate audio endpoints.");
     goto detect_devices_end;
   }
-
   UINT num_imm_devices;
   result = IMMDeviceCollection_GetCount(imm_device_collection, &num_imm_devices);
   if (FAILED(result)) {
     WASAPI_LOG_ERROR(result, "[AUDIO] Unable determine count of connected devices.");
     goto detect_devices_end;
   }
-
-  for (WASAPI_AudioDevice* device = ctx->devices; device != NULL; device = device->next) {
+  for (WASAPI_AudioDevice* device = ctx->devices_front; device != NULL; device = device->next) {
     WASAPI_ContextReleaseDevice(ctx, witness, device);
   }
-
   for (UINT i = 0; i < num_imm_devices; i++) {
-    IMMDevice* imm_device = NULL;
+    imm_device = NULL;
     B32 success = false;
-
     result = IMMDeviceCollection_Item(imm_device_collection, i, &imm_device);
     if (FAILED(result)) {
       WASAPI_LOG_ERROR(result, "[AUDIO] Unable to retrieve device from collection.");
       goto detect_devices_cleanup_and_continue;
     }
-
     if (!WASAPI_ContextTryAddDevice(ctx, witness, imm_device)) {
       goto detect_devices_cleanup_and_continue;
     }
-
     success = true;
-
+    found_device = true;
 detect_devices_cleanup_and_continue:
     if (imm_device != NULL) { IMMDevice_Release(imm_device); }
     continue;
   }
 
+  // NOTE: Find default device.
+  result = IMMDeviceEnumerator_GetDefaultAudioEndpoint(_wasapi_enum, eRender, _wasapi_role, &imm_device);
+  if (FAILED(result)) {
+    WASAPI_LOG_ERROR(result, "[AUDIO] Unable to detect default device.");
+    goto detect_devices_end;
+  }
+  result = IMMDevice_GetId(imm_device, &imm_device_id);
+  if (FAILED(result)) {
+    WASAPI_LOG_ERROR(result, "[AUDIO] Unable to get default device imm_device_id.");
+    goto detect_devices_end;
+  }
+  WASAPI_AudioDevice* default_device = WASAPI_ContextFindByImmDeviceId(ctx, witness, imm_device_id);
+  if (default_device == NULL) {
+    LOG_ERROR("[AUDIO] Unable to locate default device in list of registered devices.");
+    goto detect_devices_end;
+  }
+  ctx->default_device = default_device;
+  found_default_device = true;
+  LOG_INFO("[AUDIO] Detected default device: %.*s", default_device->name.size, default_device->name.str);
+
 detect_devices_end:
+  if (found_device && !found_default_device) {
+    LOG_WARN("[AUDIO] Default device not detected, selecting an arbitrary device.");
+    ctx->default_device = ctx->devices_front;
+  }
+
   if (imm_device_collection != NULL) { IMMDeviceCollection_Release(imm_device_collection); }
-  return;
-}
-
-static HRESULT WASAPI_NotificationClientQueryInterface(IMMNotificationClient* client, REFIID iid, void** ppv) {
-  if (MEMORY_COMPARE(iid, &IID_IUnknown, sizeof(*iid)) != 0 &&
-      MEMORY_COMPARE(iid, &_wasapi_IID_IMMNotificationClient, sizeof(*iid)) != 0) {
-    return E_NOINTERFACE;
-  }
-  *ppv = client;
-  client->lpVtbl->AddRef(client);
-  return S_OK;
-}
-
-static ULONG WASAPI_NotificationClientAddRef(IMMNotificationClient* client) {
-  S32 result = AtomicS32FetchAdd(&((WASAPI_NotificationClient*)client)->ref_count, 1);
-  ASSERT(result >= 0);
-  return ((ULONG) result + 1);
-}
-
-static ULONG WASAPI_NotificationClientRelease(IMMNotificationClient* client) {
-  S32 result = AtomicS32FetchSub(&((WASAPI_NotificationClient*)client)->ref_count, 1);
-  ASSERT(result > 0);
-  return ((ULONG) result - 1);
-}
-
-static HRESULT WASAPI_NotificationClientOnDeviceStateChanged(IMMNotificationClient* UNUSED(client), LPCWSTR imm_device_id, DWORD state) {
-  IMMDevice* imm_device = NULL;
-  HRESULT result;
-
-  result = IMMDeviceEnumerator_GetDevice(_wasapi_enum, imm_device_id, &imm_device);
-  if (FAILED(result)) {
-    WASAPI_LOG_ERROR(result, "[AUDIO] Unable to get imm_device on state change");
-    goto on_device_state_changed_exit;
-  }
-
-  WASAPI_AudioContext* ctx = &_wasapi_ctx;
-  LockWitness witness = MutexLock(&ctx->mutex);
-  if (state == DEVICE_STATE_ACTIVE) {
-    // TODO: react to failure?
-    WASAPI_ContextTryAddDevice(ctx, witness, imm_device);
-  } else {
-    UNIMPLEMENTED();
-  }
-  MutexUnlock(&ctx->mutex);
-
-on_device_state_changed_exit:
   if (imm_device != NULL) { IMMDevice_Release(imm_device); }
-  return S_OK;
-}
+  if (imm_device_id != NULL) { CoTaskMemFree(imm_device_id); }
 
-static HRESULT WASAPI_NotificationClientOnDeviceAdded(IMMNotificationClient* client, LPCWSTR imm_device_id) {
-  // NOTE: Handled in OnDeviceStateChange.
-  return S_OK;
-}
-
-static HRESULT WASAPI_NotificationClientOnDeviceRemoved(IMMNotificationClient* client, LPCWSTR imm_device_id) {
-  // NOTE: Handled in OnDeviceStateChange.
-  return S_OK;
-}
-
-static HRESULT WASAPI_NotificationClientOnDefaultDeviceChanged(IMMNotificationClient* client, EDataFlow flow, ERole role, LPCWSTR imm_device_id) {
-  UNIMPLEMENTED();
-  return S_OK;
-}
-
-static HRESULT WASAPI_NotificationClientOnPropertyValueChanged(IMMNotificationClient* client, LPCWSTR imm_device_id, const PROPERTYKEY key) {
-  UNIMPLEMENTED();
-  return S_OK;
-}
-
-static IMMNotificationClientVtbl _wasapi_notification_client_vtable = {
-  WASAPI_NotificationClientQueryInterface,
-  WASAPI_NotificationClientAddRef,
-  WASAPI_NotificationClientRelease,
-  WASAPI_NotificationClientOnDeviceStateChanged,
-  WASAPI_NotificationClientOnDeviceAdded,
-  WASAPI_NotificationClientOnDeviceRemoved,
-  WASAPI_NotificationClientOnDefaultDeviceChanged,
-  WASAPI_NotificationClientOnPropertyValueChanged,
-};
-
-static S32 WASAPI_MainThread(void* args) {
-  Sem* init_done = (Sem*) args;
-  LOG_INFO("[AUDIO] Initializing WASAPI.");
-
-  HRESULT result;
-  result = CoInitialize(NULL);
-  if (FAILED(result)) {
-    WASAPI_LOG_ERROR(result, "[AUDIO] Call to CoInitialize failed.");
-    SemSignal(init_done);
-    return 1;
-  }
-
-  result = CoCreateInstance(&_wasapi_CLSID_MMDeviceEnumerator, NULL, CLSCTX_INPROC_SERVER, &_wasapi_IID_IMMDeviceEnumerator, (LPVOID*)& _wasapi_enum);
-  if (FAILED(result)) {
-    WASAPI_LOG_ERROR(result, "[AUDIO] Unable to initialize audio device enumerator.");
-    SemSignal(init_done);
-    return 1;
-  }
-
-  WASAPI_AudioContext* ctx = &_wasapi_ctx;
-  LockWitness witness = MutexLock(&ctx->mutex);
-  WASAPI_ContextDetectDevices(ctx, witness);
-  AtomicB32Store(&ctx->initialized, true);
-  MutexUnlock(&ctx->mutex);
-
-  MEMORY_ZERO_STRUCT(&_wasapi_notification_client);
-  _wasapi_notification_client.v_table = &_wasapi_notification_client_vtable;
-  AtomicS32Init(&_wasapi_notification_client.ref_count, 1);
-  IMMDeviceEnumerator_RegisterEndpointNotificationCallback(_wasapi_enum, (IMMNotificationClient*)&_wasapi_notification_client);
-
-  SemSignal(init_done);
-
-  while (!AtomicB32Load(&_wasapi_thread_terminate)) {
-  }
-
-  CoUninitialize();
-  return 0;
+  return found_device;
 }
 
 // TODO: disconnect device on failure to activate?
-B32 WASAPI_AudioDeviceActivate(S32 device_id) {
+static B32 WASAPI_AudioDeviceActivate(WASAPI_AudioDevice* device) {
+  ASSERT(device->client == NULL && device->render == NULL);
+
   IMMDevice* imm_device = NULL;
   HRESULT result;
-
-  WASAPI_AudioContext* ctx = &_wasapi_ctx;
-  LockWitness witness = MutexLock(&ctx->mutex);
-  WASAPI_AudioDevice* device = WASAPI_ContextFindByDeviceId(ctx, witness, device_id);
-  MutexUnlock(&ctx->mutex);
-  if (device == NULL) { return false; }
 
   result = IMMDeviceEnumerator_GetDevice(_wasapi_enum, device->imm_device_id, &imm_device);
   if (FAILED(result)) {
     WASAPI_LOG_ERROR(result, "[AUDIO] Failed to get device: %.*s", device->name.size, device->name.str);
     return false;
   }
-
   result = IMMDevice_Activate(imm_device, &_wasapi_IID_IAudioClient, CLSCTX_ALL, NULL, (void**)& device->client);
   IMMDevice_Release(imm_device);
   if (FAILED(result)) {
@@ -411,7 +330,7 @@ B32 WASAPI_AudioDeviceActivate(S32 device_id) {
   device->format = format;
   device->spec.channels = (U8) format->nChannels;
 
-  // TODO: test / verify formats
+  // TODO: test / verify formats?
 
   REFERENCE_TIME period;
   result = IAudioClient_GetDevicePeriod(device->client, &period, NULL);
@@ -441,19 +360,15 @@ B32 WASAPI_AudioDeviceActivate(S32 device_id) {
     return false;
   }
 
-  U32 buffer_size;
-  result = IAudioClient_GetBufferSize(device->client, &buffer_size);
+  U32 sample_frames;
+  result = IAudioClient_GetBufferSize(device->client, &sample_frames);
   if (FAILED(result)) {
     WASAPI_LOG_ERROR(result, "[AUDIO] Unable to determine buffer size for device: %.*s", device->name.size, device->name.str);
     return false;
   }
 
-  F32 period_millis = period / 10000.0f;
-  F32 period_frames = period_millis * format->nSamplesPerSec / 1000.0f;
-  U32 sample_frames = (U32) F32Ceil(period_frames);
-  sample_frames = CLAMP_TOP(sample_frames, buffer_size);
   device->sample_frames = sample_frames;
-  device->buffer_size = sample_frames * format->nSamplesPerSec * format->nChannels;
+  device->buffer_size = sample_frames * sizeof(F32) * format->nChannels; // TODO: assumes F32 format.
 
   result = IAudioClient_GetService(device->client, &_wasapi_IID_IAudioRenderClient, (void**)&device->render);
   if (FAILED(result)) {
@@ -468,20 +383,144 @@ B32 WASAPI_AudioDeviceActivate(S32 device_id) {
   }
 
   LOG_INFO("[AUDIO] Activated device: %.*s", device->name.size, device->name.str);
-
   return true;
 }
 
-B32 WASAPI_AudioDeviceMaybeGetBuffer(S32 device_id, U8** buffer) {
+static HRESULT WASAPI_NotificationClientQueryInterface(IMMNotificationClient* client, REFIID iid, void** ppv) {
+  if (MEMORY_COMPARE(iid, &IID_IUnknown, sizeof(*iid)) != 0 &&
+      MEMORY_COMPARE(iid, &_wasapi_IID_IMMNotificationClient, sizeof(*iid)) != 0) {
+    return E_NOINTERFACE;
+  }
+  *ppv = client;
+  client->lpVtbl->AddRef(client);
+  return S_OK;
+}
+
+static ULONG WASAPI_NotificationClientAddRef(IMMNotificationClient* client) {
+  S32 result = AtomicS32FetchAdd(&((WASAPI_NotificationClient*)client)->ref_count, 1);
+  ASSERT(result >= 0);
+  return ((ULONG) result + 1);
+}
+
+static ULONG WASAPI_NotificationClientRelease(IMMNotificationClient* client) {
+  S32 result = AtomicS32FetchSub(&((WASAPI_NotificationClient*)client)->ref_count, 1);
+  ASSERT(result > 0);
+  return ((ULONG) result - 1);
+}
+
+static HRESULT WASAPI_NotificationClientOnDeviceStateChanged(IMMNotificationClient* UNUSED(client), LPCWSTR imm_device_id, DWORD state) {
+  IMMDevice* imm_device = NULL;
+  HRESULT result;
+
+  WASAPI_AudioContext* ctx = &_wasapi_ctx;
+  LockWitness witness = MutexLock(&ctx->mutex);
+
+  result = IMMDeviceEnumerator_GetDevice(_wasapi_enum, imm_device_id, &imm_device);
+  if (FAILED(result)) {
+    WASAPI_LOG_ERROR(result, "[AUDIO] Unable to get imm_device on state change");
+    goto on_device_state_changed_exit;
+  }
+
+  if (state == DEVICE_STATE_ACTIVE) {
+    // TODO: react to failure?
+    WASAPI_ContextTryAddDevice(ctx, witness, imm_device);
+  } else {
+    WASAPI_AudioDevice* device = WASAPI_ContextFindByImmDeviceId(ctx, witness, (LPWSTR) imm_device_id);
+    if (device == NULL) {
+      goto on_device_state_changed_exit;
+    }
+    WASAPI_ContextReleaseDevice(ctx, witness, device);
+    if (device == ctx->default_device) {
+      LOG_WARN("[AUDIO] Unexpected disconnection of default device, attempting to choose an arbitrary replacement.");
+      ctx->default_device = ctx->devices_front;
+      if (ctx->default_device == NULL) {
+        LOG_WARN("[AUDIO] No devices found.");
+      }
+    }
+  }
+
+on_device_state_changed_exit:
+  MutexUnlock(&ctx->mutex);
+  if (imm_device != NULL) { IMMDevice_Release(imm_device); }
+  return S_OK;
+}
+
+static HRESULT WASAPI_NotificationClientOnDeviceAdded(IMMNotificationClient* UNUSED(client), LPCWSTR UNUSED(imm_device_id)) {
+  // NOTE: Handled in OnDeviceStateChange.
+  return S_OK;
+}
+
+static HRESULT WASAPI_NotificationClientOnDeviceRemoved(IMMNotificationClient* UNUSED(client), LPCWSTR UNUSED(imm_device_id)) {
+  // NOTE: Handled in OnDeviceStateChange.
+  return S_OK;
+}
+
+static HRESULT WASAPI_NotificationClientOnDefaultDeviceChanged(IMMNotificationClient* UNUSED(client), EDataFlow UNUSED(flow), ERole role, LPCWSTR imm_device_id) {
+  if (role != _wasapi_role) { return S_OK; }
+
+  WASAPI_AudioContext* ctx = &_wasapi_ctx;
+  WASAPI_AudioDevice* device = NULL;
+  LockWitness witness = MutexLock(&ctx->mutex);
+  device = WASAPI_ContextFindByImmDeviceId(ctx, witness, (LPWSTR) imm_device_id);
+  if (device == NULL) {
+    LOG_WARN("[AUDIO] Unknown device marked as new default, ignoring.");
+  } else {
+    LOG_INFO("[AUDIO] New default audio device detected: %.*s", device->name.size, device->name.str);
+    ctx->default_device = device;
+  }
+  MutexUnlock(&ctx->mutex);
+  return S_OK;
+}
+
+static HRESULT WASAPI_NotificationClientOnPropertyValueChanged(IMMNotificationClient* UNUSED(client), LPCWSTR UNUSED(imm_device_id), const PROPERTYKEY UNUSED(key)) {
+  // NOTE: Not needed.
+  return S_OK;
+}
+
+static IMMNotificationClientVtbl _wasapi_notification_client_vtable = {
+  WASAPI_NotificationClientQueryInterface,
+  WASAPI_NotificationClientAddRef,
+  WASAPI_NotificationClientRelease,
+  WASAPI_NotificationClientOnDeviceStateChanged,
+  WASAPI_NotificationClientOnDeviceAdded,
+  WASAPI_NotificationClientOnDeviceRemoved,
+  WASAPI_NotificationClientOnDefaultDeviceChanged,
+  WASAPI_NotificationClientOnPropertyValueChanged,
+};
+
+S32 WASAPI_AudioGetDefaultDevice(void) {
+  WASAPI_AudioContext* ctx = &_wasapi_ctx;
+  if (!AtomicB32Load(&ctx->initialized)) {
+    return -1;
+  }
+
+  S32 default_device_id = -1;
+  MutexLock(&ctx->mutex);
+  if (ctx->default_device != NULL) {
+    default_device_id = ctx->default_device->id;
+  }
+  MutexUnlock(&ctx->mutex);
+  return default_device_id;
+}
+
+B32 WASAPI_AudioDeviceMaybeGetBuffer(S32 device_id, U8** buffer, U32* buffer_size) {
   WASAPI_AudioContext* ctx = &_wasapi_ctx;
   LockWitness witness = MutexLock(&ctx->mutex);
   WASAPI_AudioDevice* device = WASAPI_ContextFindByDeviceId(ctx, witness, device_id);
   MutexUnlock(&ctx->mutex);
-  if (device == NULL) { return false; }
 
-  ASSERT(device->render != NULL);
+  if (device == NULL) {
+    LOG_ERROR("Unable to find device with id: %d", device_id);
+    return false;
+  }
+  if (device->client == NULL && !WASAPI_AudioDeviceActivate(device)) {
+    return false;
+  }
+
   // TODO: retries / recovery plan
-  HRESULT result = IAudioRenderClient_GetBuffer(device->render, device->sample_frames, buffer);
+  ASSERT(device->render != NULL);
+  *buffer_size = (U32) device->buffer_size / 1;
+  HRESULT result = IAudioRenderClient_GetBuffer(device->render, device->sample_frames / 1, buffer);
   return SUCCEEDED(result);
 }
 
@@ -492,41 +531,63 @@ B32 WASAPI_AudioDevicePlayBuffer(S32 device_id) {
   MutexUnlock(&ctx->mutex);
   if (device == NULL) { return false; }
 
-  HRESULT result = IAudioRenderClient_ReleaseBuffer(device->render, device->sample_frames, 0);
+  HRESULT result = IAudioRenderClient_ReleaseBuffer(device->render, device->sample_frames / 1, 0);
   return SUCCEEDED(result);
 }
 
 B32 WASAPI_AudioInit(void) {
+  LOG_INFO("[AUDIO] Initializing WASAPI.");
+
+  HRESULT result;
+
+  result = CoInitialize(NULL);
+  if (result != S_OK && result != S_FALSE) {
+    WASAPI_LOG_ERROR(result, "[AUDIO] Call to CoInitialize failed.");
+    return 1;
+  }
+  result = CoCreateInstance(&_wasapi_CLSID_MMDeviceEnumerator, NULL, CLSCTX_INPROC_SERVER, &_wasapi_IID_IMMDeviceEnumerator, (LPVOID*)& _wasapi_enum);
+  if (FAILED(result)) {
+    WASAPI_LOG_ERROR(result, "[AUDIO] Unable to initialize audio device enumerator.");
+    return 1;
+  }
+
   WASAPI_AudioContext* ctx = &_wasapi_ctx;
   MEMORY_ZERO_STRUCT(ctx);
   ctx->arena = ArenaAllocate();
   MutexInit(&ctx->mutex);
   AtomicS32Init(&ctx->next_device_id, 0);
-  ctx->devices = NULL;
   AtomicB32Init(&ctx->initialized, false);
+  LockWitness witness = MutexLock(&ctx->mutex);
+  B32 found_device = WASAPI_ContextDetectDevices(ctx, witness);
+  if (!found_device) {
+    MutexUnlock(&ctx->mutex);
+    return 1;
+  }
+  MutexUnlock(&ctx->mutex);
+  AtomicB32Store(&ctx->initialized, true);
 
-  AtomicB32Init(&_wasapi_thread_terminate, false);
-  Sem init_done; SemInit(&init_done, 0);
-  ThreadCreate(&_wasapi_thread, WASAPI_MainThread, &init_done);
-  SemWait(&init_done); SemDeinit(&init_done);
+  MEMORY_ZERO_STRUCT(&_wasapi_notification_client);
+  _wasapi_notification_client.v_table = &_wasapi_notification_client_vtable;
+  AtomicS32Init(&_wasapi_notification_client.ref_count, 1);
+  IMMDeviceEnumerator_RegisterEndpointNotificationCallback(_wasapi_enum, (IMMNotificationClient*)&_wasapi_notification_client);
 
-  return AtomicB32Load(&ctx->initialized);
+  return true;
 }
 
 void WASAPI_AudioDeinit(void) {
   WASAPI_AudioContext* ctx = &_wasapi_ctx;
   if (!ctx->initialized) { return; }
 
-  AtomicB32Store(&_wasapi_thread_terminate, true);
-  ThreadJoin(&_wasapi_thread);
-
   LockWitness witness = MutexLock(&ctx->mutex);
-  for (WASAPI_AudioDevice* device = ctx->devices; device != NULL; device = device->next) {
+  for (WASAPI_AudioDevice* device = ctx->devices_front; device != NULL; device = device->next) {
     WASAPI_ContextReleaseDevice(ctx, witness, device);
   }
   ArenaRelease(ctx->arena);
   MutexUnlock(&ctx->mutex);
   MutexDeinit(&ctx->mutex);
+
+  IMMDeviceEnumerator_UnregisterEndpointNotificationCallback(_wasapi_enum, (IMMNotificationClient*)&_wasapi_notification_client);
+  CoUninitialize();
 }
 
 #elif defined(CDEFAULT_AUDIO_BACKEND_FAKE)
@@ -555,12 +616,12 @@ void AudioDeinit(void) {
   CDEFAULT_AUDIO_BACKEND_FN(AudioDeinit());
 }
 
-B32 AudioDeviceActivate(S32 device_id) {
-  return CDEFAULT_AUDIO_BACKEND_FN(AudioDeviceActivate(device_id));
+S32 AudioGetDefaultDevice(void) {
+  return CDEFAULT_AUDIO_BACKEND_FN(AudioGetDefaultDevice());
 }
 
-B32 AudioDeviceMaybeGetBuffer(S32 device_id, U8** buffer) {
-  return CDEFAULT_AUDIO_BACKEND_FN(AudioDeviceMaybeGetBuffer(device_id, buffer));
+B32 AudioDeviceMaybeGetBuffer(S32 device_id, U8** buffer, U32* buffer_size) {
+  return CDEFAULT_AUDIO_BACKEND_FN(AudioDeviceMaybeGetBuffer(device_id, buffer, buffer_size));
 }
 
 B32 AudioDevicePlayBuffer(S32 device_id) {
