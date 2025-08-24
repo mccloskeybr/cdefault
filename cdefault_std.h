@@ -31,6 +31,7 @@
 #include <threads.h>
 #include <stdatomic.h>
 #include <stdlib.h>
+#include <string.h>
 
 #endif
 
@@ -400,13 +401,13 @@ typedef CONDITION_VARIABLE CV;
 #else
 typedef thrd_t Thread;
 typedef mtx_t Mutex;
-typedef cnd_t cv;
+typedef cnd_t CV;
 #endif
 typedef S32 ThreadStartFunc(void*);
 typedef S32 LockWitness;
 
 void ThreadCreate(Thread* thread, ThreadStartFunc* entry, void* arg);
-void ThreadDetatch(Thread* thread);
+void ThreadDetach(Thread* thread);
 S32 ThreadJoin(Thread* thread);
 
 void MutexInit(Mutex* mutex);
@@ -709,16 +710,16 @@ void ThreadCreate(Thread* thread, ThreadStartFunc* entry, void* arg) {
   *thread = CreateThread(0, 0, (LPTHREAD_START_ROUTINE) entry, arg, 0, 0);
   ASSERT(*thread != NULL);
 #else
-  S32 result = thrd_create(&thread->thread, entry, arg);
+  S32 result = thrd_create(thread, entry, arg);
   ASSERT(result == thrd_success);
 #endif
 }
 
-void ThreadDetatch(Thread* thread) {
+void ThreadDetach(Thread* thread) {
 #if defined(OS_WINDOWS)
   CloseHandle(*thread);
 #else
-  S32 result = thrd_detach(thread->thread);
+  S32 result = thrd_detach(*thread);
   ASSERT(result == thrd_success);
 #endif
 }
@@ -733,7 +734,7 @@ S32 ThreadJoin(Thread* thread) {
   return (S32) exit_code;
 #else
   S32 out;
-  S32 result = thrd_join(thread->thread, &out);
+  S32 result = thrd_join(*thread, &out);
   ASSERT(result == thrd_success);
   return out;
 #endif
@@ -743,7 +744,7 @@ void MutexInit(Mutex* mutex) {
 #if defined(OS_WINDOWS)
   InitializeCriticalSection(mutex);
 #else
-  S32 result = mtx_init(&mutex->mutex, mtx_plain);
+  S32 result = mtx_init(mutex, mtx_plain);
   ASSERT(result == thrd_success);
 #endif
 }
@@ -752,7 +753,7 @@ void MutexDeinit(Mutex* mutex) {
 #if defined(OS_WINDOWS)
   DeleteCriticalSection(mutex);
 #else
-  mtx_destroy(&mutex->mutex);
+  mtx_destroy(mutex);
 #endif
 }
 
@@ -761,7 +762,7 @@ S32 MutexLock(Mutex* mutex) {
   EnterCriticalSection(mutex);
   return 0;
 #else
-  S32 result = mtx_lock(&mutex->mutex);
+  S32 result = mtx_lock(mutex);
   ASSERT(result == thrd_success);
   return 0;
 #endif
@@ -771,7 +772,7 @@ void MutexUnlock(Mutex* mutex) {
 #if defined(OS_WINDOWS)
   LeaveCriticalSection(mutex);
 #else
-  S32 result = mtx_unlock(&mutex->mutex);
+  S32 result = mtx_unlock(mutex);
   ASSERT(result == thrd_success);
 #endif
 }
@@ -780,7 +781,7 @@ void CVInit(CV* cv) {
 #if defined(OS_WINDOWS)
   InitializeConditionVariable(cv);
 #else
-  S32 result = cnd_init(&cv->cv);
+  S32 result = cnd_init(cv);
   ASSERT(result == thrd_success);
 #endif
 }
@@ -789,7 +790,7 @@ void CVDeinit(CV* cv) {
 #if defined(OS_WINDOWS)
   cv = cv; // NOTE: silence unused compiler warnings.
 #else
-  cnd_destroy(&cv->cv);
+  cnd_destroy(cv);
 #endif
 }
 
@@ -797,7 +798,7 @@ void CVSignal(CV* cv) {
 #if defined(OS_WINDOWS)
   WakeConditionVariable(cv);
 #else
-  S32 result = cnd_signal(&cv->cv);
+  S32 result = cnd_signal(cv);
   ASSERT(result == thrd_success);
 #endif
 }
@@ -807,7 +808,7 @@ void CVBroadcast(CV* cv) {
 #if defined(OS_WINDOWS)
   WakeAllConditionVariable(cv);
 #else
-  S32 result = cnd_broadcast(&cv->cv);
+  S32 result = cnd_broadcast(cv);
   ASSERT(result == thrd_success);
 #endif
 }
@@ -817,7 +818,7 @@ void CVWait(CV* cv, Mutex* mutex) {
   BOOL result = SleepConditionVariableCS(cv, mutex, INFINITE);
   ASSERT(result == true);
 #else
-  S32 result = cnd_wait(&cv->cv, mutex);
+  S32 result = cnd_wait(cv, mutex);
   ASSERT(result == thrd_success);
 #endif
 }
@@ -1097,10 +1098,12 @@ String8 String8FormatV(Arena* arena, U8* fmt, va_list args) {
   va_list args_copy;
   va_copy(args_copy, args);
   U32 size = vsnprintf(NULL, 0, (const char* const) fmt, args_copy) + 1;
+  va_end(args_copy);
   String8 result;
   MEMORY_ZERO_STRUCT(&result);
   result.size = size - 1;
   result.str = ARENA_PUSH_ARRAY(arena, U8, size);
+  va_copy(args_copy, args);
   vsnprintf((char* const) result.str, size, (char* const) fmt, args_copy);
   va_end(args_copy);
   ArenaPop(arena, 1); // NOTE: null terminator.

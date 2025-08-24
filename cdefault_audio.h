@@ -67,8 +67,10 @@ B32  AudioStreamWait(AudioStreamHandle handle);
 #ifdef CDEFAULT_AUDIO_IMPLEMENTATION
 #undef CDEFAULT_AUDIO_IMPLEMENTATION
 
-#ifdef OS_WINDOWS
+#if 0 // defined(OS_WINDOWS)
 #  define CDEFAULT_AUDIO_BACKEND_WASAPI
+#elif defined(OS_LINX)
+#  define CDEFAULT_AUDIO_BACKEND_PULSEAUDIO
 #else
 #  define CDEFAULT_AUDIO_BACKEND_FAKE
 #endif
@@ -688,20 +690,22 @@ void WASAPI_AudioDeinit(void) {
   WASAPI_AudioContext* ctx = &_wasapi_ctx;
   if (!ctx->initialized) { return; }
 
+  IMMDeviceEnumerator_UnregisterEndpointNotificationCallback(_wasapi_enum, (IMMNotificationClient*)&_wasapi_notification_client);
+  AtomicS32FetchSub(&_wasapi_notification_client.ref_count, 1);
+
   LockWitness witness = MutexLock(&ctx->mutex);
-  // TODO: are there threaded edge cases here? probably doesn't matter cus who calls deinit anyway...?
+  for (WASAPI_AudioStream* stream = ctx->streams_front; stream != NULL; stream = stream->next) {
+    WASAPI_ContextUnrefStream(ctx, witness, stream);
+  }
   for (WASAPI_AudioDevice* device = ctx->devices; device != NULL; device = (WASAPI_AudioDevice*) device->base.next) {
     AtomicB32Store(&device->base.is_connected, false);
     ArenaRelease(device->arena);
   }
-  for (WASAPI_AudioStream* stream = ctx->streams_front; stream != NULL; stream = stream->next) {
-    WASAPI_ContextUnrefStream(ctx, witness, stream);
-  }
+
   ArenaRelease(ctx->arena);
   MutexUnlock(&ctx->mutex);
   MutexDeinit(&ctx->mutex);
 
-  IMMDeviceEnumerator_UnregisterEndpointNotificationCallback(_wasapi_enum, (IMMNotificationClient*)&_wasapi_notification_client);
   CoUninitialize();
 }
 
@@ -715,7 +719,6 @@ B32 WASAPI_AudioGetDevices(AudioDevice** devices) {
 B32 WASAPI_AudioStreamOpen(AudioStreamHandle* handle, AudioStreamSpec spec) {
   WASAPI_AudioContext* ctx = &_wasapi_ctx;
   if (!ctx->initialized) { return false; }
-
   LockWitness witness = MutexLock(&ctx->mutex);
   *handle = AtomicS32FetchAdd(&ctx->next_stream_id, 1);
   B32 success = WASAPI_ContextAddStream(ctx, witness, spec, *handle);
@@ -728,6 +731,7 @@ B32 WASAPI_AudioStreamClose(AudioStreamHandle handle) {
   if (!ctx->initialized) { return false; }
   LockWitness witness = MutexLock(&ctx->mutex);
   WASAPI_AudioStream* stream = WASAPI_FindStreamByHandle(ctx, witness, handle);
+  if (stream == NULL) { return false; }
   WASAPI_ContextUnrefStream(ctx, witness, stream);
   MutexUnlock(&ctx->mutex);
   return true;
@@ -738,7 +742,6 @@ B32 WASAPI_AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, U32* 
   WASAPI_AudioContext* ctx = &_wasapi_ctx;
   if (!ctx->initialized) { return false; }
   LockWitness witness = MutexLock(&ctx->mutex);
-
   B32 success = false;
   WASAPI_AudioStream* stream = WASAPI_FindStreamByHandle(ctx, witness, handle);
   if (stream != NULL) {
@@ -748,7 +751,6 @@ B32 WASAPI_AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, U32* 
     HRESULT result = IAudioRenderClient_GetBuffer(stream->render, stream->sample_frames, buffer);
     success = SUCCEEDED(result);
   }
-
   MutexUnlock(&ctx->mutex);
   return success;
 }
@@ -775,6 +777,7 @@ B32 WASAPI_AudioStreamWait(AudioStreamHandle handle) {
 
   LockWitness witness = MutexLock(&ctx->mutex);
   WASAPI_AudioStream* stream = WASAPI_FindStreamByHandle(ctx, witness, handle);
+  if (stream == NULL) { return false; }
   ASSERT(AtomicS32FetchAdd(&stream->ref_count, 1) > 0);
   MutexUnlock(&ctx->mutex);
 
@@ -816,6 +819,44 @@ play_buffer_end:
   return success;
 }
 
+#elif defined(CDEFAULT_AUDIO_BACKEND_PULSEAUDIO)
+
+B32 PULSEAUDIO_AudioInit(void) {
+  LOG_INFO("[AUDIO] Initializing PulseAudio.");
+  return true;
+}
+
+void PULSEAUDIO_AudioDeinit(void) {
+  return;
+}
+
+B32 PULSEAUDIO_AudioGetDevices(AudioDevice** devices) {
+  *devices = NULL;
+  return true;
+}
+
+B32 PULSEAUDIO_AudioStreamOpen(AudioStreamHandle* handle, AudioStreamSpec spec) {
+  return true;
+}
+
+B32 PULSEAUDIO_AudioStreamClose(AudioStreamHandle handle) {
+  return true;
+}
+
+B32 PULSEAUDIO_AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, U32* buffer_size) {
+  *buffer = NULL;
+  *buffer_size = 0;
+  return true;
+}
+
+B32 PULSEAUDIO_AudioStreamReleaseBuffer(AudioStreamHandle handle) {
+  return true;
+}
+
+B32 PULSEAUDIO_AudioStreamWait(AudioStreamHandle handle) {
+  return true;
+}
+
 #elif defined(CDEFAULT_AUDIO_BACKEND_FAKE)
 
 B32 FAKE_AudioInit(void) {
@@ -823,47 +864,49 @@ B32 FAKE_AudioInit(void) {
   return true;
 }
 
-void AudioDeinit(void) {
+void FAKE_AudioDeinit(void) {
   return;
 }
 
-B32 AudioGetDevices(AudioDevice** devices) {
+B32 FAKE_AudioGetDevices(AudioDevice** devices) {
   *devices = NULL;
   return true;
 }
 
-B32 AudioStreamOpen(AudioStreamHandle* handle, AudioStreamSpec spec) {
+B32 FAKE_AudioStreamOpen(AudioStreamHandle* UNUSED(handle), AudioStreamSpec UNUSED(spec)) {
   return true;
 }
 
-B32 AudioStreamClose(AudioStreamHandle handle) {
+B32 FAKE_AudioStreamClose(AudioStreamHandle UNUSED(handle)) {
   return true;
 }
 
-B32 AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, U32* buffer_size) {
+B32 FAKE_AudioStreamAcquireBuffer(AudioStreamHandle UNUSED(handle), U8** UNUSED(buffer), U32* UNUSED(buffer_size)) {
   *buffer = NULL;
   *buffer_size = 0;
   return true;
 }
 
-B32 AudioStreamReleaseBuffer(AudioStreamHandle handle) {
+B32 FAKE_AudioStreamReleaseBuffer(AudioStreamHandle UNUSED(handle)) {
   return true;
 }
 
-B32 AudioStreamWait(AudioStreamHandle handle) {
+B32 FAKE_AudioStreamWait(AudioStreamHandle UNUSED(handle)) {
   return true;
 }
 
 #else
-# error CDEFAULT_AUDIO: Unknown or unsupported driver detected.
+#error CDEFAULT_AUDIO: Unknown or unsupported driver detected.
 #endif
 
-#if defined(CDEFAULT_AUDIO_BACKEND_WASAPI)
-# define CDEFAULT_AUDIO_BACKEND_NAMESPACE WASAPI_
+#if 0 // defined(CDEFAULT_AUDIO_BACKEND_WASAPI)
+#  define CDEFAULT_AUDIO_BACKEND_NAMESPACE WASAPI_
+#elif defined(CDEFAULT_AUDIO_BACKEND_PULSEAUDIO)
+#  define CDEFAULT_AUDIO_BACKEND_NAMESPACE PULSEAUDIO_
 #elif defined(CDEFAULT_AUDIO_BACKEND_FAKE)
-# define CDEFAULT_AUDIO_BACKEND_NAMESPACE FAKE_
+#  define CDEFAULT_AUDIO_BACKEND_NAMESPACE FAKE_
 #else
-# error No cdefault audio driver specified.
+#  error No cdefault audio driver specified.
 #endif
 #define CDEFAULT_AUDIO_BACKEND_FN_IMPL(ns, fn) GLUE(ns, fn)
 #define CDEFAULT_AUDIO_BACKEND_FN(x) CDEFAULT_AUDIO_BACKEND_FN_IMPL(CDEFAULT_AUDIO_BACKEND_NAMESPACE, x)
