@@ -1,2 +1,4 @@
 test/build/*
 test/bin/*
+example/build/*
+example/bin/*

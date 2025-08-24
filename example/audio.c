@@ -4,28 +4,22 @@
 #include "../cdefault_math.h"
 #define CDEFAULT_AUDIO_IMPLEMENTATION
 #include "../cdefault_audio.h"
-
-#define SAMPLE_RATE 44100.0f
-#define FREQUENCY 261.0f
-
-static F32 t = 0;
-static void GenerateSineWave(F32* buffer, U64 num_samples, F32 amplitude) {
-  for (U64 i = 0; i < num_samples; i += 1) {
-    F32 sample = (F32) (amplitude * F32Sin(2.0f * F32_PI * FREQUENCY * ((F32)t / SAMPLE_RATE)));
-    buffer[i + 0] = sample;
-    t++;
-  }
-}
+#include "third_party/stb_vorbis.c"
 
 int main(void) {
   ASSERT(AudioInit());
 
+  S32 stb_err = 0;
+  stb_vorbis* vorbis = stb_vorbis_open_filename("Z:\\cdefault\\example\\data\\test_audio.ogg", &stb_err, NULL);
+  ASSERT(stb_err == 0);
+  stb_vorbis_info vorbis_info = stb_vorbis_get_info(vorbis);
+
   AudioStreamSpec spec;
   MEMORY_ZERO_STRUCT(&spec);
-  spec.device_handle = 1;
-  spec.channels = 2;
-  spec.frequency = 44100;
-  spec.format = AUDIO_FORMAT_F32;
+  spec.device_handle = AUDIO_DEFAULT_DEVICE;
+  spec.channels = vorbis_info.channels;
+  spec.frequency = vorbis_info.sample_rate;
+  spec.format = AudioStreamFormat_F32;
   AudioStreamHandle stream;
   ASSERT(AudioStreamOpen(&stream, spec));
 
@@ -33,11 +27,14 @@ int main(void) {
   U32 buffer_size;
   while(true) {
     if (!AudioStreamAcquireBuffer(stream, &buffer, &buffer_size)) { continue; }
-    GenerateSineWave((F32*) buffer, buffer_size / sizeof(F32), 0.05f);
+    uint32_t read = stb_vorbis_get_samples_float_interleaved(
+        vorbis, vorbis_info.channels, (F32*) buffer, buffer_size / sizeof(F32));
     if (!AudioStreamReleaseBuffer(stream)) { continue; }
+    if (read == 0) { stb_vorbis_seek_start(vorbis); }
     if (!AudioStreamWait(stream)) { continue; }
   }
 
   AudioStreamClose(stream);
+  stb_vorbis_close(vorbis);
   AudioDeinit();
 }

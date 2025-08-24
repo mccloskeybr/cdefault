@@ -4,14 +4,14 @@
 #include "cdefault_std.h"
 #include "cdefault_math.h"
 
-// TODO: return error codes not b32s
-// TODO: support more than just F32 format
-// TODO: support other backends
-// TODO: custom audio mixer
+// TODO: return error codes not b32s?
+// TODO: custom audio mixer?
+// TODO: support other backends / platforms
 
 typedef S32 AudioStreamHandle;
 typedef S32 AudioDeviceHandle;
 
+// TODO: put default audio spec in the device?
 typedef struct AudioDevice AudioDevice;
 struct AudioDevice {
   AudioDeviceHandle handle;
@@ -22,10 +22,10 @@ struct AudioDevice {
 
 typedef enum AudioStreamFormat AudioStreamFormat;
 enum AudioStreamFormat {
-  AUDIO_FORMAT_UNKNOWN,
-  AUDIO_FORMAT_F32,
-  AUDIO_FORMAT_S16,
-  AUDIO_FORMAT_S32,
+  AudioStreamFormat_Unknown,
+  AudioStreamFormat_F32,
+  AudioStreamFormat_S16,
+  AudioStreamFormat_S32,
 };
 
 // NOTE: Leave values empty to use defaults.
@@ -39,7 +39,7 @@ struct AudioStreamSpec {
 #define AUDIO_DEFAULT_DEVICE 0 // NOTE: Always attach to the default audio device.
 #define AUDIO_DEFAULT_FREQUENCY 44100
 #define AUDIO_DEFAULT_CHANNELS 2
-#define AUDIO_DEFAULT_FORMAT AUDIO_FORMAT_F32
+#define AUDIO_DEFAULT_FORMAT AudioStreamFormat_F32
 
 // NOTE: Must call Init before calling subsequent functions.
 B32  AudioInit(void);
@@ -111,7 +111,7 @@ struct WASAPI_AudioStream {
   WASAPI_AudioDevice* device;
   AtomicS32 ref_count;
   U32 sample_frames;
-  U64 buffer_size;
+  U32 buffer_size;
   HANDLE event;
   IAudioClient* client;
   IAudioRenderClient* render;
@@ -129,6 +129,7 @@ struct WASAPI_AudioContext {
   WASAPI_AudioDevice* default_device;
   WASAPI_AudioDevice* devices;
   AtomicS32 next_stream_id;
+  // TODO: if there are a lot of streams playing at once, O(n) lookups could be slow?
   WASAPI_AudioStream* streams_front;
   WASAPI_AudioStream* streams_back;
   WASAPI_AudioStream* streams_free_list;
@@ -300,11 +301,10 @@ B32 WASAPI_ContextAddStream(WASAPI_AudioContext* ctx, LockWitness witness, Audio
   if (spec.device_handle == 0) { spec.device_handle = AUDIO_DEFAULT_DEVICE; }
   if (spec.channels == 0)      { spec.channels = AUDIO_DEFAULT_CHANNELS; }
   if (spec.frequency == 0)     { spec.frequency = AUDIO_DEFAULT_FREQUENCY; }
-  if (spec.format == 0)        { spec.format = AUDIO_FORMAT_F32; }
+  if (spec.format == 0)        { spec.format = AudioStreamFormat_F32; }
   stream->spec = spec;
 
   IMMDevice* imm_device = NULL;
-  WAVEFORMATEX* format = NULL;
   HRESULT result;
   B32 success = false;
 
@@ -332,12 +332,8 @@ B32 WASAPI_ContextAddStream(WASAPI_AudioContext* ctx, LockWitness witness, Audio
     goto audio_stream_open_end;
   }
 
-  result = IAudioClient_GetMixFormat(stream->client, &format);
-  if (FAILED(result)) {
-    WASAPI_LOG_ERROR(result, "[AUDIO] Failed to get mix format for device: %.*s", device->base.name.size, device->base.name.str);
-    goto audio_stream_open_end;
-  }
-
+  // NOTE: The Windows API will convert and mix the formats if we ask it to (in SHAREMODE_SHARED only).
+  // Tell it what audio data format we will be feeding it and enable this behavior.
   WAVEFORMATEXTENSIBLE custom_format;
   MEMORY_ZERO_STRUCT(&custom_format);
   custom_format.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
@@ -345,17 +341,17 @@ B32 WASAPI_ContextAddStream(WASAPI_AudioContext* ctx, LockWitness witness, Audio
   custom_format.Format.nChannels = (WORD) spec.channels;
   custom_format.Format.nSamplesPerSec = spec.frequency;
   switch (spec.format) {
-    case AUDIO_FORMAT_F32: {
+    case AudioStreamFormat_F32: {
       custom_format.Format.wBitsPerSample = 32;
       custom_format.Samples.wValidBitsPerSample = 32;
       custom_format.SubFormat = _wasapi_GUID_DataFormat_Float;
     } break;
-    case AUDIO_FORMAT_S16: {
+    case AudioStreamFormat_S16: {
       custom_format.Format.wBitsPerSample = 16;
       custom_format.Samples.wValidBitsPerSample = 16;
       custom_format.SubFormat = _wasapi_GUID_DataFormat_PCM;
     } break;
-    case AUDIO_FORMAT_S32: {
+    case AudioStreamFormat_S32: {
       custom_format.Format.wBitsPerSample = 32;
       custom_format.Samples.wValidBitsPerSample = 32;
       custom_format.SubFormat = _wasapi_GUID_DataFormat_PCM;
@@ -408,8 +404,10 @@ B32 WASAPI_ContextAddStream(WASAPI_AudioContext* ctx, LockWitness witness, Audio
   // of "i'm out of buffer to play, give me more" and "here's more buffer for you to play".
   // so, ensure that the max number of frames is the device max / 2, so there's space to place the next
   // buffer while the current one is playing. at least that's my theory for what's going on.
+  // of course this requires the system be able to feed it data at that speed reliably, so that may be
+  // another source of skipping...
   stream->sample_frames = MIN(stream->sample_frames, device_sample_frames / 2);
-  stream->buffer_size = stream->sample_frames * sizeof(F32) * format->nChannels;
+  stream->buffer_size = stream->sample_frames * custom_format.Format.nBlockAlign;
 
   result = IAudioClient_GetService(stream->client, &_wasapi_IID_IAudioRenderClient, (void**)&stream->render);
   if (FAILED(result)) {
@@ -432,8 +430,6 @@ audio_stream_open_end:
     stream = NULL;
   }
   if (imm_device != NULL) { IMMDevice_Release(imm_device); }
-  if (format != NULL) { CoTaskMemFree(format); }
-
   return success;
 }
 
@@ -693,7 +689,7 @@ void WASAPI_AudioDeinit(void) {
   if (!ctx->initialized) { return; }
 
   LockWitness witness = MutexLock(&ctx->mutex);
-  // TODO: are there threaded edge cases here?
+  // TODO: are there threaded edge cases here? probably doesn't matter cus who calls deinit anyway...?
   for (WASAPI_AudioDevice* device = ctx->devices; device != NULL; device = (WASAPI_AudioDevice*) device->base.next) {
     AtomicB32Store(&device->base.is_connected, false);
     ArenaRelease(device->arena);
@@ -748,7 +744,7 @@ B32 WASAPI_AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, U32* 
   if (stream != NULL) {
     // TODO: retries / recovery plan
     ASSERT(stream->render != NULL);
-    *buffer_size = (U32) stream->buffer_size;
+    *buffer_size = stream->buffer_size;
     HRESULT result = IAudioRenderClient_GetBuffer(stream->render, stream->sample_frames, buffer);
     success = SUCCEEDED(result);
   }
@@ -822,7 +818,41 @@ play_buffer_end:
 
 #elif defined(CDEFAULT_AUDIO_BACKEND_FAKE)
 
-// TODO.
+B32 FAKE_AudioInit(void) {
+  LOG_WARN("[AUDIO] No audio backend specified, installing fake.");
+  return true;
+}
+
+void AudioDeinit(void) {
+  return;
+}
+
+B32 AudioGetDevices(AudioDevice** devices) {
+  *devices = NULL;
+  return true;
+}
+
+B32 AudioStreamOpen(AudioStreamHandle* handle, AudioStreamSpec spec) {
+  return true;
+}
+
+B32 AudioStreamClose(AudioStreamHandle handle) {
+  return true;
+}
+
+B32 AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, U32* buffer_size) {
+  *buffer = NULL;
+  *buffer_size = 0;
+  return true;
+}
+
+B32 AudioStreamReleaseBuffer(AudioStreamHandle handle) {
+  return true;
+}
+
+B32 AudioStreamWait(AudioStreamHandle handle) {
+  return true;
+}
 
 #else
 # error CDEFAULT_AUDIO: Unknown or unsupported driver detected.
@@ -851,7 +881,6 @@ B32 AudioGetDevices(AudioDevice** devices) {
 }
 
 B32 AudioStreamOpen(AudioStreamHandle* handle, AudioStreamSpec spec) {
-
   return CDEFAULT_AUDIO_BACKEND_FN(AudioStreamOpen(handle, spec));
 }
 
