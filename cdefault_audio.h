@@ -67,9 +67,9 @@ B32  AudioStreamWait(AudioStreamHandle handle);
 #ifdef CDEFAULT_AUDIO_IMPLEMENTATION
 #undef CDEFAULT_AUDIO_IMPLEMENTATION
 
-#if 0 // defined(OS_WINDOWS)
+#if defined(OS_WINDOWS)
 #  define CDEFAULT_AUDIO_BACKEND_WASAPI
-#elif defined(OS_LINX)
+#elif defined(OS_LINUX)
 #  define CDEFAULT_AUDIO_BACKEND_PULSEAUDIO
 #else
 #  define CDEFAULT_AUDIO_BACKEND_FAKE
@@ -651,6 +651,8 @@ detect_devices_end:
 
 B32 WASAPI_AudioInit(void) {
   LOG_INFO("[AUDIO] Initializing WASAPI.");
+  WASAPI_AudioContext* ctx = &_wasapi_ctx;
+  if (ctx->initialized) { return true; }
 
   HRESULT result;
 
@@ -665,8 +667,6 @@ B32 WASAPI_AudioInit(void) {
     return 1;
   }
 
-  WASAPI_AudioContext* ctx = &_wasapi_ctx;
-  MEMORY_ZERO_STRUCT(ctx);
   ctx->arena = ArenaAllocate();
   MutexInit(&ctx->mutex);
   AtomicS32Init(&ctx->next_device_id, 1);
@@ -821,12 +821,99 @@ play_buffer_end:
 
 #elif defined(CDEFAULT_AUDIO_BACKEND_PULSEAUDIO)
 
+#include <pulse/pulseaudio.h>
+
+typedef struct PULSEAUDIO_AudioContext PULSEAUDIO_AudioContext;
+struct PULSEAUDIO_AudioContext {
+  B32 initialized;
+  pa_threaded_mainloop* mainloop;
+  pa_context* context;
+};
+
+static PULSEAUDIO_AudioContext _pulse_context;
+
+static void PULSEAUDIO_ContextStateUpdate(pa_context* UNUSED(c), void* user_data) {
+  PULSEAUDIO_AudioContext* ctx = &_pulse_context;
+  pa_threaded_mainloop_signal(ctx->mainloop, 0);
+}
+
 B32 PULSEAUDIO_AudioInit(void) {
   LOG_INFO("[AUDIO] Initializing PulseAudio.");
   return true;
+  PULSEAUDIO_AudioContext* ctx = &_pulse_context;
+  if (ctx->initialized) { return true; }
+
+  pa_proplist* proplist = NULL;
+  B32 success = false;
+
+  ctx->mainloop = pa_threaded_mainloop_new();
+  if (ctx->mainloop = NULL) {
+    LOG_ERROR("[AUDIO] Failed to create main loop.");
+    goto pulseaudio_init_end;
+  }
+  if (pa_threaded_mainloop_start(ctx->mainloop) < 0) {
+    LOG_ERROR("[AUDIO] Failed to start main loop.");
+    goto pulseaudio_init_end;
+  }
+
+  pa_threaded_mainloop_lock(ctx->mainloop);
+
+  pa_mainloop_api* mainloop_api = pa_threaded_mainloop_get_api(ctx->mainloop);
+  if (mainloop_api == NULL) {
+    LOG_ERROR("[AUDIO] Failed to get main loop API.");
+    goto pulseaudio_init_end_unlock;
+  }
+
+  proplist = pa_proplist_new();
+  if (proplist == NULL) {
+    LOG_ERROR("[AUDIO] Failed to create proplist.");
+    goto pulseaudio_init_end_unlock;
+  }
+  pa_proplist_sets(proplist, PA_PROP_APPLICATION_ICON_NAME, "applications-games"); // TODO: dynamic?
+
+  ctx->context = pa_context_new_with_proplist(mainloop_api, "my-game", proplist);
+  if (ctx->context == NULL) {
+    LOG_ERROR("[AUDIO] Failed to create context.");
+    goto pulseaudio_init_end_unlock;
+  }
+
+  pa_context_set_state_callback(ctx->context, PULSEAUDIO_ContextStateUpdate, NULL);
+  if (pa_context_connect(ctx->context, NULL, 0, NULL) < 0) {
+    LOG_ERROR("[AUDIO] Failed to connect to PulseAudio.");
+    goto pulseaudio_init_end_unlock;
+  }
+  // NOTE: wait until connection with pulseaudio server is established.
+  S32 state = pa_context_get_state(ctx->context);
+  while (PA_CONTEXT_IS_GOOD(state) && (state != PA_CONTEXT_READY)) {
+    pa_threaded_mainloop_wait(ctx->mainloop);
+    state = pa_context_get_state(ctx->context);
+  }
+  if (state != PA_CONTEXT_READY) {
+    LOG_ERROR("[AUDIO] Gave up trying to connect to PulseAudio.");
+    goto pulseaudio_init_end_unlock;
+  }
+
+  ctx->initialized = true;
+  success = true;
+
+pulseaudio_init_end_unlock:
+  pa_threaded_mainloop_unlock(ctx->mainloop);
+pulseaudio_init_end:
+  if (!success) {
+    if (ctx->context != NULL) { pa_context_disconnect(ctx->context); }
+    if (ctx->mainloop != NULL) { pa_threaded_mainloop_free(ctx->mainloop); }
+  }
+  if (proplist != NULL) { pa_proplist_free(proplist); }
+  return success;
 }
 
 void PULSEAUDIO_AudioDeinit(void) {
+  PULSEAUDIO_AudioContext* ctx = &_pulse_context;
+  if (!ctx->initialized) { return; }
+
+  pa_context_disconnect(ctx->context);
+  ctx->initialized = false;
+
   return;
 }
 
@@ -899,7 +986,8 @@ B32 FAKE_AudioStreamWait(AudioStreamHandle UNUSED(handle)) {
 #error CDEFAULT_AUDIO: Unknown or unsupported driver detected.
 #endif
 
-#if 0 // defined(CDEFAULT_AUDIO_BACKEND_WASAPI)
+#if defined(CDEFAULT_AUDIO_BACKEND_WASAPI)
+#error hi
 #  define CDEFAULT_AUDIO_BACKEND_NAMESPACE WASAPI_
 #elif defined(CDEFAULT_AUDIO_BACKEND_PULSEAUDIO)
 #  define CDEFAULT_AUDIO_BACKEND_NAMESPACE PULSEAUDIO_
