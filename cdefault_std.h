@@ -78,7 +78,7 @@ typedef double   F64;
                  (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : \
                  __FILE__))
 
-#define STATIC_ARRAY_LEN(arr) (sizeof(arr) / sizeof((arr)[0]))
+#define STATIC_ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MIN3(a, b, c) (MIN(MIN((a), (b)), (c)))
