@@ -6,7 +6,8 @@
 
 // TODO: return error codes not b32s?
 // TODO: custom audio mixer?
-// TODO: support other backends / platforms
+// TODO: support mac / pipewire / jack?
+// TODO: verify pulseaudio notification threads WAI, hard to e.g. test device failure in VM.
 
 typedef S32 AudioStreamHandle;
 typedef S32 AudioDeviceHandle;
@@ -827,7 +828,7 @@ typedef struct PULSEAUDIO_AudioDevice PULSEAUDIO_AudioDevice;
 struct PULSEAUDIO_AudioDevice {
   AudioDevice base;
   Arena* arena;
-  String8 name;
+  char* name;
 };
 
 typedef struct PULSEAUDIO_AudioStream PULSEAUDIO_AudioStream;
@@ -847,7 +848,7 @@ typedef struct PULSEAUDIO_AudioContext PULSEAUDIO_AudioContext;
 struct PULSEAUDIO_AudioContext {
   B32 initialized;
   Arena* arena;
-  Mutex mutex;
+  Mutex mutex; // TODO: is this needed? maybe can just use the mainloop lock?
   AtomicS32 next_device_id;
   PULSEAUDIO_AudioDevice* default_device;
   PULSEAUDIO_AudioDevice* devices;
@@ -856,8 +857,6 @@ struct PULSEAUDIO_AudioContext {
   PULSEAUDIO_AudioStream* streams_back;
   PULSEAUDIO_AudioStream* streams_free_list;
   pa_threaded_mainloop* mainloop;
-  Thread notification_thread;
-  AtomicB32 notification_thread_terminate;
   pa_context* context;
 };
 
@@ -868,9 +867,15 @@ static LockWitness pa_threaded_mainloop_lock_with_witness(pa_threaded_mainloop* 
   return 0;
 }
 
-static PULSEAUDIO_AudioDevice* PULSEAUDIO_ContextFindDeviceByName(PULSEAUDIO_AudioContext* ctx, LockWitness UNUSED(witness), String8* name) {
+static LockWitness pa_threaded_mainloop_lock_implied(pa_threaded_mainloop* UNUSED(mainloop)) {
+  return 0;
+}
+
+static PULSEAUDIO_AudioDevice* PULSEAUDIO_ContextFindDeviceByName(PULSEAUDIO_AudioContext* ctx, LockWitness UNUSED(witness), const char* name) {
   for (PULSEAUDIO_AudioDevice* device = ctx->devices; device != NULL; device = (PULSEAUDIO_AudioDevice*) device->base.next) {
-    if (String8Equals(&device->name, name)) { return device; }
+    const char* a = device->name;
+    const char* b = name;
+    while (*a++ == *b++) { if (*a == '\0') { return device; } }
   }
   return NULL;
 }
@@ -889,9 +894,7 @@ static PULSEAUDIO_AudioDevice* PULSEAUDIO_FindDeviceByHandle(PULSEAUDIO_AudioCon
 
 static PULSEAUDIO_AudioStream* PULSEAUDIO_FindStreamByHandle(PULSEAUDIO_AudioContext* ctx, LockWitness UNUSED(witness), AudioStreamHandle handle) {
   for (PULSEAUDIO_AudioStream* stream = ctx->streams_front; stream != NULL; stream = stream->next) {
-    if (stream->handle == handle) {
-      return stream;
-    }
+    if (stream->handle == handle) { return stream; }
   }
   return NULL;
 }
@@ -909,7 +912,7 @@ static PULSEAUDIO_AudioStream* PULSEAUDIO_ContextAllocateStream(PULSEAUDIO_Audio
   return stream;
 }
 
-static void PULSEAUDIO_ContextReleaseStream(PULSEAUDIO_AudioContext* ctx, LockWitness UNUSED(ctx_witness), PULSEAUDIO_AudioStream* stream) {
+static void PULSEAUDIO_ContextReleaseStream(PULSEAUDIO_AudioContext* ctx, LockWitness UNUSED(ctx_witness), LockWitness UNUSED(mainloop_witness), PULSEAUDIO_AudioStream* stream) {
   if (stream == NULL) { return; }
   if (stream->stream != NULL) {
     if (stream->connected) { pa_stream_disconnect(stream->stream); }
@@ -926,7 +929,7 @@ static void PULSEAUDIO_StreamWriteCallback(pa_stream* UNUSED(p), U64 nbytes, voi
   pa_threaded_mainloop_signal(ctx->mainloop, 0);
 }
 
-static B32 PULSEAUDIO_ContextAddStream(PULSEAUDIO_AudioContext* ctx, LockWitness ctx_witness, LockWitness UNUSED(mainloop_witness), AudioStreamSpec spec, AudioStreamHandle handle) {
+static B32 PULSEAUDIO_ContextAddStream(PULSEAUDIO_AudioContext* ctx, LockWitness ctx_witness, LockWitness mainloop_witness, AudioStreamSpec spec, AudioStreamHandle handle) {
   if (spec.device_handle == 0) { spec.device_handle = AUDIO_DEFAULT_DEVICE; }
   if (spec.channels == 0)      { spec.channels = AUDIO_DEFAULT_CHANNELS; }
   if (spec.frequency == 0)     { spec.frequency = AUDIO_DEFAULT_FREQUENCY; }
@@ -972,8 +975,7 @@ static B32 PULSEAUDIO_ContextAddStream(PULSEAUDIO_AudioContext* ctx, LockWitness
   }
 
   pa_stream_set_write_callback(stream->stream, PULSEAUDIO_StreamWriteCallback, stream);
-  TODO(); // TODO: this is going to break -- base.name.str is not a cstring?
-  S32 result = pa_stream_connect_playback(stream->stream, stream->device->base.name.str, NULL, flags, NULL, NULL);
+  S32 result = pa_stream_connect_playback(stream->stream, stream->device->name, NULL, flags, NULL, NULL);
   if (result < 0) {
     LOG_ERROR("[AUDIO] Failed to connect PulseAudio stream to device: %.*s", stream->device->base.name.size, stream->device->base.name.str);
     goto pulseaudio_add_stream_end;
@@ -996,7 +998,7 @@ static B32 PULSEAUDIO_ContextAddStream(PULSEAUDIO_AudioContext* ctx, LockWitness
   success = true;
 
 pulseaudio_add_stream_end:
-  if (!success) { PULSEAUDIO_ContextReleaseStream(ctx, ctx_witness, stream); }
+  if (!success) { PULSEAUDIO_ContextReleaseStream(ctx, ctx_witness, mainloop_witness, stream); }
   return success;
 }
 
@@ -1020,29 +1022,27 @@ static void PULSEAUDIO_InvokeOperationSync(PULSEAUDIO_AudioContext* ctx, LockWit
 
 static void PULSEAUDIO_CheckDefaultDeviceCallback(pa_context* UNUSED(c), const pa_server_info* server_info, void* UNUSED(user_data)) {
   PULSEAUDIO_AudioContext* ctx = &_pulse_context;
+  LockWitness mainloop_witness = pa_threaded_mainloop_lock_implied(ctx->mainloop);
   if (server_info->default_sink_name == NULL) {
     LOG_WARN("[AUDIO] No default playback device detected.");
     goto pulseaudio_check_default_device_end;
   }
 
   LockWitness ctx_witness = MutexLock(&ctx->mutex);
-  String8 default_device_name = String8CreateCString(server_info->default_sink_name);
-  PULSEAUDIO_AudioDevice* device = PULSEAUDIO_ContextFindDeviceByName(ctx, ctx_witness, &default_device_name);
-  if (device == ctx->default_device) { goto pulseaudio_check_default_device_end; }
+  PULSEAUDIO_AudioDevice* device = PULSEAUDIO_ContextFindDeviceByName(ctx, ctx_witness, server_info->default_sink_name);
+  if (device == ctx->default_device) { goto pulseaudio_check_default_device_end_unlock; }
   if (device == NULL) {
     // TODO: try to add the device
-    LOG_WARN("[AUDIO] Reported default playback device is not registered: %.*s", default_device_name.size, default_device_name.str);
+    LOG_WARN("[AUDIO] Reported default playback device is not registered: %s", server_info->default_sink_name);
   }
   ctx->default_device = device;
   if (device != NULL) {
     LOG_INFO("[AUDIO] Default device detected: %.*s", device->base.name.size, device->base.name.str);
-    LockWitness mainloop_witness = pa_threaded_mainloop_lock_with_witness(ctx->mainloop);
     for (PULSEAUDIO_AudioStream* stream = ctx->streams_front; stream != NULL; stream = stream->next) {
       if (stream->spec.device_handle == AUDIO_DEFAULT_DEVICE) {
-        // TODO: unref old stream
         AudioStreamHandle handle = stream->handle;
         AudioStreamSpec spec = stream->spec;
-        PULSEAUDIO_ContextReleaseStream(ctx, ctx_witness, stream);
+        PULSEAUDIO_ContextReleaseStream(ctx, ctx_witness, mainloop_witness, stream);
         if (!PULSEAUDIO_ContextAddStream(ctx, ctx_witness, mainloop_witness, spec, handle)) {
           LOG_ERROR("[AUDIO] Failed to move audio stream to new default device, giving up.");
         }
@@ -1050,8 +1050,8 @@ static void PULSEAUDIO_CheckDefaultDeviceCallback(pa_context* UNUSED(c), const p
     }
   }
 
+pulseaudio_check_default_device_end_unlock:
   MutexUnlock(&ctx->mutex);
-
 pulseaudio_check_default_device_end:
   pa_threaded_mainloop_signal(ctx->mainloop, 0);
 }
@@ -1059,43 +1059,44 @@ pulseaudio_check_default_device_end:
 static void PULSEAUDIO_AddDeviceCallback(pa_context* UNUSED(c), const pa_sink_info* sink_info, S32 UNUSED(eol), void* UNUSED(user_data)) {
   PULSEAUDIO_AudioContext* ctx = &_pulse_context;
   if (sink_info == NULL) { goto pulseaudio_add_device_end; }
-
-  String8 name = String8CreateCString(sink_info->name);
   String8 description = String8CreateCString(sink_info->description);
-
   LockWitness witness = MutexLock(&ctx->mutex);
-  PULSEAUDIO_AudioDevice* device = PULSEAUDIO_ContextFindDeviceByName(ctx, witness, &name);
+  PULSEAUDIO_AudioDevice* device = PULSEAUDIO_ContextFindDeviceByName(ctx, witness, sink_info->name);
   if (device != NULL) {
     AtomicB32Store(&device->base.is_connected, true);
-    return;
+    goto pulseaudio_add_device_end_unlock;
   }
 
   LOG_INFO("[AUDIO] Adding device: %.*s", description.size, description.str);
 
+  const char* name_end = sink_info->name;
+  while (*name_end != '\0') { name_end++; }
+  U32 name_size = name_end - sink_info->name;
+
   device = ARENA_PUSH_STRUCT(ctx->arena, PULSEAUDIO_AudioDevice);
   MEMORY_ZERO_STRUCT(device);
   device->arena = ArenaAllocate(); // TODO: is separate arena needed?
-  device->name = String8Copy(device->arena, &name);
+  device->name = ARENA_PUSH_ARRAY(device->arena, char, name_size);
+  MEMORY_COPY(device->name, sink_info->name, name_size);
   device->base.handle = AtomicS32FetchAdd(&ctx->next_device_id, 1);
   device->base.name = String8Copy(device->arena, &description);
   device->base.is_connected = true;
   device->base.next = (AudioDevice*) ctx->devices;
   ctx->devices = (PULSEAUDIO_AudioDevice*) device;
-  MutexUnlock(&ctx->mutex);
 
+pulseaudio_add_device_end_unlock:
+  MutexUnlock(&ctx->mutex);
 pulseaudio_add_device_end:
   pa_threaded_mainloop_signal(ctx->mainloop, 0);
 }
 
 static void PULSEAUDIO_RemoveDeviceCallback(pa_context* UNUSED(c), const pa_sink_info* sink_info, S32 UNUSED(eol), void* UNUSED(user_data)) {
   PULSEAUDIO_AudioContext* ctx = &_pulse_context;
+  LockWitness mainloop_witness = pa_threaded_mainloop_lock_implied(ctx->mainloop);
   if (sink_info == NULL) { goto pulseaudio_remove_device_end; }
-
-  String8 name = String8CreateCString(sink_info->name);
   String8 description = String8CreateCString(sink_info->description);
-
-  LockWitness witness = MutexLock(&ctx->mutex);
-  PULSEAUDIO_AudioDevice* device = PULSEAUDIO_ContextFindDeviceByName(ctx, witness, &name);
+  LockWitness ctx_witness = MutexLock(&ctx->mutex);
+  PULSEAUDIO_AudioDevice* device = PULSEAUDIO_ContextFindDeviceByName(ctx, ctx_witness, sink_info->name);
   if (device != NULL) {
     LOG_WARN("[AUDIO] Unknown device disconnected: %.*s", description.size, description.str);
     return;
@@ -1107,7 +1108,7 @@ static void PULSEAUDIO_RemoveDeviceCallback(pa_context* UNUSED(c), const pa_sink
   // TODO: move them to another device? config option?
   for (PULSEAUDIO_AudioStream* stream = ctx->streams_front; stream != NULL; stream = stream->next) {
     if (stream->spec.device_handle == device->base.handle) {
-      PULSEAUDIO_ContextReleaseStream(ctx, witness, stream);
+      PULSEAUDIO_ContextReleaseStream(ctx, ctx_witness, mainloop_witness, stream);
     }
   }
 
@@ -1133,31 +1134,8 @@ static void PULSEAUDIO_OnDeviceStateChangedCallback(pa_context* c, pa_subscripti
   } else if (device_removed) {
     pa_operation_unref(pa_context_get_sink_info_by_index(c, device_index, PULSEAUDIO_RemoveDeviceCallback, NULL));
   }
-}
 
-static S32 PULSEAUDIO_NotificationThreadEntry(void* user_data) {
-  Sem* init_done = (Sem*) user_data;
-  PULSEAUDIO_AudioContext* ctx = &_pulse_context;
-
-  LOG_INFO("[AUDIO] Notification thread initializing.");
-  pa_threaded_mainloop_lock(ctx->mainloop);
-  pa_context_set_subscribe_callback(ctx->context, PULSEAUDIO_OnDeviceStateChangedCallback, NULL);
-  pa_operation* o = pa_context_subscribe(ctx->context, PA_SUBSCRIPTION_MASK_SINK | PA_SUBSCRIPTION_MASK_SERVER, NULL, NULL);
-  SemSignal(init_done);
-
-  while (!AtomicB32Load(&ctx->notification_thread_terminate)) {
-    pa_threaded_mainloop_wait(ctx->mainloop);
-    if (o != NULL && pa_operation_get_state(o) != PA_OPERATION_RUNNING) {
-      LOG_ERROR("[AUDIO] Notification thread terminated.");
-      break;
-    }
-  }
-
-  LOG_INFO("[AUDIO] Notification thread closing.");
-  pa_operation_unref(o);
-  pa_context_set_subscribe_callback(ctx->context, NULL, NULL);
-  pa_threaded_mainloop_unlock(ctx->mainloop);
-  return 0;
+  pa_threaded_mainloop_signal(ctx->mainloop, 0);
 }
 
 B32 PULSEAUDIO_AudioInit(void) {
@@ -1168,7 +1146,6 @@ B32 PULSEAUDIO_AudioInit(void) {
   ctx->arena = ArenaAllocate();
   MutexInit(&ctx->mutex);
   AtomicS32Init(&ctx->next_device_id, 1);
-  AtomicB32Init(&ctx->notification_thread_terminate, false);
 
   pa_proplist* proplist = NULL;
   B32 success = false;
@@ -1219,18 +1196,16 @@ B32 PULSEAUDIO_AudioInit(void) {
     LOG_ERROR("[AUDIO] Gave up trying to connect to PulseAudio.");
     goto pulseaudio_init_end_unlock;
   }
+  LOG_INFO("[AUDIO] Connection with PulseAudio server established.");
 
-  LOG_INFO("[AUDIO] Connection with PulseAudio server established, gathering info...");
-
-  Sem notification_thread_init_done;
-  SemInit(&notification_thread_init_done, 0);
-  ThreadCreate(&ctx->notification_thread, PULSEAUDIO_NotificationThreadEntry, &notification_thread_init_done);
-  SemWait(&notification_thread_init_done);
-  SemDeinit(&notification_thread_init_done);
-
-  // NOTE: probe for initial info, after subscribe callback is set up.
+  pa_context_set_subscribe_callback(ctx->context, PULSEAUDIO_OnDeviceStateChangedCallback, NULL);
+  pa_threaded_mainloop_unlock(ctx->mainloop);
+  PULSEAUDIO_InvokeOperationSync(ctx, mainloop_witness, pa_context_subscribe(ctx->context, PA_SUBSCRIPTION_MASK_SINK | PA_SUBSCRIPTION_MASK_SERVER, NULL, NULL));
   PULSEAUDIO_InvokeOperationSync(ctx, mainloop_witness, pa_context_get_sink_info_list(ctx->context, PULSEAUDIO_AddDeviceCallback, (void*) NULL));
   PULSEAUDIO_InvokeOperationSync(ctx, mainloop_witness, pa_context_get_server_info(ctx->context, PULSEAUDIO_CheckDefaultDeviceCallback, (void*) NULL));
+  pa_threaded_mainloop_lock(ctx->mainloop);
+
+  LOG_INFO("[Audio] Initialization complete.");
 
   ctx->initialized = true;
   success = true;
@@ -1250,8 +1225,8 @@ void PULSEAUDIO_AudioDeinit(void) {
   PULSEAUDIO_AudioContext* ctx = &_pulse_context;
   if (!ctx->initialized) { return; }
 
-  AtomicB32Store(&ctx->notification_thread_terminate, true);
-  ThreadJoin(&ctx->notification_thread);
+  // TODO: missing some steps like freeing the context / mainloop?
+  pa_context_set_subscribe_callback(ctx->context, NULL, NULL);
   pa_context_disconnect(ctx->context);
 
   for (PULSEAUDIO_AudioDevice* device = ctx->devices; device != NULL; device = (PULSEAUDIO_AudioDevice*) device->base.next) {
@@ -1277,9 +1252,11 @@ B32 PULSEAUDIO_AudioStreamOpen(AudioStreamHandle* handle, AudioStreamSpec spec) 
 
   LockWitness ctx_witness = MutexLock(&ctx->mutex);
   LockWitness mainloop_witness = pa_threaded_mainloop_lock_with_witness(ctx->mainloop);
-  B32 success = PULSEAUDIO_ContextAddStream(ctx, ctx_witness, mainloop_witness, spec, AtomicS32FetchAdd(&ctx->next_stream_id, 1));
+  *handle = AtomicS32FetchAdd(&ctx->next_stream_id, 1);
+  B32 success = PULSEAUDIO_ContextAddStream(ctx, ctx_witness, mainloop_witness, spec, *handle);
   MutexUnlock(&ctx->mutex);
   pa_threaded_mainloop_unlock(ctx->mainloop);
+  LOG_INFO("opened stream? %d", success);
   return success;
 }
 
@@ -1288,10 +1265,10 @@ B32 PULSEAUDIO_AudioStreamClose(AudioStreamHandle handle) {
   if (!ctx->initialized) { return false; }
 
   LockWitness ctx_witness = MutexLock(&ctx->mutex);
-  pa_threaded_mainloop_lock(ctx->mainloop);
+  LockWitness mainloop_witness = pa_threaded_mainloop_lock_with_witness(ctx->mainloop);
   B32 success = false;
   PULSEAUDIO_AudioStream* stream = PULSEAUDIO_FindStreamByHandle(ctx, ctx_witness, handle);
-  if (stream != NULL) { PULSEAUDIO_ContextReleaseStream(ctx, ctx_witness, stream); }
+  if (stream != NULL) { PULSEAUDIO_ContextReleaseStream(ctx, ctx_witness, mainloop_witness, stream); }
   pa_threaded_mainloop_signal(ctx->mainloop, 0);
   pa_threaded_mainloop_unlock(ctx->mainloop);
   MutexUnlock(&ctx->mutex);
@@ -1319,19 +1296,18 @@ B32 PULSEAUDIO_AudioStreamReleaseBuffer(AudioStreamHandle handle, U8* buffer, U3
   PULSEAUDIO_AudioContext* ctx = &_pulse_context;
   if (!ctx->initialized) { return false; }
 
-  B32 result = false;
+  B32 success = false;
   LockWitness ctx_witness = MutexLock(&ctx->mutex);
   pa_threaded_mainloop_lock(ctx->mainloop);
   PULSEAUDIO_AudioStream* stream = PULSEAUDIO_FindStreamByHandle(ctx, ctx_witness, handle);
   if (stream != NULL) {
     S32 ret = pa_stream_write(stream->stream, buffer, buffer_size, NULL, 0LL, PA_SEEK_RELATIVE);
-    result = (ret >= 0);
+    success = (ret >= 0);
+    if (success) { stream->num_bytes_requested -= buffer_size; }
   }
   pa_threaded_mainloop_unlock(ctx->mainloop);
   MutexUnlock(&ctx->mutex);
-  if (!result) { return false; }
-  stream->num_bytes_requested -= buffer_size;
-  return true;
+  return success;
 }
 
 B32 PULSEAUDIO_AudioStreamWait(AudioStreamHandle handle) {
@@ -1339,14 +1315,15 @@ B32 PULSEAUDIO_AudioStreamWait(AudioStreamHandle handle) {
   if (!ctx->initialized) { return false; }
 
   B32 success = true;
-  LockWitness ctx_witness = MutexLock(&ctx->mutex);
   pa_threaded_mainloop_lock(ctx->mainloop);
+  LockWitness ctx_witness = MutexLock(&ctx->mutex);
   PULSEAUDIO_AudioStream* stream = PULSEAUDIO_FindStreamByHandle(ctx, ctx_witness, handle);
+  MutexUnlock(&ctx->mutex);
   if (stream == NULL) {
     success = false;
     goto pulseaudio_stream_wait_exit;
   }
-  while (AtomicB32Load(&stream->device->base.is_connected)) {
+  while (AtomicB32Load(&stream->device->base.is_connected) && stream->num_bytes_requested == 0) {
     pa_threaded_mainloop_wait(ctx->mainloop);
     if ((pa_context_get_state(ctx->context) != PA_CONTEXT_READY) || (pa_stream_get_state(stream->stream) != PA_STREAM_READY)) {
       LOG_ERROR("[AUDIO] Device failed to become ready!");
@@ -1357,7 +1334,6 @@ B32 PULSEAUDIO_AudioStreamWait(AudioStreamHandle handle) {
 
 pulseaudio_stream_wait_exit:
   pa_threaded_mainloop_unlock(ctx->mainloop);
-  MutexUnlock(&ctx->mutex);
   return success;
 }
 

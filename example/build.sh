@@ -6,4 +6,4 @@ clear
 
 gcc audio.c -o ./bin/audio -lm -lpulse -lpulse-simple
 
-./bin/audio
+#./bin/audio
