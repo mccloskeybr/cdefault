@@ -389,6 +389,8 @@ void ArenaTempEnd(ArenaTemp* temp);
 
 #define ARENA_PUSH_ARRAY(arena, type, count) (type*) ArenaPush(arena, sizeof(type) * count, MAX(8, ALIGN_OF(type)))
 #define ARENA_PUSH_STRUCT(arena, type) ARENA_PUSH_ARRAY(arena, type, 1)
+#define ARENA_POP_ARRAY(arena, type, count) ArenaPop(arena, sizeof(type) * count)
+#define ARENA_POP_STRUCT(arena, type) ARENA_POP_ARRAY(arena, type, 1)
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Thread

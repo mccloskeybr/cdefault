@@ -29,7 +29,7 @@ int main(void) {
     if (!AudioStreamAcquireBuffer(stream, &buffer, &buffer_size)) { continue; }
     uint32_t read = stb_vorbis_get_samples_float_interleaved(
         vorbis, vorbis_info.channels, (F32*) buffer, buffer_size / sizeof(F32));
-    if (!AudioStreamReleaseBuffer(stream)) { continue; }
+    if (!AudioStreamReleaseBuffer(stream, buffer, buffer_size)) { continue; }
     if (read == 0) { stb_vorbis_seek_start(vorbis); }
     if (!AudioStreamWait(stream)) { continue; }
   }

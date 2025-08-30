@@ -57,7 +57,7 @@ B32  AudioStreamClose(AudioStreamHandle handle);
 // NOTE: Retrieves a byte stream in which audio data (conforming to spec) can be placed. Once data has
 // been placed, AudioStreamReleaseBuffer must be called.
 B32  AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, U32* buffer_size);
-B32  AudioStreamReleaseBuffer(AudioStreamHandle handle);
+B32  AudioStreamReleaseBuffer(AudioStreamHandle handle, U8* buffer, U32 buffer_size);
 
 // NOTE: Waits until the audio stream has space for more audio data.
 B32  AudioStreamWait(AudioStreamHandle handle);
@@ -296,14 +296,14 @@ audio_device_initialize_exit:
   return success;
 }
 
-B32 WASAPI_ContextAddStream(WASAPI_AudioContext* ctx, LockWitness witness, AudioStreamSpec spec, AudioStreamHandle stream_handle) {
-  WASAPI_AudioStream* stream = WASAPI_ContextAllocateStream(ctx, witness);
-  stream->handle = stream_handle;
-
+static B32 WASAPI_ContextAddStream(WASAPI_AudioContext* ctx, LockWitness witness, AudioStreamSpec spec, AudioStreamHandle stream_handle) {
   if (spec.device_handle == 0) { spec.device_handle = AUDIO_DEFAULT_DEVICE; }
   if (spec.channels == 0)      { spec.channels = AUDIO_DEFAULT_CHANNELS; }
   if (spec.frequency == 0)     { spec.frequency = AUDIO_DEFAULT_FREQUENCY; }
   if (spec.format == 0)        { spec.format = AudioStreamFormat_F32; }
+
+  WASAPI_AudioStream* stream = WASAPI_ContextAllocateStream(ctx, witness);
+  stream->handle = stream_handle;
   stream->spec = spec;
 
   IMMDevice* imm_device = NULL;
@@ -499,7 +499,7 @@ static HRESULT WASAPI_NotificationClientOnDeviceStateChanged(IMMNotificationClie
     }
     LOG_INFO("[AUDIO] Device disconnected: %.*s", device->base.name.size, device->base.name.str);
     AtomicB32Store(&device->base.is_connected, false);
-    // NOTE: release streams attached to disconnected device.
+    // NOTE: release streams *explicitly* attached to disconnected device.
     // TODO: move them to another device? config option?
     for (WASAPI_AudioStream* stream = ctx->streams_front; stream != NULL; stream = stream->next) {
       if (stream->spec.device_handle == device->base.handle) {
@@ -755,7 +755,7 @@ B32 WASAPI_AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, U32* 
   return success;
 }
 
-B32 WASAPI_AudioStreamReleaseBuffer(AudioStreamHandle handle) {
+B32 WASAPI_AudioStreamReleaseBuffer(AudioStreamHandle handle, U8* UNUSED(buffer), U32 UNUSED(buffer_size)) {
   WASAPI_AudioContext* ctx = &_wasapi_ctx;
   if (!ctx->initialized) { return false; }
   LockWitness witness = MutexLock(&ctx->mutex);
@@ -830,6 +830,19 @@ struct PULSEAUDIO_AudioDevice {
   String8 name;
 };
 
+typedef struct PULSEAUDIO_AudioStream PULSEAUDIO_AudioStream;
+struct PULSEAUDIO_AudioStream {
+  AudioStreamHandle handle;
+  AudioStreamSpec spec;
+  B32 connected;
+  PULSEAUDIO_AudioDevice* device;
+  pa_stream* stream;
+  U64 num_bytes_requested;
+  U64 buffer_size;
+  PULSEAUDIO_AudioStream* next;
+  PULSEAUDIO_AudioStream* prev;
+};
+
 typedef struct PULSEAUDIO_AudioContext PULSEAUDIO_AudioContext;
 struct PULSEAUDIO_AudioContext {
   B32 initialized;
@@ -838,8 +851,13 @@ struct PULSEAUDIO_AudioContext {
   AtomicS32 next_device_id;
   PULSEAUDIO_AudioDevice* default_device;
   PULSEAUDIO_AudioDevice* devices;
+  AtomicS32 next_stream_id;
+  PULSEAUDIO_AudioStream* streams_front;
+  PULSEAUDIO_AudioStream* streams_back;
+  PULSEAUDIO_AudioStream* streams_free_list;
   pa_threaded_mainloop* mainloop;
-  pa_operation* notification_op;
+  Thread notification_thread;
+  AtomicB32 notification_thread_terminate;
   pa_context* context;
 };
 
@@ -855,6 +873,131 @@ static PULSEAUDIO_AudioDevice* PULSEAUDIO_ContextFindDeviceByName(PULSEAUDIO_Aud
     if (String8Equals(&device->name, name)) { return device; }
   }
   return NULL;
+}
+
+static PULSEAUDIO_AudioDevice* PULSEAUDIO_FindDeviceByHandle(PULSEAUDIO_AudioContext* ctx, LockWitness UNUSED(witness), AudioDeviceHandle handle) {
+  if (handle == AUDIO_DEFAULT_DEVICE) {
+    return ctx->default_device;
+  }
+  for (PULSEAUDIO_AudioDevice* device = ctx->devices; device != NULL; device = (PULSEAUDIO_AudioDevice*) device->base.next) {
+    if (device->base.handle == handle) {
+      return device;
+    }
+  }
+  return NULL;
+}
+
+static PULSEAUDIO_AudioStream* PULSEAUDIO_FindStreamByHandle(PULSEAUDIO_AudioContext* ctx, LockWitness UNUSED(witness), AudioStreamHandle handle) {
+  for (PULSEAUDIO_AudioStream* stream = ctx->streams_front; stream != NULL; stream = stream->next) {
+    if (stream->handle == handle) {
+      return stream;
+    }
+  }
+  return NULL;
+}
+
+static PULSEAUDIO_AudioStream* PULSEAUDIO_ContextAllocateStream(PULSEAUDIO_AudioContext* ctx, LockWitness UNUSED(ctx_witness)) {
+  PULSEAUDIO_AudioStream* stream = NULL;
+  if (ctx->streams_free_list != NULL) {
+    stream = ctx->streams_free_list;
+    SLL_STACK_POP(ctx->streams_free_list, next);
+  } else {
+    stream = ARENA_PUSH_STRUCT(ctx->arena, PULSEAUDIO_AudioStream);
+  }
+  MEMORY_ZERO_STRUCT(stream);
+  DLL_PUSH_BACK(ctx->streams_front, ctx->streams_back, stream, prev, next);
+  return stream;
+}
+
+static void PULSEAUDIO_ContextReleaseStream(PULSEAUDIO_AudioContext* ctx, LockWitness UNUSED(ctx_witness), PULSEAUDIO_AudioStream* stream) {
+  if (stream == NULL) { return; }
+  if (stream->stream != NULL) {
+    if (stream->connected) { pa_stream_disconnect(stream->stream); }
+    pa_stream_unref(stream->stream);
+  }
+  DLL_REMOVE(ctx->streams_front, ctx->streams_back, stream, prev, next);
+  SLL_STACK_PUSH(ctx->streams_free_list, stream, next);
+}
+
+static void PULSEAUDIO_StreamWriteCallback(pa_stream* UNUSED(p), U64 nbytes, void* user_data) {
+  PULSEAUDIO_AudioStream* stream = (PULSEAUDIO_AudioStream*) user_data;
+  PULSEAUDIO_AudioContext* ctx = &_pulse_context;
+  stream->num_bytes_requested += nbytes;
+  pa_threaded_mainloop_signal(ctx->mainloop, 0);
+}
+
+static B32 PULSEAUDIO_ContextAddStream(PULSEAUDIO_AudioContext* ctx, LockWitness ctx_witness, LockWitness UNUSED(mainloop_witness), AudioStreamSpec spec, AudioStreamHandle handle) {
+  if (spec.device_handle == 0) { spec.device_handle = AUDIO_DEFAULT_DEVICE; }
+  if (spec.channels == 0)      { spec.channels = AUDIO_DEFAULT_CHANNELS; }
+  if (spec.frequency == 0)     { spec.frequency = AUDIO_DEFAULT_FREQUENCY; }
+  if (spec.format == 0)        { spec.format = AudioStreamFormat_F32; }
+
+  PULSEAUDIO_AudioStream* stream = PULSEAUDIO_ContextAllocateStream(ctx, ctx_witness);
+  stream->handle = handle;
+  stream->spec = spec;
+
+  B32 success = false;
+
+  pa_sample_spec sample_spec;
+  MEMORY_ZERO_STRUCT(&sample_spec);
+  sample_spec.channels = spec.channels;
+  sample_spec.rate = spec.frequency;
+  // TODO: choose big / little endian?
+  switch (spec.format) {
+    case AudioStreamFormat_F32: { sample_spec.format = PA_SAMPLE_FLOAT32LE; } break;
+    case AudioStreamFormat_S16: { sample_spec.format = PA_SAMPLE_S16LE;     } break;
+    case AudioStreamFormat_S32: { sample_spec.format = PA_SAMPLE_S32LE;     } break;
+    default: {
+      LOG_ERROR("[AUDIO] Unrecognized audio format provided: %d", spec.format);
+      UNIMPLEMENTED();
+    } break;
+  }
+
+  pa_stream_flags_t flags = 0;
+  flags |= PA_STREAM_ADJUST_LATENCY;
+
+  stream->device = PULSEAUDIO_FindDeviceByHandle(ctx, ctx_witness, spec.device_handle);
+  if (stream->device == NULL) {
+    LOG_ERROR("Failed to find device associated with handle: %d", spec.device_handle);
+    goto pulseaudio_add_stream_end;
+  }
+
+  // TODO: better stream name?
+  pa_channel_map channel_map;
+  pa_channel_map_init_auto(&channel_map, spec.channels, PA_CHANNEL_MAP_WAVEEX);
+  stream->stream = pa_stream_new(ctx->context, "Audio Stream", &sample_spec, &channel_map);
+  if (stream->stream == NULL) {
+    LOG_ERROR("Failed to create audio stream.");
+    goto pulseaudio_add_stream_end;
+  }
+
+  pa_stream_set_write_callback(stream->stream, PULSEAUDIO_StreamWriteCallback, stream);
+  TODO(); // TODO: this is going to break -- base.name.str is not a cstring?
+  S32 result = pa_stream_connect_playback(stream->stream, stream->device->base.name.str, NULL, flags, NULL, NULL);
+  if (result < 0) {
+    LOG_ERROR("[AUDIO] Failed to connect PulseAudio stream to device: %.*s", stream->device->base.name.size, stream->device->base.name.str);
+    goto pulseaudio_add_stream_end;
+  }
+
+  S32 state = pa_stream_get_state(stream->stream);
+  while (PA_STREAM_IS_GOOD(state) && (state != PA_STREAM_READY)) {
+    pa_threaded_mainloop_wait(ctx->mainloop);
+    state = pa_stream_get_state(stream->stream);
+  }
+  if (!PA_STREAM_IS_GOOD(state)) {
+    LOG_ERROR("[AUDIO] Giving up connecting stream to device: %.*s", stream->device->base.name.size, stream->device->base.name.str);
+    goto pulseaudio_add_stream_end;
+  }
+
+  const pa_buffer_attr* real_attr = pa_stream_get_buffer_attr(stream->stream);
+  stream->buffer_size = real_attr->tlength;
+
+  stream->connected = true;
+  success = true;
+
+pulseaudio_add_stream_end:
+  if (!success) { PULSEAUDIO_ContextReleaseStream(ctx, ctx_witness, stream); }
+  return success;
 }
 
 static void PULSEAUDIO_ContextStateUpdate(pa_context* UNUSED(c), void* user_data) {
@@ -879,21 +1022,37 @@ static void PULSEAUDIO_CheckDefaultDeviceCallback(pa_context* UNUSED(c), const p
   PULSEAUDIO_AudioContext* ctx = &_pulse_context;
   if (server_info->default_sink_name == NULL) {
     LOG_WARN("[AUDIO] No default playback device detected.");
-    return;
+    goto pulseaudio_check_default_device_end;
   }
-  LockWitness witness = MutexLock(&ctx->mutex);
+
+  LockWitness ctx_witness = MutexLock(&ctx->mutex);
   String8 default_device_name = String8CreateCString(server_info->default_sink_name);
-  if (ctx->default_device == NULL || !String8Equals(&ctx->default_device->base.name, &default_device_name)) {
-    PULSEAUDIO_AudioDevice* default_device = PULSEAUDIO_ContextFindDeviceByName(ctx, witness, &default_device_name);
-    if (default_device == NULL) {
-      LOG_WARN("[AUDIO] Reported default playback device is not registered: %.*s", default_device_name.size, default_device_name.str);
-    } else {
-      LOG_INFO("[AUDIO] Default device detected: %.*s", default_device->base.name.size, default_device->base.name.str);
-      ctx->default_device = default_device;
+  PULSEAUDIO_AudioDevice* device = PULSEAUDIO_ContextFindDeviceByName(ctx, ctx_witness, &default_device_name);
+  if (device == ctx->default_device) { goto pulseaudio_check_default_device_end; }
+  if (device == NULL) {
+    // TODO: try to add the device
+    LOG_WARN("[AUDIO] Reported default playback device is not registered: %.*s", default_device_name.size, default_device_name.str);
+  }
+  ctx->default_device = device;
+  if (device != NULL) {
+    LOG_INFO("[AUDIO] Default device detected: %.*s", device->base.name.size, device->base.name.str);
+    LockWitness mainloop_witness = pa_threaded_mainloop_lock_with_witness(ctx->mainloop);
+    for (PULSEAUDIO_AudioStream* stream = ctx->streams_front; stream != NULL; stream = stream->next) {
+      if (stream->spec.device_handle == AUDIO_DEFAULT_DEVICE) {
+        // TODO: unref old stream
+        AudioStreamHandle handle = stream->handle;
+        AudioStreamSpec spec = stream->spec;
+        PULSEAUDIO_ContextReleaseStream(ctx, ctx_witness, stream);
+        if (!PULSEAUDIO_ContextAddStream(ctx, ctx_witness, mainloop_witness, spec, handle)) {
+          LOG_ERROR("[AUDIO] Failed to move audio stream to new default device, giving up.");
+        }
+      }
     }
   }
+
   MutexUnlock(&ctx->mutex);
 
+pulseaudio_check_default_device_end:
   pa_threaded_mainloop_signal(ctx->mainloop, 0);
 }
 
@@ -908,7 +1067,7 @@ static void PULSEAUDIO_AddDeviceCallback(pa_context* UNUSED(c), const pa_sink_in
   PULSEAUDIO_AudioDevice* device = PULSEAUDIO_ContextFindDeviceByName(ctx, witness, &name);
   if (device != NULL) {
     AtomicB32Store(&device->base.is_connected, true);
-    goto pulseaudio_add_device_end;
+    return;
   }
 
   LOG_INFO("[AUDIO] Adding device: %.*s", description.size, description.str);
@@ -939,12 +1098,18 @@ static void PULSEAUDIO_RemoveDeviceCallback(pa_context* UNUSED(c), const pa_sink
   PULSEAUDIO_AudioDevice* device = PULSEAUDIO_ContextFindDeviceByName(ctx, witness, &name);
   if (device != NULL) {
     LOG_WARN("[AUDIO] Unknown device disconnected: %.*s", description.size, description.str);
-    goto pulseaudio_remove_device_end;
+    return;
   }
 
   LOG_INFO("[AUDIO] Device disconnected: %.*s", description.size, description.str);
   AtomicB32Store(&device->base.is_connected, false);
-  // TODO: move / delete streams connected to the device.
+  // NOTE: release streams *explicitly* attached to disconnected device.
+  // TODO: move them to another device? config option?
+  for (PULSEAUDIO_AudioStream* stream = ctx->streams_front; stream != NULL; stream = stream->next) {
+    if (stream->spec.device_handle == device->base.handle) {
+      PULSEAUDIO_ContextReleaseStream(ctx, witness, stream);
+    }
+  }
 
 pulseaudio_remove_device_end:
   pa_threaded_mainloop_signal(ctx->mainloop, 0);
@@ -968,9 +1133,31 @@ static void PULSEAUDIO_OnDeviceStateChangedCallback(pa_context* c, pa_subscripti
   } else if (device_removed) {
     pa_operation_unref(pa_context_get_sink_info_by_index(c, device_index, PULSEAUDIO_RemoveDeviceCallback, NULL));
   }
+}
 
-  // TODO: is this needed?
-  // pa_threaded_mainloop_signal(ctx->mainloop, 0);
+static S32 PULSEAUDIO_NotificationThreadEntry(void* user_data) {
+  Sem* init_done = (Sem*) user_data;
+  PULSEAUDIO_AudioContext* ctx = &_pulse_context;
+
+  LOG_INFO("[AUDIO] Notification thread initializing.");
+  pa_threaded_mainloop_lock(ctx->mainloop);
+  pa_context_set_subscribe_callback(ctx->context, PULSEAUDIO_OnDeviceStateChangedCallback, NULL);
+  pa_operation* o = pa_context_subscribe(ctx->context, PA_SUBSCRIPTION_MASK_SINK | PA_SUBSCRIPTION_MASK_SERVER, NULL, NULL);
+  SemSignal(init_done);
+
+  while (!AtomicB32Load(&ctx->notification_thread_terminate)) {
+    pa_threaded_mainloop_wait(ctx->mainloop);
+    if (o != NULL && pa_operation_get_state(o) != PA_OPERATION_RUNNING) {
+      LOG_ERROR("[AUDIO] Notification thread terminated.");
+      break;
+    }
+  }
+
+  LOG_INFO("[AUDIO] Notification thread closing.");
+  pa_operation_unref(o);
+  pa_context_set_subscribe_callback(ctx->context, NULL, NULL);
+  pa_threaded_mainloop_unlock(ctx->mainloop);
+  return 0;
 }
 
 B32 PULSEAUDIO_AudioInit(void) {
@@ -981,6 +1168,7 @@ B32 PULSEAUDIO_AudioInit(void) {
   ctx->arena = ArenaAllocate();
   MutexInit(&ctx->mutex);
   AtomicS32Init(&ctx->next_device_id, 1);
+  AtomicB32Init(&ctx->notification_thread_terminate, false);
 
   pa_proplist* proplist = NULL;
   B32 success = false;
@@ -1034,9 +1222,11 @@ B32 PULSEAUDIO_AudioInit(void) {
 
   LOG_INFO("[AUDIO] Connection with PulseAudio server established, gathering info...");
 
-  pa_context_set_subscribe_callback(ctx->context, PULSEAUDIO_OnDeviceStateChangedCallback, NULL);
-  ctx->notification_op = pa_context_subscribe(ctx->context, PA_SUBSCRIPTION_MASK_SINK | PA_SUBSCRIPTION_MASK_SERVER, NULL, NULL);
-  // TODO: the operation could fail -- should probably have a thread to try to revive it if this happens?
+  Sem notification_thread_init_done;
+  SemInit(&notification_thread_init_done, 0);
+  ThreadCreate(&ctx->notification_thread, PULSEAUDIO_NotificationThreadEntry, &notification_thread_init_done);
+  SemWait(&notification_thread_init_done);
+  SemDeinit(&notification_thread_init_done);
 
   // NOTE: probe for initial info, after subscribe callback is set up.
   PULSEAUDIO_InvokeOperationSync(ctx, mainloop_witness, pa_context_get_sink_info_list(ctx->context, PULSEAUDIO_AddDeviceCallback, (void*) NULL));
@@ -1060,8 +1250,8 @@ void PULSEAUDIO_AudioDeinit(void) {
   PULSEAUDIO_AudioContext* ctx = &_pulse_context;
   if (!ctx->initialized) { return; }
 
-  pa_operation_unref(ctx->notification_op);
-  pa_context_set_subscribe_callback(ctx->context, NULL, NULL);
+  AtomicB32Store(&ctx->notification_thread_terminate, true);
+  ThreadJoin(&ctx->notification_thread);
   pa_context_disconnect(ctx->context);
 
   for (PULSEAUDIO_AudioDevice* device = ctx->devices; device != NULL; device = (PULSEAUDIO_AudioDevice*) device->base.next) {
@@ -1075,30 +1265,100 @@ void PULSEAUDIO_AudioDeinit(void) {
 }
 
 B32 PULSEAUDIO_AudioGetDevices(AudioDevice** devices) {
-  *devices = NULL;
+  PULSEAUDIO_AudioContext* ctx = &_pulse_context;
+  if (!ctx->initialized) { return false; }
+  *devices = (AudioDevice*) ctx->devices;
   return true;
 }
 
 B32 PULSEAUDIO_AudioStreamOpen(AudioStreamHandle* handle, AudioStreamSpec spec) {
-  return true;
+  PULSEAUDIO_AudioContext* ctx = &_pulse_context;
+  if (!ctx->initialized) { return false; }
+
+  LockWitness ctx_witness = MutexLock(&ctx->mutex);
+  LockWitness mainloop_witness = pa_threaded_mainloop_lock_with_witness(ctx->mainloop);
+  B32 success = PULSEAUDIO_ContextAddStream(ctx, ctx_witness, mainloop_witness, spec, AtomicS32FetchAdd(&ctx->next_stream_id, 1));
+  MutexUnlock(&ctx->mutex);
+  pa_threaded_mainloop_unlock(ctx->mainloop);
+  return success;
 }
 
 B32 PULSEAUDIO_AudioStreamClose(AudioStreamHandle handle) {
+  PULSEAUDIO_AudioContext* ctx = &_pulse_context;
+  if (!ctx->initialized) { return false; }
+
+  LockWitness ctx_witness = MutexLock(&ctx->mutex);
+  pa_threaded_mainloop_lock(ctx->mainloop);
+  B32 success = false;
+  PULSEAUDIO_AudioStream* stream = PULSEAUDIO_FindStreamByHandle(ctx, ctx_witness, handle);
+  if (stream != NULL) { PULSEAUDIO_ContextReleaseStream(ctx, ctx_witness, stream); }
+  pa_threaded_mainloop_signal(ctx->mainloop, 0);
+  pa_threaded_mainloop_unlock(ctx->mainloop);
+  MutexUnlock(&ctx->mutex);
   return true;
 }
 
 B32 PULSEAUDIO_AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, U32* buffer_size) {
-  *buffer = NULL;
-  *buffer_size = 0;
-  return true;
+  PULSEAUDIO_AudioContext* ctx = &_pulse_context;
+  if (!ctx->initialized) { return false; }
+
+  LockWitness ctx_witness = MutexLock(&ctx->mutex);
+  B32 success = false;
+  PULSEAUDIO_AudioStream* stream = PULSEAUDIO_FindStreamByHandle(ctx, ctx_witness, handle);
+  if (stream != NULL) {
+    size_t buffer_size_req = MIN(stream->buffer_size, stream->num_bytes_requested);
+    S32 result = pa_stream_begin_write(stream->stream, (void**) buffer, &buffer_size_req);
+    *buffer_size = (U32) buffer_size_req;
+    success = (result == 0);
+  }
+  MutexUnlock(&ctx->mutex);
+  return success;
 }
 
-B32 PULSEAUDIO_AudioStreamReleaseBuffer(AudioStreamHandle handle) {
+B32 PULSEAUDIO_AudioStreamReleaseBuffer(AudioStreamHandle handle, U8* buffer, U32 buffer_size) {
+  PULSEAUDIO_AudioContext* ctx = &_pulse_context;
+  if (!ctx->initialized) { return false; }
+
+  B32 result = false;
+  LockWitness ctx_witness = MutexLock(&ctx->mutex);
+  pa_threaded_mainloop_lock(ctx->mainloop);
+  PULSEAUDIO_AudioStream* stream = PULSEAUDIO_FindStreamByHandle(ctx, ctx_witness, handle);
+  if (stream != NULL) {
+    S32 ret = pa_stream_write(stream->stream, buffer, buffer_size, NULL, 0LL, PA_SEEK_RELATIVE);
+    result = (ret >= 0);
+  }
+  pa_threaded_mainloop_unlock(ctx->mainloop);
+  MutexUnlock(&ctx->mutex);
+  if (!result) { return false; }
+  stream->num_bytes_requested -= buffer_size;
   return true;
 }
 
 B32 PULSEAUDIO_AudioStreamWait(AudioStreamHandle handle) {
-  return true;
+  PULSEAUDIO_AudioContext* ctx = &_pulse_context;
+  if (!ctx->initialized) { return false; }
+
+  B32 success = true;
+  LockWitness ctx_witness = MutexLock(&ctx->mutex);
+  pa_threaded_mainloop_lock(ctx->mainloop);
+  PULSEAUDIO_AudioStream* stream = PULSEAUDIO_FindStreamByHandle(ctx, ctx_witness, handle);
+  if (stream == NULL) {
+    success = false;
+    goto pulseaudio_stream_wait_exit;
+  }
+  while (AtomicB32Load(&stream->device->base.is_connected)) {
+    pa_threaded_mainloop_wait(ctx->mainloop);
+    if ((pa_context_get_state(ctx->context) != PA_CONTEXT_READY) || (pa_stream_get_state(stream->stream) != PA_STREAM_READY)) {
+      LOG_ERROR("[AUDIO] Device failed to become ready!");
+      success = false;
+      break;
+    }
+  }
+
+pulseaudio_stream_wait_exit:
+  pa_threaded_mainloop_unlock(ctx->mainloop);
+  MutexUnlock(&ctx->mutex);
+  return success;
 }
 
 #elif defined(CDEFAULT_AUDIO_BACKEND_FAKE)
@@ -1131,7 +1391,7 @@ B32 FAKE_AudioStreamAcquireBuffer(AudioStreamHandle UNUSED(handle), U8** UNUSED(
   return true;
 }
 
-B32 FAKE_AudioStreamReleaseBuffer(AudioStreamHandle UNUSED(handle)) {
+B32 FAKE_AudioStreamReleaseBuffer(AudioStreamHandle UNUSED(handle), U8* UNUSED(buffer), U32 UNUSED(buffer_size)) {
   return true;
 }
 
@@ -1179,8 +1439,8 @@ B32 AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, U32* buffer_
   return CDEFAULT_AUDIO_BACKEND_FN(AudioStreamAcquireBuffer(handle, buffer, buffer_size));
 }
 
-B32 AudioStreamReleaseBuffer(AudioStreamHandle handle) {
-  return CDEFAULT_AUDIO_BACKEND_FN(AudioStreamReleaseBuffer(handle));
+B32 AudioStreamReleaseBuffer(AudioStreamHandle handle, U8* buffer, U32 buffer_size) {
+  return CDEFAULT_AUDIO_BACKEND_FN(AudioStreamReleaseBuffer(handle, buffer, buffer_size));
 }
 
 B32 AudioStreamWait(AudioStreamHandle handle) {
