@@ -77,6 +77,7 @@ B32  AudioStreamWait(AudioStreamHandle handle);
 #endif
 
 #if defined(CDEFAULT_AUDIO_BACKEND_WASAPI)
+#define CDEFAULT_AUDIO_BACKEND_NAMESPACE WASAPI_
 
 #define COBJMACROS
 #include <windows.h>
@@ -821,6 +822,7 @@ play_buffer_end:
 }
 
 #elif defined(CDEFAULT_AUDIO_BACKEND_PULSEAUDIO)
+#define CDEFAULT_AUDIO_BACKEND_NAMESPACE PULSEAUDIO_
 
 #include <pulse/pulseaudio.h>
 
@@ -1338,6 +1340,7 @@ pulseaudio_stream_wait_exit:
 }
 
 #elif defined(CDEFAULT_AUDIO_BACKEND_FAKE)
+#define CDEFAULT_AUDIO_BACKEND_NAMESPACE FAKE_
 
 B32 FAKE_AudioInit(void) {
   LOG_WARN("[AUDIO] No audio backend specified, installing fake.");
@@ -1379,15 +1382,6 @@ B32 FAKE_AudioStreamWait(AudioStreamHandle UNUSED(handle)) {
 #error CDEFAULT_AUDIO: Unknown or unsupported driver detected.
 #endif
 
-#if defined(CDEFAULT_AUDIO_BACKEND_WASAPI)
-#  define CDEFAULT_AUDIO_BACKEND_NAMESPACE WASAPI_
-#elif defined(CDEFAULT_AUDIO_BACKEND_PULSEAUDIO)
-#  define CDEFAULT_AUDIO_BACKEND_NAMESPACE PULSEAUDIO_
-#elif defined(CDEFAULT_AUDIO_BACKEND_FAKE)
-#  define CDEFAULT_AUDIO_BACKEND_NAMESPACE FAKE_
-#else
-#  error No cdefault audio driver specified.
-#endif
 #define CDEFAULT_AUDIO_BACKEND_FN_IMPL(ns, fn) GLUE(ns, fn)
 #define CDEFAULT_AUDIO_BACKEND_FN(x) CDEFAULT_AUDIO_BACKEND_FN_IMPL(CDEFAULT_AUDIO_BACKEND_NAMESPACE, x)
 
