@@ -19,8 +19,8 @@ void WindowSwapBuffers();
 void WindowGetDims(S32* x, S32* y, S32* width, S32* height);
 
 // NOTE: A window must exist before any draw functions can be called.
-// NOTE: Drawing is undefined if there is no perspective set.
-void DrawSetPerspective(M4 perspective);
+// NOTE: Drawing is undefined if there is no projection set.
+void DrawSetProjection(M4 projection);
 void DrawRectangle(F32 x, F32 y, F32 width, F32 height, F32 r, F32 g, F32 b);
 
 #endif // CDEFAULT_VIDEO_H_
@@ -117,7 +117,7 @@ struct Renderer {
   GLint rect_camera_uniform;
   GLint rect_color_uniform;
 
-  M4 perspective;
+  M4 world_to_camera;
 };
 static Renderer _renderer;
 
@@ -164,7 +164,7 @@ renderer_compile_shader_exit:
   return success;
 }
 
-// NOTE: Expected to be called after the open gl api has been initialized by the platform layer.
+// NOTE: Expected to be called immediately after the plat window is initialized.
 static B32 RendererInit(void) {
   Renderer* r = &_renderer;
   OpenGLAPI* g = &_ogl;
@@ -177,10 +177,7 @@ static B32 RendererInit(void) {
     "uniform mat4 to_camera_transform;\n"
     "layout (location = 0) in vec2 in_pos;\n"
     "void main() {\n"
-    "  vec3 pos = vec3(in_pos.x, in_pos.y, 0.0);\n"
-    // "  vec3 pos = vec3(0.0, in_pos.x, in_pos.y);\n"
-    // "  gl_Position = vec4(pos, 1.0);\n"
-    "  gl_Position = to_camera_transform * vec4(pos, 1.0);\n"
+    "  gl_Position = to_camera_transform * vec4(in_pos, 0.0, 1.0);\n"
     "}\0";
   char* rect_fragment_shader_source =
     "#version 330 core\n"
@@ -215,60 +212,45 @@ static B32 RendererInit(void) {
     g->glBindBuffer(GL_ARRAY_BUFFER, 0);
   }
 
+  M4 projection;
+  S32 width, height;
+  WindowGetDims(NULL, NULL, &width, &height);
+  M4Orthographic(0, width, 0, height, 0.01f, 100.0f, &projection);
+  DrawSetProjection(projection);
+
   LOG_INFO("[VIDEO] OpenGL renderer initialized.");
   success = true;
 
   return success;
 }
 
-void DrawSetPerspective(M4 perspective) {
+void DrawSetProjection(M4 projection) {
   Renderer* r = &_renderer;
-  r->perspective = perspective;
+  V3 pos    = { 0, 0, 1 }; // NOTE: seat Z back so items can exist at z = 0.
+  V3 target = V3_Z_NEG;
+  V3 up     = V3_Y_POS;
+  M4 camera;
+  M4LookAt(&pos, &target, &up, &camera);
+  M4MultM4(&projection, &camera, &r->world_to_camera);
 }
 
-void DrawRectangle(F32 x, F32 y, F32 UNUSED(width), F32 UNUSED(height), F32 red, F32 green, F32 blue) {
+void DrawRectangle(F32 x, F32 y, F32 width, F32 height, F32 red, F32 green, F32 blue) {
   Renderer* r = &_renderer;
   OpenGLAPI* g = &_ogl;
 
   g->glUseProgram(r->rect_shader);
 
-  V3 pos;
-  pos.x = 0;
-  pos.y = 0;
-  pos.z = 0;
-  V3 target;
-  target.x = 0;
-  target.y = 0;
-  target.z = -1;
-  V3 up;
-  up.x = 0;
-  up.y = 1;
-  up.z = 0;
-  M4 world_to_view;
-  M4LookAt(&pos, &target, &up, &world_to_view);
+  M4 rect_to_world = M4_IDENTITY;
+  rect_to_world.e[0][3] = x;
+  rect_to_world.e[1][3] = y;
+  rect_to_world.e[0][0] = width;
+  rect_to_world.e[1][1] = height;
+  M4 rect_to_camera, rect_to_camera_t;
+  M4MultM4(&r->world_to_camera, &rect_to_world, &rect_to_camera);
+  M4Transpose(&rect_to_camera, &rect_to_camera_t);
+  g->glUniformMatrix4fv(r->rect_camera_uniform, 1, GL_FALSE, (GLfloat*) &rect_to_camera_t);
 
-  M4 world_to_camera;
-  M4MultM4(&r->perspective, &world_to_view, &world_to_camera);
-
-  M4 rect_to_world;
-  MEMORY_ZERO_STRUCT(&rect_to_world);
-  rect_to_world.e[0][3] = 0.5;
-  rect_to_world.e[1][3] = 0;
-  rect_to_world.e[2][3] = 0;
-  rect_to_world.e[0][0] = 1;
-  rect_to_world.e[1][1] = 1;
-  rect_to_world.e[2][2] = 1;
-
-  M4 final;
-  M4MultM4(&world_to_camera, &rect_to_world, &final);
-  M4 final_transpose;
-  M4Transpose(&final, &final_transpose);
-  g->glUniformMatrix4fv(r->rect_camera_uniform, 1, GL_FALSE, (GLfloat*) &final_transpose);
-
-  V3 color;
-  color.r = red;
-  color.g = green;
-  color.b = blue;
+  V3 color = { red, green, blue };
   g->glUniform3fv(r->rect_color_uniform, 1, (GLfloat*) &color);
 
   g->glBindVertexArray(r->quad_vao);
@@ -441,17 +423,18 @@ B32 WIN_WindowInit(WindowInitOpts opts) {
 
 #undef WIN_LINK_GL
 
-  if (!RendererInit()) {
-    LOG_ERROR("[VIDEO] Failed to initialize renderer.");
-    goto win_window_create_exit;
-  }
-
   window->handle = handle;
   window->device_context = device_context;
   window->ogl_context = ogl_context;
   window->initialized = true;
 
   LOG_INFO("[VIDEO] Window initialized successfully.");
+
+  if (!RendererInit()) {
+    LOG_ERROR("[VIDEO] Failed to initialize renderer.");
+    goto win_window_create_exit;
+  }
+
   success = true;
 
 win_window_create_exit:
