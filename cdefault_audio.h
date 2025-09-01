@@ -1071,15 +1071,10 @@ static void PULSEAUDIO_AddDeviceCallback(pa_context* UNUSED(c), const pa_sink_in
 
   LOG_INFO("[AUDIO] Adding device: %.*s", description.size, description.str);
 
-  const char* name_end = sink_info->name;
-  while (*name_end != '\0') { name_end++; }
-  U32 name_size = name_end - sink_info->name;
-
   device = ARENA_PUSH_STRUCT(ctx->arena, PULSEAUDIO_AudioDevice);
   MEMORY_ZERO_STRUCT(device);
   device->arena = ArenaAllocate(); // TODO: is separate arena needed?
-  device->name = ARENA_PUSH_ARRAY(device->arena, char, name_size);
-  MEMORY_COPY(device->name, sink_info->name, name_size);
+  CStringCopy(device->arena, &device->name, sink_info->name);
   device->base.handle = AtomicS32FetchAdd(&ctx->next_device_id, 1);
   device->base.name = String8Copy(device->arena, &description);
   device->base.is_connected = true;

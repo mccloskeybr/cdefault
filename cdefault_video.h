@@ -2,6 +2,7 @@
 #define CDEFAULT_VIDEO_H_
 
 #include "cdefault_std.h"
+#include "cdefault_math.h"
 
 // NOTE: Sensible defaults are chosen if field values are 0.
 typedef struct WindowInitOpts WindowInitOpts;
@@ -17,10 +18,264 @@ void WindowDeinit();
 void WindowSwapBuffers();
 void WindowGetDims(S32* x, S32* y, S32* width, S32* height);
 
+// NOTE: A window must exist before any draw functions can be called.
+// NOTE: Drawing is undefined if there is no perspective set.
+void DrawSetPerspective(M4 perspective);
+void DrawRectangle(F32 x, F32 y, F32 width, F32 height, F32 r, F32 g, F32 b);
+
 #endif // CDEFAULT_VIDEO_H_
 
 #ifdef CDEFAULT_VIDEO_IMPLEMENTATION
 #undef CDEFAULT_VIDEO_IMPLEMENTATION
+
+#if defined(OS_WINDOWS) || defined(OS_LINUX)
+#  if defined(OS_WINDOWS)
+#    include <windows.h>
+#  endif
+#  include <GL/gl.h>
+#  include <GL/glu.h>
+#elif defined(OS_MAC)
+#  include <OpenGL/gl.h>
+#  include <OpenGL/glu.h>
+#endif
+
+// TODO: expect this to move around with multi platform support?
+#define GL_FRAMEBUFFER_SRGB                       0x8DB9
+#define GL_CLAMP_TO_EDGE                          0x812F
+#define GL_COMPILE_STATUS                         0x8B81
+#define GL_LINK_STATUS                            0x8B82
+#define GL_FRAGMENT_SHADER                        0x8B30
+#define GL_VERTEX_SHADER                          0x8B31
+#define GL_ARRAY_BUFFER                           0x8892
+#define GL_ELEMENT_ARRAY_BUFFER                   0x8893
+#define GL_FRAMEBUFFER                            0x8D40
+#define GL_RENDERBUFFER                           0x8D41
+#define GL_DEPTH_STENCIL_ATTACHMENT               0x821A
+#define GL_FRAMEBUFFER_COMPLETE                   0x8CD5
+#define GL_COLOR_ATTACHMENT0                      0x8CE0
+#define GL_DEPTH24_STENCIL8                       0x88F0
+#define GL_STATIC_DRAW                            0x88E4
+#define GL_FRAMEBUFFER_SRGB                       0x8DB9
+
+typedef char      GLchar;
+typedef ptrdiff_t GLintptr;
+typedef ptrdiff_t GLsizeiptr;
+
+typedef void   glShaderSource_Fn(GLuint, GLsizei, GLchar**, GLint*);
+typedef void   glCompileShader_Fn(GLuint);
+typedef GLuint glCreateProgram_Fn(void);
+typedef GLuint glCreateShader_Fn(GLenum);
+typedef void   glGetShaderiv_Fn(GLuint, GLenum, GLint*);
+typedef void   glAttachShader_Fn(GLuint, GLuint);
+typedef void   glLinkProgram_Fn(GLuint);
+typedef void   glGetProgramiv_Fn(GLuint, GLenum, GLint*);
+typedef void   glUseProgram_Fn(GLuint);
+typedef void   glDeleteShader_Fn(GLuint);
+typedef void   glEnableVertexAttribArray_Fn(GLuint);
+typedef void   glVertexAttribPointer_Fn(GLuint, GLint, GLenum, GLboolean, GLsizei, const void*);
+typedef void   glGenVertexArrays_Fn(GLsizei, GLuint*);
+typedef void   glGenBuffers_Fn(GLsizei, GLuint*);
+typedef void   glBindBuffer_Fn(GLenum, GLuint);
+typedef void   glBufferData_Fn(GLenum, GLsizeiptr, const void*, GLenum);
+typedef void   glBindVertexArray_Fn(GLuint);
+typedef GLint  glGetUniformLocation_Fn(GLuint, const GLchar*);
+typedef void   glUniformMatrix4fv_Fn(GLint, GLsizei, GLboolean, const GLfloat*);
+typedef void   glUniform3fv_Fn(GLint, GLsizei, const GLfloat*);
+
+// NOTE: platform agnostic open gl api.
+typedef struct OpenGLAPI OpenGLAPI;
+struct OpenGLAPI {
+  glShaderSource_Fn*            glShaderSource;
+  glCompileShader_Fn*           glCompileShader;
+  glCreateProgram_Fn*           glCreateProgram;
+  glCreateShader_Fn*            glCreateShader;
+  glGetShaderiv_Fn*             glGetShaderiv;
+  glAttachShader_Fn*            glAttachShader;
+  glLinkProgram_Fn*             glLinkProgram;
+  glGetProgramiv_Fn*            glGetProgramiv;
+  glUseProgram_Fn*              glUseProgram;
+  glDeleteShader_Fn*            glDeleteShader;
+  glVertexAttribPointer_Fn*     glVertexAttribPointer;
+  glEnableVertexAttribArray_Fn* glEnableVertexAttribArray;
+  glGenVertexArrays_Fn*         glGenVertexArrays;
+  glGenBuffers_Fn*              glGenBuffers;
+  glBindBuffer_Fn*              glBindBuffer;
+  glBufferData_Fn*              glBufferData;
+  glBindVertexArray_Fn*         glBindVertexArray;
+  glGetUniformLocation_Fn*      glGetUniformLocation;
+  glUniformMatrix4fv_Fn*        glUniformMatrix4fv;
+  glUniform3fv_Fn*              glUniform3fv;
+};
+static OpenGLAPI _ogl;
+
+typedef struct Renderer Renderer;
+struct Renderer {
+  GLuint quad_vbo;
+  GLuint quad_vao;
+
+  GLuint rect_shader;
+  GLint rect_camera_uniform;
+  GLint rect_color_uniform;
+
+  M4 perspective;
+};
+static Renderer _renderer;
+
+static B32 RendererCompileShader(GLuint* shader, char* vertex_shader_source, char* fragment_shader_source) {
+  OpenGLAPI* g = &_ogl;
+  GLuint vertex_shader = 0;
+  GLuint fragment_shader = 0;
+  GLint result;
+  B32 success = false;
+
+  vertex_shader = g->glCreateShader(GL_VERTEX_SHADER);
+  g->glShaderSource(vertex_shader, 1, &vertex_shader_source, NULL);
+  g->glCompileShader(vertex_shader);
+  g->glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &result);
+  if (!result) {
+    LOG_ERROR("[VIDEO] Failed to compile vertex shader."); // TODO: print ogl error message.
+    goto renderer_compile_shader_exit;
+  }
+
+  fragment_shader = g->glCreateShader(GL_FRAGMENT_SHADER);
+  g->glShaderSource(fragment_shader, 1, &fragment_shader_source, NULL);
+  g->glCompileShader(fragment_shader);
+  g->glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &result);
+  if (!result) {
+    LOG_ERROR("[VIDEO] Failed to compile fragment shader.");
+    goto renderer_compile_shader_exit;
+  }
+
+  *shader = g->glCreateProgram();
+  g->glAttachShader(*shader, vertex_shader);
+  g->glAttachShader(*shader, fragment_shader);
+  g->glLinkProgram(*shader);
+  g->glGetShaderiv(*shader, GL_LINK_STATUS, &result);
+  if (!result) {
+    LOG_ERROR("[VIDEO] Failed to link shader program.");
+    goto renderer_compile_shader_exit;
+  }
+
+  success = true;
+
+renderer_compile_shader_exit:
+  if (vertex_shader != 0)   { g->glDeleteShader(vertex_shader);   }
+  if (fragment_shader != 0) { g->glDeleteShader(fragment_shader); }
+  return success;
+}
+
+// NOTE: Expected to be called after the open gl api has been initialized by the platform layer.
+static B32 RendererInit(void) {
+  Renderer* r = &_renderer;
+  OpenGLAPI* g = &_ogl;
+  B32 success = false; // TODO: error checking.
+
+  LOG_INFO("[VIDEO] Initializing OpenGL renderer.");
+
+  char* rect_vertex_shader_source =
+    "#version 330 core\n"
+    "uniform mat4 to_camera_transform;\n"
+    "layout (location = 0) in vec2 in_pos;\n"
+    "void main() {\n"
+    "  vec3 pos = vec3(in_pos.x, in_pos.y, 0.0);\n"
+    // "  vec3 pos = vec3(0.0, in_pos.x, in_pos.y);\n"
+    // "  gl_Position = vec4(pos, 1.0);\n"
+    "  gl_Position = to_camera_transform * vec4(pos, 1.0);\n"
+    "}\0";
+  char* rect_fragment_shader_source =
+    "#version 330 core\n"
+    "uniform vec3 color;\n"
+    "out vec4 frag_color;\n"
+    "void main() { \n"
+    "  frag_color = vec4(color, 1);\n"
+    "}\0";
+  DEBUG_ASSERT(RendererCompileShader(&r->rect_shader, rect_vertex_shader_source, rect_fragment_shader_source));
+  r->rect_camera_uniform = g->glGetUniformLocation(r->rect_shader, "to_camera_transform");
+  r->rect_color_uniform = g->glGetUniformLocation(r->rect_shader, "color");
+
+  // NOTE: quad vbo.
+  {
+    F32 quad_vertices[6][4] = {
+      {-0.5f, +0.5f, 0, 0 },
+      {-0.5f, -0.5f, 0, 1 },
+      {+0.5f, -0.5f, 1, 1 },
+      {-0.5f, +0.5f, 0, 0 },
+      {+0.5f, -0.5f, 1, 1 },
+      {+0.5f, +0.5f, 1, 0 },
+    };
+    g->glGenBuffers(1, &r->quad_vbo);
+    g->glBindBuffer(GL_ARRAY_BUFFER, r->quad_vbo);
+    g->glBufferData(GL_ARRAY_BUFFER, sizeof(F32) * 6 * 4, quad_vertices, GL_STATIC_DRAW);
+    g->glGenVertexArrays(1, &r->quad_vao);
+    g->glBindVertexArray(r->quad_vao);
+    g->glEnableVertexAttribArray(0);
+    g->glVertexAttribPointer(0,  2, GL_FLOAT, GL_FALSE, sizeof(F32) * 4, (void*)(sizeof(F32) * 0)); // points
+    g->glVertexAttribPointer(1,  2, GL_FLOAT, GL_FALSE, sizeof(F32) * 4, (void*)(sizeof(F32) * 2)); // uvs
+    g->glBindVertexArray(0);
+    g->glBindBuffer(GL_ARRAY_BUFFER, 0);
+  }
+
+  LOG_INFO("[VIDEO] OpenGL renderer initialized.");
+  success = true;
+
+  return success;
+}
+
+void DrawSetPerspective(M4 perspective) {
+  Renderer* r = &_renderer;
+  r->perspective = perspective;
+}
+
+void DrawRectangle(F32 x, F32 y, F32 UNUSED(width), F32 UNUSED(height), F32 red, F32 green, F32 blue) {
+  Renderer* r = &_renderer;
+  OpenGLAPI* g = &_ogl;
+
+  g->glUseProgram(r->rect_shader);
+
+  V3 pos;
+  pos.x = 0;
+  pos.y = 0;
+  pos.z = 0;
+  V3 target;
+  target.x = 0;
+  target.y = 0;
+  target.z = -1;
+  V3 up;
+  up.x = 0;
+  up.y = 1;
+  up.z = 0;
+  M4 world_to_view;
+  M4LookAt(&pos, &target, &up, &world_to_view);
+
+  M4 world_to_camera;
+  M4MultM4(&r->perspective, &world_to_view, &world_to_camera);
+
+  M4 rect_to_world;
+  MEMORY_ZERO_STRUCT(&rect_to_world);
+  rect_to_world.e[0][3] = 0.5;
+  rect_to_world.e[1][3] = 0;
+  rect_to_world.e[2][3] = 0;
+  rect_to_world.e[0][0] = 1;
+  rect_to_world.e[1][1] = 1;
+  rect_to_world.e[2][2] = 1;
+
+  M4 final;
+  M4MultM4(&world_to_camera, &rect_to_world, &final);
+  M4 final_transpose;
+  M4Transpose(&final, &final_transpose);
+  g->glUniformMatrix4fv(r->rect_camera_uniform, 1, GL_FALSE, (GLfloat*) &final_transpose);
+
+  V3 color;
+  color.r = red;
+  color.g = green;
+  color.b = blue;
+  g->glUniform3fv(r->rect_color_uniform, 1, (GLfloat*) &color);
+
+  g->glBindVertexArray(r->quad_vao);
+  glDrawArrays(GL_TRIANGLES, 0, 6);
+  g->glBindVertexArray(0);
+  g->glUseProgram(0);
+}
 
 #if defined(OS_WINDOWS)
 #define CDEFAULT_VIDEO_BACKEND_NAMESPACE WIN_
@@ -34,7 +289,6 @@ void WindowGetDims(S32* x, S32* y, S32* width, S32* height);
 #define WGL_CONTEXT_FLAGS_ARB                     0x2094
 #define WGL_CONTEXT_PROFILE_MASK_ARB              0x9126
 #define WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
-#define GL_FRAMEBUFFER_SRGB                       0x8DB9
 
 typedef HGLRC WINAPI wglCreateContextAttribsARB_Fn(HDC, HGLRC, const int*);
 
@@ -57,6 +311,8 @@ static LRESULT CALLBACK WIN_WindowCallback(HWND hwnd, UINT umsg, WPARAM wparam, 
 B32 WIN_WindowInit(WindowInitOpts opts) {
   WIN_Window* window = &_win_window;
   DEBUG_ASSERT(!window->initialized);
+
+  LOG_INFO("[VIDEO] Initializing window.");
 
   if (opts.x == 0)        { opts.x = CW_USEDEFAULT;      }
   if (opts.y == 0)        { opts.y = CW_USEDEFAULT;      }
@@ -158,11 +414,44 @@ B32 WIN_WindowInit(WindowInitOpts opts) {
   glClearColor(1.0f, 0.35f, 0.35f, 0);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+#define WIN_LINK_GL(fn) \
+    _ogl.fn = (fn##_Fn*) wglGetProcAddress(#fn); \
+    DEBUG_ASSERT(_ogl.fn != NULL)
+
+  WIN_LINK_GL(glShaderSource);
+  WIN_LINK_GL(glCompileShader);
+  WIN_LINK_GL(glCreateProgram);
+  WIN_LINK_GL(glCreateShader);
+  WIN_LINK_GL(glGetShaderiv);
+  WIN_LINK_GL(glAttachShader);
+  WIN_LINK_GL(glLinkProgram);
+  WIN_LINK_GL(glGetProgramiv);
+  WIN_LINK_GL(glUseProgram);
+  WIN_LINK_GL(glDeleteShader);
+  WIN_LINK_GL(glVertexAttribPointer);
+  WIN_LINK_GL(glEnableVertexAttribArray);
+  WIN_LINK_GL(glGenVertexArrays);
+  WIN_LINK_GL(glGenBuffers);
+  WIN_LINK_GL(glBindBuffer);
+  WIN_LINK_GL(glBufferData);
+  WIN_LINK_GL(glBindVertexArray);
+  WIN_LINK_GL(glGetUniformLocation);
+  WIN_LINK_GL(glUniformMatrix4fv);
+  WIN_LINK_GL(glUniform3fv);
+
+#undef WIN_LINK_GL
+
+  if (!RendererInit()) {
+    LOG_ERROR("[VIDEO] Failed to initialize renderer.");
+    goto win_window_create_exit;
+  }
+
   window->handle = handle;
   window->device_context = device_context;
   window->ogl_context = ogl_context;
   window->initialized = true;
 
+  LOG_INFO("[VIDEO] Window initialized successfully.");
   success = true;
 
 win_window_create_exit:
@@ -190,10 +479,10 @@ void WIN_WindowGetDims(S32* x, S32* y, S32* width, S32* height) {
   DEBUG_ASSERT(window->initialized);
   RECT dims;
   GetClientRect(window->handle, &dims);
-  *x = dims.left;
-  *y = dims.top;
-  *width = dims.right - dims.left;
-  *height = dims.bottom - dims.top;
+  if (x != NULL)      { *x = dims.left;                   }
+  if (y != NULL)      { *y = dims.top;                    }
+  if (width != NULL)  { *width = dims.right - dims.left;  }
+  if (height != NULL) { *height = dims.bottom - dims.top; }
 }
 
 #else

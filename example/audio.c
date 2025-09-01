@@ -10,8 +10,8 @@ int main(void) {
   ASSERT(AudioInit());
 
   S32 stb_err = 0;
-  // stb_vorbis* vorbis = stb_vorbis_open_filename("Z:\\cdefault\\example\\data\\test_audio.ogg", &stb_err, NULL);
-  stb_vorbis* vorbis = stb_vorbis_open_filename("/home/mccloskeybr/projects/cdefault/example/data/test_audio.ogg", &stb_err, NULL);
+  stb_vorbis* vorbis = stb_vorbis_open_filename("Z:\\cdefault\\example\\data\\test_audio.ogg", &stb_err, NULL);
+  // stb_vorbis* vorbis = stb_vorbis_open_filename("/home/mccloskeybr/projects/cdefault/example/data/test_audio.ogg", &stb_err, NULL);
   ASSERT(stb_err == 0);
   stb_vorbis_info vorbis_info = stb_vorbis_get_info(vorbis);
 

@@ -215,7 +215,7 @@ void M4Transpose(const M4* x, M4* out);
 void M4Invert(const M4* x, M4* out);
 void M4Perspective(F32 fov_y_rad, F32 aspect_ratio, F32 near_plane, F32 far_plane, M4* out);
 void M4Orthographic(F32 left, F32 right, F32 bottom, F32 top, F32 near_plane, F32 far_plane, M4* out);
-void LookAt(const V3* eye, const V3* target, const V3* up, M4* out);
+void M4LookAt(const V3* eye, const V3* target, const V3* up, M4* out);
 
 #endif // CDEFAULT_MATH_H_
 
@@ -806,7 +806,7 @@ void M4Orthographic(F32 left, F32 right, F32 bottom, F32 top, F32 near_plane, F3
   };
 }
 
-void LookAt(const V3* eye, const V3* target, const V3* up, M4* out) {
+void M4LookAt(const V3* eye, const V3* target, const V3* up, M4* out) {
   V3 x, y, z;
   V3SubV3(eye, target, &z);
   V3Normalize(&z, &z);

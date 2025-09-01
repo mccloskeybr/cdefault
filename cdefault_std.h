@@ -510,6 +510,9 @@ B32 CharIsDigit(U8 c, U32 base);
 U8 CharToLower(U8 c);
 U8 CharToUpper(U8 c);
 
+U32 CStringSize(U8* str);
+void CStringCopy(Arena* arena, U8** dest, U8* src);
+
 String8 String8Create(U8* str, U64 size);
 String8 String8CreateRange(U8* str, U8* one_past_last);
 String8 _String8CreateCString(U8* c_str);
@@ -977,6 +980,18 @@ U8 CharToLower(U8 c) {
 U8 CharToUpper(U8 c) {
   if (CharIsLower(c)) { c += (U8)('A' - 'a'); }
   return c;
+}
+
+U32 CStringSize(U8* str) {
+  U8* end = str;
+  while (end != '\0') { end++; }
+  return (U32) (end - str);
+}
+
+void CStringCopy(Arena* arena, U8** dest, U8* src) {
+  U32 size_with_null_terminator = CStringSize(src) + 1;
+  *dest = ARENA_PUSH_ARRAY(arena, U8, size_with_null_terminator);
+  MEMORY_COPY(*dest, src, size_with_null_terminator * sizeof(U8));
 }
 
 String8 String8Create(U8* str, U64 size) {
