@@ -14,15 +14,30 @@ int main(void) {
   opts.clear_rgb = 0x6495ed;
   ASSERT(WindowInit(opts));
 
-  WindowFullscreen(false);
-  WindowFullscreen(false);
+  V3 red = {1, 0, 0};
+  V3 green = {0, 1, 0};
+  V3 blue = {0, 0, 1};
 
-  float x = 0.0f;
+  V2 size = {10, 10};
+
+  V2 p1 = { 50, 100 };
+  V2 p2 = {500, 100};
+  V2 p3 = { 75, 500 };
+
   while (true) {
-    // DrawCircle(800, 300, 100, 0, 0, 1);
-    // DrawLine(300, 300, 500, 600, 5, 1, 0, 0);
-    DrawRoundedRectangleRot(300, 300, 500, 500, 100, x, 0, 0, 1);
-    x += 0.0001f;
+    DrawRectangleV(p1, size, green);
+    // DrawRectangleV(p2, size, green);
+    // DrawRectangleV(p3, size, green);
+
+    // DrawLineV(p1, p2, 10, red);
+    // DrawLineV(p2, p3, 10, red);
+    // DrawLineV(p3, p1, 10, red);
+
+    // DrawTriangleV(p1, p2, p3, blue);
+
+    V3 start;
+    RendererCastRay(p1.x, p1.y, &start, NULL);
+    DrawRectangleV((V2) {p1.x, p1.y}, (V2) {5, 5}, blue);
 
     WindowSwapBuffers();
     WindowFlushEvents();

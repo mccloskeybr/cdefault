@@ -5,11 +5,10 @@
 #include "cdefault_math.h"
 
 // TODO:
-// get fps, set target fps
 // vsync
 // shader abstraction?
-// mouse picking / mouse <> screen interop
-// draw frames not just solid shapes
+// draw frames not just solid shapes?
+// draw more shapes
 // softer edges
 
 // NOTE: A window must exist before any renderer / draw functions can be called.
@@ -29,7 +28,7 @@ void WindowFlushEvents();
 void WindowSwapBuffers();
 void WindowGetDims(S32* x, S32* y, S32* width, S32* height);
 void WindowSetTitle(char* title);
-void WindowSetSize(S32 width, S32 height); // NOTE: Does not update the resolution, may need to call RendererSetProjection separately.
+void WindowSetSize(S32 width, S32 height); // NOTE: Does not update resolution, may need to call RendererSetProjection separately.
 void WindowShowCursor(B32 enable);
 void WindowFullscreen(B32 enable);
 
@@ -40,6 +39,7 @@ void RendererEnableDepthTest(void);
 void RendererDisableDepthTest(void);
 void RendererSetClearColor(F32 r, F32 g, F32 b, F32 a);
 void RendererSetClearColorV(V4 color);
+void RendererCastRay(F32 x, F32 y, V3* start, V3* dir);
 
 void DrawLine(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32 red, F32 green, F32 blue);
 void DrawLineV(V2 start, V2 end, F32 thickness, V3 color);
@@ -53,6 +53,8 @@ void DrawRoundedRectangleRot(F32 center_x, F32 center_y, F32 width, F32 height, 
 void DrawRoundedRectangleRotV(V2 center, V2 size, F32 radius, F32 angle_rad, V3 color);
 void DrawCircle(F32 center_x, F32 center_y, F32 radius, F32 red, F32 green, F32 blue);
 void DrawCircleV(V2 center, F32 radius, V3 color);
+void DrawTriangle(F32 x1, F32 y1, F32 x2, F32 y2, F32 x3, F32 y3, F32 red, F32 green, F32 blue); // NOTE: must respect CCW winding order.
+void DrawTriangleV(V2 p1, V2 p2, V2 p3, V3 color);
 
 void RGBToF32s(U32 hex, F32* r, F32* g, F32* b);
 void RGBToU32s(U32 hex, U32* r, U32* g, U32* b);
@@ -121,6 +123,8 @@ typedef void   glUniform2fv_Fn(GLint, GLsizei, const GLfloat*);
 typedef void   glUniform1f_Fn(GLint, GLfloat);
 typedef void   glScissor_Fn(GLint, GLint, GLsizei, GLsizei);
 typedef void   glViewport_Fn(GLint, GLint, GLsizei, GLsizei);
+typedef void   glDeleteBuffers_Fn(GLsizei, const GLuint*);
+typedef void   glDeleteVertexArrays_Fn(GLsizei, const GLuint*);
 
 // NOTE: platform agnostic open gl api.
 typedef struct OpenGLAPI OpenGLAPI;
@@ -149,6 +153,8 @@ struct OpenGLAPI {
   glUniform1f_Fn*               glUniform1f;
   glScissor_Fn*                 glScissor;
   glViewport_Fn*                glViewport;
+  glDeleteBuffers_Fn*           glDeleteBuffers;
+  glDeleteVertexArrays_Fn*      glDeleteVertexArrays;
 };
 static OpenGLAPI _ogl;
 
@@ -162,6 +168,10 @@ struct Renderer {
   GLint rect_color_uniform;
   GLint rect_size_uniform;
   GLint rect_radius_uniform;
+
+  GLuint tri_shader;
+  GLint tri_camera_uniform;
+  GLint tri_color_uniform;
 
   M4 world_to_camera;
 };
@@ -248,6 +258,24 @@ static B32 RendererInit(void) {
   r->rect_size_uniform = g->glGetUniformLocation(r->rect_shader, "size");
   r->rect_radius_uniform = g->glGetUniformLocation(r->rect_shader, "radius");
 
+  char* tri_vertex_shader_source =
+    "#version 330 core\n"
+    "uniform mat4 to_camera_transform;\n"
+    "layout (location = 0) in vec2 in_pos;\n"
+    "void main() {\n"
+    "  gl_Position = to_camera_transform * vec4(in_pos, 0.0, 1.0);\n"
+    "}\0";
+  char* tri_fragment_shader_source =
+    "#version 330 core\n"
+    "uniform vec3 color;\n"
+    "out vec4 frag_color;\n"
+    "void main() { \n"
+    "  frag_color = vec4(color, 1);\n"
+    "}\0";
+  DEBUG_ASSERT(RendererCompileShader(&r->tri_shader, tri_vertex_shader_source, tri_fragment_shader_source));
+  r->tri_camera_uniform = g->glGetUniformLocation(r->tri_shader, "to_camera_transform");
+  r->tri_color_uniform = g->glGetUniformLocation(r->tri_shader, "color");
+
   F32 quad_vertices[6][4] = {
     {-0.5f, +0.5f, 0, 0 },
     {-0.5f, -0.5f, 0, 1 },
@@ -282,7 +310,7 @@ static B32 RendererInit(void) {
 
 void RendererSetProjection(M4 projection) {
   Renderer* r = &_renderer;
-  V3 pos    = { 0, 0, 1 }; // NOTE: seat Z back so items can exist at z = 0.
+  V3 pos    = { 0, 0, 1 }; // NOTE: seat camera Z back so items can exist at z = 0.
   V3 target = V3_Z_NEG;
   V3 up     = V3_Y_POS;
   M4 camera;
@@ -316,6 +344,36 @@ void RendererSetClearColorV(V4 color) {
   RendererSetClearColor(color.r, color.g, color.b, color.a);
 }
 
+static V3 UnprojectPoint(V3 p, M4* inv_vp) {
+  V4 v = { p.x, p.y, p.z, 1.0f };
+  V4 v2;
+  M4MultV4(inv_vp, &v, &v2);
+  V4DivF32(&v2, v2.w, &v2);
+  return (V3) { v2.x, v2.y, v2.z };
+}
+
+void RendererCastRay(F32 x, F32 y, V3* start, V3* dir) {
+  Renderer* r = &_renderer;
+
+  S32 width, height;
+  WindowGetDims(NULL, NULL, &width, &height);
+  F32 x2 = (x / (((F32) width) / 2.0f)) - 1.0f;
+  F32 y2 = (y / (((F32) height) / 2.0f)) - 1.0f;
+  x2 = CLAMP(-1, x2, 1);
+  y2 = CLAMP(-1, y2, 1);
+
+  M4 world_to_camera_inv;
+  M4Invert(&r->world_to_camera, &world_to_camera_inv);
+  V3 n = UnprojectPoint((V3) { x2, y2, -1}, &world_to_camera_inv);
+  V3 f = UnprojectPoint((V3) { x2, y2, +1}, &world_to_camera_inv);
+  V3 delta;
+  V3SubV3(&f, &n, &delta);
+  V3Normalize(&delta, &delta);
+
+  if (start != NULL) { *start = n; }
+  if (dir != NULL) { *dir = delta; }
+}
+
 void DrawLine(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32 red, F32 green, F32 blue) {
   V2 start = { start_x, start_y };
   V2 end   = { end_x, end_y };
@@ -323,7 +381,7 @@ void DrawLine(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32
   V2SubV2(&end, &start, &delta);
   F32 theta = F32ArcTan2(delta.y, delta.x);
   F32 width = V2Length(&delta);
-  DrawRoundedRectangleRot(start.x, start.y, width, thickness, thickness / 2.0f, theta, red, green, blue);
+  DrawRoundedRectangleRot(start.x + delta.x / 2, start.y + delta.y / 2, width, thickness, thickness / 2.0f, theta, red, green, blue);
 }
 
 void DrawLineV(V2 start, V2 end, F32 thickness, V3 color) {
@@ -389,6 +447,55 @@ void DrawCircle(F32 center_x, F32 center_y, F32 radius, F32 red, F32 green, F32 
 
 void DrawCircleV(V2 center, F32 radius, V3 color) {
   DrawCircle(center.x, center.y, radius, color.r, color.g, color.b);
+}
+
+void DrawTriangle(F32 x1, F32 y1, F32 x2, F32 y2, F32 x3, F32 y3, F32 red, F32 green, F32 blue) {
+  // TODO: i assume there's a better way to do this without resorting to compatibility mode?
+  Renderer* r = &_renderer;
+  OpenGLAPI* g = &_ogl;
+
+  F32 x_min = MIN(x1, MIN(x2, x3));
+  F32 x_max = MAX(x1, MAX(x2, x3));
+  F32 y_min = MIN(y1, MIN(y2, y3));
+  F32 y_max = MAX(y1, MAX(y2, y3));
+  F32 x_scale = x_max - x_min;
+  F32 y_scale = y_max - y_min;
+  F32 tri_vertices[3][2] = {
+    { ((x1 - x_min) / x_scale) - 0.5f, ((y1 - y_min) / y_scale) - 0.5f },
+    { ((x2 - x_min) / x_scale) - 0.5f, ((y2 - y_min) / y_scale) - 0.5f },
+    { ((x3 - x_min) / x_scale) - 0.5f, ((y3 - y_min) / y_scale) - 0.5f },
+  };
+  GLuint tri_vbo, tri_vao;
+  g->glGenBuffers(1, &tri_vbo);
+  g->glBindBuffer(GL_ARRAY_BUFFER, tri_vbo);
+  g->glBufferData(GL_ARRAY_BUFFER, sizeof(F32) * 3 * 2, tri_vertices, GL_STATIC_DRAW);
+  g->glGenVertexArrays(1, &tri_vao);
+  g->glBindVertexArray(tri_vao);
+  g->glEnableVertexAttribArray(0);
+  g->glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(F32) * 2, (void*)(sizeof(F32) * 0));
+
+  V3 color = { red, green, blue };
+  V3 pos = { (x_min + x_max) / 2, (y_min + y_max) / 2.0f, 0 };
+  V3 scale = { x_scale, y_scale, 1 };
+  V4 rot = V4_QUAT_IDENT;
+  M4 tri_to_world, tri_to_camera, tri_to_camera_t;
+  M4FromTransform(&pos, &rot, &scale, &tri_to_world);
+  M4MultM4(&r->world_to_camera, &tri_to_world, &tri_to_camera);
+  M4Transpose(&tri_to_camera, &tri_to_camera_t);
+
+  g->glUseProgram(r->tri_shader);
+  g->glUniformMatrix4fv(r->tri_camera_uniform, 1, GL_FALSE, (GLfloat*) &tri_to_camera_t);
+  g->glUniform3fv(r->tri_color_uniform, 1, (GLfloat*) &color);
+  glDrawArrays(GL_TRIANGLES, 0, 3);
+  g->glBindVertexArray(0);
+  g->glUseProgram(0);
+
+  g->glDeleteBuffers(1, &tri_vbo);
+  g->glDeleteVertexArrays(1, &tri_vao);
+}
+
+void DrawTriangleV(V2 p1, V2 p2, V2 p3, V3 color) {
+  DrawTriangle(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, color.r, color.g, color.b);
 }
 
 void RGBToF32s(U32 hex, F32* r, F32* g, F32* b) {
@@ -470,11 +577,11 @@ B32 WIN_WindowInit(WindowInitOpts opts) {
 
   LOG_INFO("[VIDEO] Initializing window.");
 
-  if (opts.x == 0)        { opts.x = CW_USEDEFAULT;      }
-  if (opts.y == 0)        { opts.y = CW_USEDEFAULT;      }
-  if (opts.width == 0)    { opts.width = CW_USEDEFAULT;  }
-  if (opts.height == 0)   { opts.height = CW_USEDEFAULT; }
-  if (opts.title == NULL) { opts.title = "title";        }
+  if (opts.x == 0)          { opts.x = CW_USEDEFAULT;      }
+  if (opts.y == 0)          { opts.y = CW_USEDEFAULT;      }
+  if (opts.width == 0)      { opts.width = CW_USEDEFAULT;  }
+  if (opts.height == 0)     { opts.height = CW_USEDEFAULT; }
+  if (opts.title == NULL)   { opts.title = "title";        }
 
   B32 success = false;
 
@@ -562,6 +669,7 @@ B32 WIN_WindowInit(WindowInitOpts opts) {
   }
 
   // TODO: verify availability.
+  // TODO: move to renderer init.
   glEnable(GL_FRAMEBUFFER_SRGB);
   glEnable(GL_CULL_FACE);
   glEnable(GL_TEXTURE_2D);
@@ -601,14 +709,12 @@ B32 WIN_WindowInit(WindowInitOpts opts) {
   WIN_LINK_GL(glUniform3fv);
   WIN_LINK_GL(glUniform2fv);
   WIN_LINK_GL(glUniform1f);
+  WIN_LINK_GL(glDeleteBuffers);
+  WIN_LINK_GL(glDeleteVertexArrays);
   _ogl.glScissor = glScissor;
   _ogl.glViewport = glViewport;
 
 #undef WIN_LINK_GL
-
-  window->handle = handle;
-  window->device_context = device_context;
-  window->ogl_context = ogl_context;
 
   WINDOWPLACEMENT window_placement;
   MEMORY_ZERO_STRUCT(&window_placement);
@@ -616,7 +722,9 @@ B32 WIN_WindowInit(WindowInitOpts opts) {
   GetWindowPlacement(window->handle, &window_placement);
   window->width = window_placement.rcNormalPosition.right - window_placement.rcNormalPosition.left;
   window->height = window_placement.rcNormalPosition.bottom - window_placement.rcNormalPosition.top;
-
+  window->handle = handle;
+  window->device_context = device_context;
+  window->ogl_context = ogl_context;
   window->initialized = true;
 
   if (!RendererInit()) {
