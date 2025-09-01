@@ -8,9 +8,14 @@
 int main(void) {
   WindowInitOpts opts;
   MEMORY_ZERO_STRUCT(&opts);
+  opts.width = 1920;
+  opts.height = 1080;
   opts.title = "video example";
   opts.clear_rgb = 0x6495ed;
   ASSERT(WindowInit(opts));
+
+  WindowFullscreen(false);
+  WindowFullscreen(false);
 
   float x = 0.0f;
   while (true) {

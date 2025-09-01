@@ -5,9 +5,6 @@
 #include "cdefault_math.h"
 
 // TODO:
-// show / hide cursor
-// fullscreen
-// change resolution
 // get fps, set target fps
 // vsync
 // shader abstraction?
@@ -32,7 +29,9 @@ void WindowFlushEvents();
 void WindowSwapBuffers();
 void WindowGetDims(S32* x, S32* y, S32* width, S32* height);
 void WindowSetTitle(char* title);
+void WindowSetSize(S32 width, S32 height); // NOTE: Does not update the resolution, may need to call RendererSetProjection separately.
 void WindowShowCursor(B32 enable);
+void WindowFullscreen(B32 enable);
 
 void RendererSetProjection(M4 projection);
 void RendererEnableScissorTest(S32 x, S32 y, S32 width, S32 height);
@@ -121,6 +120,7 @@ typedef void   glUniform3fv_Fn(GLint, GLsizei, const GLfloat*);
 typedef void   glUniform2fv_Fn(GLint, GLsizei, const GLfloat*);
 typedef void   glUniform1f_Fn(GLint, GLfloat);
 typedef void   glScissor_Fn(GLint, GLint, GLsizei, GLsizei);
+typedef void   glViewport_Fn(GLint, GLint, GLsizei, GLsizei);
 
 // NOTE: platform agnostic open gl api.
 typedef struct OpenGLAPI OpenGLAPI;
@@ -148,6 +148,7 @@ struct OpenGLAPI {
   glUniform2fv_Fn*              glUniform2fv;
   glUniform1f_Fn*               glUniform1f;
   glScissor_Fn*                 glScissor;
+  glViewport_Fn*                glViewport;
 };
 static OpenGLAPI _ogl;
 
@@ -427,6 +428,9 @@ U32 RGBFromU32s(U32 r, U32 g, U32 b) {
 #define WGL_CONTEXT_CORE_PROFILE_BIT_ARB          0x00000001
 #define WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
 
+// NOTE: don't allow window resizing.
+#define WINDOW_STYLE WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_THICKFRAME
+
 typedef HGLRC WINAPI wglCreateContextAttribsARB_Fn(HDC, HGLRC, const int*);
 
 typedef struct WIN_Window WIN_Window;
@@ -435,6 +439,8 @@ struct WIN_Window {
   HWND handle;
   HDC device_context;
   HGLRC ogl_context;
+  S32 width;
+  S32 height;
 };
 static WIN_Window _win_window;
 
@@ -442,7 +448,20 @@ static WIN_Window _win_window;
 
 // TODO: custom on close callback?
 static LRESULT CALLBACK WIN_WindowCallback(HWND hwnd, UINT umsg, WPARAM wparam, LPARAM lparam) {
-  return DefWindowProc(hwnd, umsg, wparam, lparam);
+  OpenGLAPI* g = &_ogl;
+  switch (umsg) {
+    case WM_WINDOWPOSCHANGED: {
+      if (g->glViewport != NULL) {
+        S32 width, height;
+        WindowGetDims(NULL, NULL, &width, &height);
+        g->glViewport(0, 0, width, height);
+      }
+      return DefWindowProc(hwnd, umsg, wparam, lparam);
+    } break;
+    default: {
+      return DefWindowProc(hwnd, umsg, wparam, lparam);
+    } break;
+  }
 }
 
 B32 WIN_WindowInit(WindowInitOpts opts) {
@@ -472,7 +491,7 @@ B32 WIN_WindowInit(WindowInitOpts opts) {
   RegisterClass(&window_class);
 
   DWORD create_window_flags = 0;
-  create_window_flags |= WS_OVERLAPPEDWINDOW;
+  create_window_flags |= WINDOW_STYLE;
   create_window_flags |= WS_VISIBLE;
 
   HWND handle = CreateWindowExA(
@@ -555,6 +574,7 @@ B32 WIN_WindowInit(WindowInitOpts opts) {
   glClearColor(clear_r, clear_g, clear_b, 0);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+  // TODO: cover all ogl functions.
 #define WIN_LINK_GL(fn) \
     _ogl.fn = (fn##_Fn*) wglGetProcAddress(#fn); \
     DEBUG_ASSERT(_ogl.fn != NULL)
@@ -582,12 +602,21 @@ B32 WIN_WindowInit(WindowInitOpts opts) {
   WIN_LINK_GL(glUniform2fv);
   WIN_LINK_GL(glUniform1f);
   _ogl.glScissor = glScissor;
+  _ogl.glViewport = glViewport;
 
 #undef WIN_LINK_GL
 
   window->handle = handle;
   window->device_context = device_context;
   window->ogl_context = ogl_context;
+
+  WINDOWPLACEMENT window_placement;
+  MEMORY_ZERO_STRUCT(&window_placement);
+  window_placement.length = sizeof(window_placement);
+  GetWindowPlacement(window->handle, &window_placement);
+  window->width = window_placement.rcNormalPosition.right - window_placement.rcNormalPosition.left;
+  window->height = window_placement.rcNormalPosition.bottom - window_placement.rcNormalPosition.top;
+
   window->initialized = true;
 
   if (!RendererInit()) {
@@ -648,8 +677,50 @@ void WIN_WindowSetTitle(char* title) {
   SetWindowTextA(window->handle, title);
 }
 
+void WIN_WindowSetSize(S32 width, S32 height) {
+  WIN_Window* window = &_win_window;
+  DEBUG_ASSERT(window->initialized);
+
+  window->width = width;
+  window->height = height;
+
+  WINDOWPLACEMENT window_placement;
+  MEMORY_ZERO_STRUCT(&window_placement);
+  window_placement.length = sizeof(window_placement);
+  GetWindowPlacement(window->handle, &window_placement);
+  window_placement.rcNormalPosition.right = window_placement.rcNormalPosition.left + window->width;
+  window_placement.rcNormalPosition.bottom = window_placement.rcNormalPosition.top + window->height;
+  SetWindowPlacement(window->handle, &window_placement);
+}
+
 void WIN_WindowShowCursor(B32 enable) {
   ShowCursor(enable);
+}
+
+// https://devblogs.microsoft.com/oldnewthing/20100412-00/?p=14353
+void WIN_WindowFullscreen(B32 enable) {
+  WIN_Window* window = &_win_window;
+  DEBUG_ASSERT(window->initialized);
+
+  DWORD style = GetWindowLong(window->handle, GWL_STYLE);
+  if (enable) {
+    MONITORINFO monitor_info;
+    MEMORY_ZERO_STRUCT(&monitor_info);
+    monitor_info.cbSize = sizeof(monitor_info);
+    if (GetMonitorInfo(MonitorFromWindow(window->handle, MONITOR_DEFAULTTOPRIMARY), &monitor_info)) {
+      SetWindowLong(window->handle, GWL_STYLE, style & ~WINDOW_STYLE);
+      SetWindowPos(window->handle, HWND_TOP,
+                   monitor_info.rcMonitor.left, monitor_info.rcMonitor.top,
+                   monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
+                   monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
+                   SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
+  } else {
+    WIN_WindowSetSize(window->width, window->height);
+    SetWindowLong(window->handle, GWL_STYLE, style | WINDOW_STYLE);
+    SetWindowPos(window->handle, NULL, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+  }
 }
 
 #else
@@ -683,8 +754,16 @@ void WindowSetTitle(char* title) {
   CDEFAULT_VIDEO_BACKEND_FN(WindowSetTitle(title));
 }
 
+void WindowSetSize(S32 width, S32 height) {
+  CDEFAULT_VIDEO_BACKEND_FN(WindowSetSize(width, height));
+}
+
 void WindowShowCursor(B32 enable) {
   CDEFAULT_VIDEO_BACKEND_FN(WindowShowCursor(enable));
+}
+
+void WindowFullscreen(B32 enable) {
+  CDEFAULT_VIDEO_BACKEND_FN(WindowFullscreen(enable));
 }
 
 #endif // CDEFAULT_VIDEO_IMPLEMENTATION
