@@ -193,6 +193,7 @@ union M3 {
 void M3MultM3(const M3* x, const M3* y, M3* out);
 void M3MultV3(const M3* x, const V3* y, V3* out);
 void M3Transpose(const M3* x, M3* out);
+void M3FromQuaternion(V4* q, M3* out);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: M4
@@ -216,6 +217,7 @@ void M4Invert(const M4* x, M4* out);
 void M4Perspective(F32 fov_y_rad, F32 aspect_ratio, F32 near_plane, F32 far_plane, M4* out);
 void M4Orthographic(F32 left, F32 right, F32 bottom, F32 top, F32 near_plane, F32 far_plane, M4* out);
 void M4LookAt(const V3* eye, const V3* target, const V3* up, M4* out);
+void M4FromTransform(V3* pos, V4* rot, V3* scale, M4* out);
 
 #endif // CDEFAULT_MATH_H_
 
@@ -713,6 +715,19 @@ void M3Transpose(const M3* x, M3* out) {
   }
 }
 
+// https://automaticaddison.com/how-to-convert-a-quaternion-to-a-rotation-matrix/
+void M3FromQuaternion(V4* q, M3* out) {
+  out->e[0][0] = 2.0f*(q->w*q->w + q->x*q->x) - 1.0f;
+  out->e[0][1] = 2.0f*(q->x*q->y - q->w*q->z);
+  out->e[0][2] = 2.0f*(q->x*q->z + q->w*q->y);
+  out->e[1][0] = 2.0f*(q->x*q->y + q->w*q->z);
+  out->e[1][1] = 2.0f*(q->w*q->w + q->y*q->y) - 1.0f;
+  out->e[1][2] = 2.0f*(q->y*q->z - q->w*q->x);
+  out->e[2][0] = 2.0f*(q->x*q->z - q->w*q->y);
+  out->e[2][1] = 2.0f*(q->y*q->z + q->w*q->x);
+  out->e[2][2] = 2.0f*(q->w*q->w + q->z*q->z) - 1.0f;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: M4 implementation
 ///////////////////////////////////////////////////////////////////////////////
@@ -827,6 +842,37 @@ void M4LookAt(const V3* eye, const V3* target, const V3* up, M4* out) {
     z.x, z.y, z.z, c,
       0,   0,   0, 1,
   };
+}
+
+// TODO: faster way to do this?
+void M4FromTransform(V3* pos, V4* rot, V3* scale, M4* out) {
+  M3 scale_m;
+  MEMORY_ZERO_STRUCT(&scale_m);
+  scale_m.e[0][0] = scale->x;
+  scale_m.e[1][1] = scale->y;
+  scale_m.e[2][2] = scale->z;
+
+  M3 rot_m;
+  M3FromQuaternion(rot, &rot_m);
+
+  M3 rot_scale;
+  M3MultM3(&rot_m, &scale_m, &rot_scale);
+
+  MEMORY_ZERO_STRUCT(out);
+  out->e[0][0] = rot_scale.e[0][0];
+  out->e[0][1] = rot_scale.e[0][1];
+  out->e[0][2] = rot_scale.e[0][2];
+  out->e[1][0] = rot_scale.e[1][0];
+  out->e[1][1] = rot_scale.e[1][1];
+  out->e[1][2] = rot_scale.e[1][2];
+  out->e[2][0] = rot_scale.e[2][0];
+  out->e[2][1] = rot_scale.e[2][1];
+  out->e[2][2] = rot_scale.e[2][2];
+
+  out->e[0][3] = pos->x;
+  out->e[1][3] = pos->y;
+  out->e[2][3] = pos->z;
+  out->e[3][3] = 1;
 }
 
 #endif // CDEFAULT_MATH_IMPLEMENTATION

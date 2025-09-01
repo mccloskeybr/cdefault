@@ -12,10 +12,15 @@ int main(void) {
   opts.clear_rgb = 0x6495ed;
   ASSERT(WindowInit(opts));
 
+  float x = 0.0f;
   while (true) {
-    DrawRectangle(300, 300, 500, 500, 0, 0, 1);
-    DrawCircle(800, 300, 100, 0, 0, 1);
+    // DrawCircle(800, 300, 100, 0, 0, 1);
+    // DrawLine(300, 300, 500, 600, 5, 1, 0, 0);
+    DrawRoundedRectangleRot(300, 300, 500, 500, 100, x, 0, 0, 1);
+    x += 0.0001f;
+
     WindowSwapBuffers();
+    WindowFlushEvents();
   }
 
   WindowDeinit();

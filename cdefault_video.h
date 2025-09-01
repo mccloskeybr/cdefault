@@ -4,6 +4,17 @@
 #include "cdefault_std.h"
 #include "cdefault_math.h"
 
+// TODO:
+// show / hide cursor
+// fullscreen
+// change resolution
+// get fps, set target fps
+// vsync
+// shader abstraction?
+// mouse picking / mouse <> screen interop
+// draw frames not just solid shapes
+// softer edges
+
 // NOTE: A window must exist before any renderer / draw functions can be called.
 // NOTE: Sensible defaults are chosen if field values are 0.
 typedef struct WindowInitOpts WindowInitOpts;
@@ -17,17 +28,30 @@ struct WindowInitOpts {
 };
 B32  WindowInit(WindowInitOpts opts);
 void WindowDeinit();
+void WindowFlushEvents();
 void WindowSwapBuffers();
 void WindowGetDims(S32* x, S32* y, S32* width, S32* height);
+void WindowSetTitle(char* title);
+void WindowShowCursor(B32 enable);
 
 void RendererSetProjection(M4 projection);
-void RendererScissorEnable(S32 x, S32 y, S32 width, S32 height);
-void RendererScissorDisable(void);
+void RendererEnableScissorTest(S32 x, S32 y, S32 width, S32 height);
+void RendererDisableScissorTest(void);
+void RendererEnableDepthTest(void);
+void RendererDisableDepthTest(void);
+void RendererSetClearColor(F32 r, F32 g, F32 b, F32 a);
+void RendererSetClearColorV(V4 color);
 
+void DrawLine(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32 red, F32 green, F32 blue);
+void DrawLineV(V2 start, V2 end, F32 thickness, V3 color);
 void DrawRectangle(F32 center_x, F32 center_y, F32 width, F32 height, F32 red, F32 green, F32 blue);
 void DrawRectangleV(V2 center, V2 size, V3 color);
+void DrawRectangleRot(F32 center_x, F32 center_y, F32 width, F32 height, F32 andle_rad, F32 red, F32 green, F32 blue);
+void DrawRectangleRotV(V2 center, V2 size, F32 angle_rad, V3 color);
 void DrawRoundedRectangle(F32 center_x, F32 center_y, F32 width, F32 height, F32 radius, F32 red, F32 green, F32 blue);
 void DrawRoundedRectangleV(V2 center, V2 size, F32 radius, V3 color);
+void DrawRoundedRectangleRot(F32 center_x, F32 center_y, F32 width, F32 height, F32 radius, F32 angle_rad, F32 red, F32 green, F32 blue);
+void DrawRoundedRectangleRotV(V2 center, V2 size, F32 radius, F32 angle_rad, V3 color);
 void DrawCircle(F32 center_x, F32 center_y, F32 radius, F32 red, F32 green, F32 blue);
 void DrawCircleV(V2 center, F32 radius, V3 color);
 
@@ -265,45 +289,44 @@ void RendererSetProjection(M4 projection) {
   M4MultM4(&projection, &camera, &r->world_to_camera);
 }
 
-void RendererScissorEnable(S32 x, S32 y, S32 width, S32 height) {
+void RendererEnableScissorTest(S32 x, S32 y, S32 width, S32 height) {
   OpenGLAPI* g = &_ogl;
   glEnable(GL_SCISSOR_TEST);
   g->glScissor(x, y, width, height);
 }
 
-void RendererScissorDisable(void) {
+void RendererDisableScissorTest(void) {
   glDisable(GL_SCISSOR_TEST);
 }
 
-void DrawRoundedRectangle(F32 center_x, F32 center_y, F32 width, F32 height, F32 radius, F32 red, F32 green, F32 blue) {
-  Renderer* r = &_renderer;
-  OpenGLAPI* g = &_ogl;
-
-  g->glUseProgram(r->rect_shader);
-
-  V3 color = { red, green, blue };
-  V2 size = { width, height };
-  M4 rect_to_world = M4_IDENTITY;
-  rect_to_world.e[0][3] = center_x;
-  rect_to_world.e[1][3] = center_y;
-  rect_to_world.e[0][0] = width;
-  rect_to_world.e[1][1] = height;
-  M4 rect_to_camera, rect_to_camera_t;
-  M4MultM4(&r->world_to_camera, &rect_to_world, &rect_to_camera);
-  M4Transpose(&rect_to_camera, &rect_to_camera_t);
-  g->glUniformMatrix4fv(r->rect_camera_uniform, 1, GL_FALSE, (GLfloat*) &rect_to_camera_t);
-  g->glUniform3fv(r->rect_color_uniform, 1, (GLfloat*) &color);
-  g->glUniform2fv(r->rect_size_uniform, 1, (GLfloat*) &size);
-  g->glUniform1f(r->rect_radius_uniform, radius);
-
-  g->glBindVertexArray(r->quad_vao);
-  glDrawArrays(GL_TRIANGLES, 0, 6);
-  g->glBindVertexArray(0);
-  g->glUseProgram(0);
+void RendererEnableDepthTest(void) {
+  glEnable(GL_DEPTH_TEST);
 }
 
-void DrawRoundedRectangleV(V2 center, V2 size, F32 radius, V3 color) {
-  DrawRoundedRectangle(center.x, center.y, size.x, size.y, radius, color.r, color.g, color.b);
+void RendererDisableDepthTest(void) {
+  glDisable(GL_DEPTH_TEST);
+}
+
+void RendererSetClearColor(F32 r, F32 g, F32 b, F32 a) {
+  glClearColor(r, g, b, a);
+}
+
+void RendererSetClearColorV(V4 color) {
+  RendererSetClearColor(color.r, color.g, color.b, color.a);
+}
+
+void DrawLine(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32 red, F32 green, F32 blue) {
+  V2 start = { start_x, start_y };
+  V2 end   = { end_x, end_y };
+  V2 delta;
+  V2SubV2(&end, &start, &delta);
+  F32 theta = F32ArcTan2(delta.y, delta.x);
+  F32 width = V2Length(&delta);
+  DrawRoundedRectangleRot(start.x, start.y, width, thickness, thickness / 2.0f, theta, red, green, blue);
+}
+
+void DrawLineV(V2 start, V2 end, F32 thickness, V3 color) {
+  DrawLine(start.x, start.y, end.x, end.y, thickness, color.r, color.g, color.b);
 }
 
 void DrawRectangle(F32 center_x, F32 center_y, F32 width, F32 height, F32 red, F32 green, F32 blue) {
@@ -312,6 +335,51 @@ void DrawRectangle(F32 center_x, F32 center_y, F32 width, F32 height, F32 red, F
 
 void DrawRectangleV(V2 center, V2 size, V3 color) {
   DrawRectangle(center.x, center.y, size.x, size.y, color.r, color.g, color.b);
+}
+
+void DrawRectangleRot(F32 center_x, F32 center_y, F32 width, F32 height, F32 angle_rad, F32 red, F32 green, F32 blue) {
+  DrawRoundedRectangleRot(center_x, center_y, width, height, 0.0f, angle_rad, red, green, blue);
+}
+
+void DrawRectangleRotV(V2 center, V2 size, F32 angle_rad, V3 color) {
+  DrawRectangleRot(center.x, center.y, size.x, size.y, angle_rad, color.r, color.g, color.b);
+}
+
+void DrawRoundedRectangle(F32 center_x, F32 center_y, F32 width, F32 height, F32 radius, F32 red, F32 green, F32 blue) {
+  DrawRoundedRectangleRot(center_x, center_y, width, height, radius, 0.0f, red, green, blue);
+}
+
+void DrawRoundedRectangleV(V2 center, V2 size, F32 radius, V3 color) {
+  DrawRoundedRectangle(center.x, center.y, size.x, size.y, radius, color.r, color.g, color.b);
+}
+
+void DrawRoundedRectangleRot(F32 center_x, F32 center_y, F32 width, F32 height, F32 radius, F32 angle_rad, F32 red, F32 green, F32 blue) {
+  Renderer* r = &_renderer;
+  OpenGLAPI* g = &_ogl;
+
+  V3 color = { red, green, blue };
+  V3 pos   = { center_x, center_y, 0 };
+  V3 scale = { width, height, 1 };
+  V4 rot;
+  V4RotateAroundAxis(&V3_Z_POS, angle_rad, &rot);
+  M4 rect_to_world, rect_to_camera, rect_to_camera_t;
+  M4FromTransform(&pos, &rot, &scale, &rect_to_world);
+  M4MultM4(&r->world_to_camera, &rect_to_world, &rect_to_camera);
+  M4Transpose(&rect_to_camera, &rect_to_camera_t);
+
+  g->glUseProgram(r->rect_shader);
+  g->glUniformMatrix4fv(r->rect_camera_uniform, 1, GL_FALSE, (GLfloat*) &rect_to_camera_t);
+  g->glUniform3fv(r->rect_color_uniform, 1, (GLfloat*) &color);
+  g->glUniform2fv(r->rect_size_uniform, 1, (GLfloat*) &scale);
+  g->glUniform1f(r->rect_radius_uniform, radius);
+  g->glBindVertexArray(r->quad_vao);
+  glDrawArrays(GL_TRIANGLES, 0, 6);
+  g->glBindVertexArray(0);
+  g->glUseProgram(0);
+}
+
+void DrawRoundedRectangleRotV(V2 center, V2 size, F32 radius, F32 angle, V3 color) {
+  DrawRoundedRectangleRot(center.x, center.y, size.x, size.y, radius, angle, color.r, color.g, color.b);
 }
 
 void DrawCircle(F32 center_x, F32 center_y, F32 radius, F32 red, F32 green, F32 blue) {
@@ -397,6 +465,9 @@ B32 WIN_WindowInit(WindowInitOpts opts) {
   MEMORY_ZERO_STRUCT(&window_class);
   window_class.lpfnWndProc = WIN_WindowCallback;
   window_class.hInstance = hinstance;
+  window_class.hCursor = LoadCursor(NULL, IDC_ARROW);
+  window_class.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+  window_class.lpszMenuName = "CDEFAULT_MENU";
   window_class.lpszClassName = "CDEFAULT_WINDOW_CLASS";
   RegisterClass(&window_class);
 
@@ -472,7 +543,6 @@ B32 WIN_WindowInit(WindowInitOpts opts) {
   }
 
   // TODO: verify availability.
-  // glEnable(GL_DEPTH_TEST);
   glEnable(GL_FRAMEBUFFER_SRGB);
   glEnable(GL_CULL_FACE);
   glEnable(GL_TEXTURE_2D);
@@ -544,6 +614,16 @@ void WIN_WindowDeinit() {
   CloseWindow(window->handle);
 }
 
+void WIN_WindowFlushEvents() {
+  WIN_Window* window = &_win_window;
+  DEBUG_ASSERT(window->initialized);
+  MSG msg;
+  while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+    TranslateMessage(&msg);
+    DispatchMessage(&msg);
+  }
+}
+
 void WIN_WindowSwapBuffers() {
   WIN_Window* window = &_win_window;
   DEBUG_ASSERT(window->initialized);
@@ -562,6 +642,16 @@ void WIN_WindowGetDims(S32* x, S32* y, S32* width, S32* height) {
   if (height != NULL) { *height = dims.bottom - dims.top; }
 }
 
+void WIN_WindowSetTitle(char* title) {
+  WIN_Window* window = &_win_window;
+  DEBUG_ASSERT(window->initialized);
+  SetWindowTextA(window->handle, title);
+}
+
+void WIN_WindowShowCursor(B32 enable) {
+  ShowCursor(enable);
+}
+
 #else
 #  error Unsupported OS for cdefault video.
 #endif
@@ -577,12 +667,24 @@ void WindowDeinit() {
   CDEFAULT_VIDEO_BACKEND_FN(WindowDeinit());
 }
 
+void WindowFlushEvents() {
+  CDEFAULT_VIDEO_BACKEND_FN(WindowFlushEvents());
+}
+
 void WindowSwapBuffers() {
   CDEFAULT_VIDEO_BACKEND_FN(WindowSwapBuffers());
 }
 
 void WindowGetDims(S32* x, S32* y, S32* width, S32* height) {
   CDEFAULT_VIDEO_BACKEND_FN(WindowGetDims(x, y, width, height));
+}
+
+void WindowSetTitle(char* title) {
+  CDEFAULT_VIDEO_BACKEND_FN(WindowSetTitle(title));
+}
+
+void WindowShowCursor(B32 enable) {
+  CDEFAULT_VIDEO_BACKEND_FN(WindowShowCursor(enable));
 }
 
 #endif // CDEFAULT_VIDEO_IMPLEMENTATION
