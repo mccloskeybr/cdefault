@@ -9,13 +9,13 @@ int main(void) {
   WindowInitOpts opts;
   MEMORY_ZERO_STRUCT(&opts);
   opts.title = "video example";
+  opts.clear_rgb = 0x6495ed;
   ASSERT(WindowInit(opts));
 
-  F32 x = 500;
   while (true) {
-    DrawRectangle(x, 500, 10, 20, 0, 0, 1);
+    DrawRectangle(300, 300, 500, 500, 0, 0, 1);
+    DrawCircle(800, 300, 100, 0, 0, 1);
     WindowSwapBuffers();
-    x += 0.04f;
   }
 
   WindowDeinit();
