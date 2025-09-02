@@ -9,35 +9,28 @@
 // shader abstraction?
 // draw frames not just solid shapes?
 // draw more shapes
-// softer edges
+// softer edges?
 
 // NOTE: A window must exist before any renderer / draw functions can be called.
 // NOTE: Sensible defaults are chosen if field values are 0.
-typedef struct WindowInitOpts WindowInitOpts;
-struct WindowInitOpts {
-  S32 x;
-  S32 y;
-  S32 width;
-  S32 height;
-  char* title;
-  U32 clear_rgb;
-};
-B32  WindowInit(WindowInitOpts opts);
+B32  WindowInit(S32 width, S32 height, char* title);
 void WindowDeinit();
 void WindowFlushEvents();
 void WindowSwapBuffers();
-void WindowGetDims(S32* x, S32* y, S32* width, S32* height);
+void WindowGetDims(S32* x, S32* y, S32* width, S32* height); // NOTE: viewport dimensions; not necessarily the raw window size.
 void WindowSetTitle(char* title);
 void WindowSetSize(S32 width, S32 height); // NOTE: Does not update resolution, may need to call RendererSetProjection separately.
 void WindowShowCursor(B32 enable);
 void WindowFullscreen(B32 enable);
 
 void RendererSetProjection(M4 projection);
+void RendererRegisterImage(U32* image_handle, U8* image_bytes, U32 width, U32 height);
+void RendererReleaseImage(U32 image_handle);
 void RendererEnableScissorTest(S32 x, S32 y, S32 width, S32 height);
 void RendererDisableScissorTest(void);
 void RendererEnableDepthTest(void);
 void RendererDisableDepthTest(void);
-void RendererSetClearColor(F32 r, F32 g, F32 b, F32 a);
+void RendererSetClearColor(F32 red, F32 green, F32 blue, F32 alpha);
 void RendererSetClearColorV(V4 color);
 void RendererCastRay(F32 x, F32 y, V3* start, V3* dir);
 
@@ -55,11 +48,8 @@ void DrawCircle(F32 center_x, F32 center_y, F32 radius, F32 red, F32 green, F32 
 void DrawCircleV(V2 center, F32 radius, V3 color);
 void DrawTriangle(F32 x1, F32 y1, F32 x2, F32 y2, F32 x3, F32 y3, F32 red, F32 green, F32 blue); // NOTE: must respect CCW winding order.
 void DrawTriangleV(V2 p1, V2 p2, V2 p3, V3 color);
-
-void RGBToF32s(U32 hex, F32* r, F32* g, F32* b);
-void RGBToU32s(U32 hex, U32* r, U32* g, U32* b);
-U32  RGBFromF32s(F32 r, F32 g, F32 b);
-U32  RGBFromU32s(U32 r, U32 g, U32 b);
+void DrawImage(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height);
+void DrawImageV(U32 image_handle, V2 pos, V2 size);
 
 #endif // CDEFAULT_VIDEO_H_
 
@@ -125,6 +115,19 @@ typedef void   glScissor_Fn(GLint, GLint, GLsizei, GLsizei);
 typedef void   glViewport_Fn(GLint, GLint, GLsizei, GLsizei);
 typedef void   glDeleteBuffers_Fn(GLsizei, const GLuint*);
 typedef void   glDeleteVertexArrays_Fn(GLsizei, const GLuint*);
+typedef void   glTexImage2D_Fn(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*);
+typedef void   glGenTextures_Fn(GLsizei, GLuint*);
+typedef void   glBindTexture_Fn(GLenum, GLuint);
+typedef void   glTexParameteri_Fn(GLenum, GLenum, GLint);
+typedef void   glDeleteTextures_Fn(GLsizei, const GLuint*);
+typedef void   glEnable_Fn(GLenum);
+typedef void   glDisable_Fn(GLenum);
+typedef void   glCullFace_Fn(GLenum);
+typedef void   glFrontFace_Fn(GLenum);
+typedef void   glClearColor_Fn(GLfloat, GLfloat, GLfloat, GLfloat);
+typedef void   glBlendFunc_Fn(GLenum, GLenum);
+typedef void   glClear_Fn(GLenum);
+typedef void   glDrawArrays_Fn(GLenum, GLint, GLsizei);
 
 // NOTE: platform agnostic open gl api.
 typedef struct OpenGLAPI OpenGLAPI;
@@ -155,6 +158,19 @@ struct OpenGLAPI {
   glViewport_Fn*                glViewport;
   glDeleteBuffers_Fn*           glDeleteBuffers;
   glDeleteVertexArrays_Fn*      glDeleteVertexArrays;
+  glTexImage2D_Fn*              glTexImage2D;
+  glGenTextures_Fn*             glGenTextures;
+  glBindTexture_Fn*             glBindTexture;
+  glTexParameteri_Fn*           glTexParameteri;
+  glDeleteTextures_Fn*          glDeleteTextures;
+  glEnable_Fn*                  glEnable;
+  glDisable_Fn*                 glDisable;
+  glCullFace_Fn*                glCullFace;
+  glFrontFace_Fn*               glFrontFace;
+  glClearColor_Fn*              glClearColor;
+  glBlendFunc_Fn*               glBlendFunc;
+  glClear_Fn*                   glClear;
+  glDrawArrays_Fn*              glDrawArrays;
 };
 static OpenGLAPI _ogl;
 
@@ -172,6 +188,9 @@ struct Renderer {
   GLuint tri_shader;
   GLint tri_camera_uniform;
   GLint tri_color_uniform;
+
+  GLuint image_shader;
+  GLint image_camera_uniform;
 
   M4 world_to_camera;
 };
@@ -228,6 +247,15 @@ static B32 RendererInit(void) {
 
   LOG_INFO("[VIDEO] Initializing OpenGL renderer.");
 
+  // TODO: verify existence.
+  g->glEnable(GL_FRAMEBUFFER_SRGB);
+  g->glEnable(GL_CULL_FACE);
+  g->glEnable(GL_TEXTURE_2D);
+  g->glEnable(GL_BLEND);
+  g->glCullFace(GL_BACK);
+  g->glFrontFace(GL_CCW);
+  g->glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
   char* rect_vertex_shader_source =
     "#version 330 core\n"
     "uniform mat4 to_camera_transform;\n"
@@ -276,6 +304,27 @@ static B32 RendererInit(void) {
   r->tri_camera_uniform = g->glGetUniformLocation(r->tri_shader, "to_camera_transform");
   r->tri_color_uniform = g->glGetUniformLocation(r->tri_shader, "color");
 
+  char* image_vertex_shader_source =
+    "#version 330 core\n"
+    "uniform mat4 to_camera_transform;\n"
+    "layout (location = 0) in vec2 in_pos;\n"
+    "layout (location = 1) in vec2 in_tex_coord;\n"
+    "out vec2 tex_coord;\n"
+    "void main() {\n"
+    "  tex_coord = in_tex_coord;\n"
+    "  gl_Position = to_camera_transform * vec4(in_pos, 0.0, 1.0);\n"
+    "}\0";
+  char* image_fragment_shader_source =
+    "#version 330 core\n"
+    "uniform sampler2D texture_image;\n"
+    "in vec2 tex_coord;\n"
+    "out vec4 frag_color;\n"
+    "void main() { \n"
+    "  frag_color = texture(texture_image, tex_coord);\n"
+    "}\0";
+  DEBUG_ASSERT(RendererCompileShader(&r->image_shader, image_vertex_shader_source, image_fragment_shader_source));
+  r->image_camera_uniform = g->glGetUniformLocation(r->image_shader, "to_camera_transform");
+
   F32 quad_vertices[6][4] = {
     {-0.5f, +0.5f, 0, 0 },
     {-0.5f, -0.5f, 0, 1 },
@@ -318,26 +367,45 @@ void RendererSetProjection(M4 projection) {
   M4MultM4(&projection, &camera, &r->world_to_camera);
 }
 
+void RendererRegisterImage(U32* image_handle, U8* image_bytes, U32 width, U32 height) {
+  OpenGLAPI* g = &_ogl;
+  g->glGenTextures(1, image_handle);
+  g->glBindTexture(GL_TEXTURE_2D, *image_handle);
+  g->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_bytes);
+  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  g->glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void RendererReleaseImage(U32 image_handle) {
+  OpenGLAPI* g = &_ogl;
+  g->glDeleteTextures(1, &image_handle);
+}
+
 void RendererEnableScissorTest(S32 x, S32 y, S32 width, S32 height) {
   OpenGLAPI* g = &_ogl;
-  glEnable(GL_SCISSOR_TEST);
+  g->glEnable(GL_SCISSOR_TEST);
   g->glScissor(x, y, width, height);
 }
 
 void RendererDisableScissorTest(void) {
-  glDisable(GL_SCISSOR_TEST);
+  OpenGLAPI* g = &_ogl;
+  g->glDisable(GL_SCISSOR_TEST);
 }
 
 void RendererEnableDepthTest(void) {
-  glEnable(GL_DEPTH_TEST);
+  OpenGLAPI* g = &_ogl;
+  g->glEnable(GL_DEPTH_TEST);
 }
 
 void RendererDisableDepthTest(void) {
-  glDisable(GL_DEPTH_TEST);
+  OpenGLAPI* g = &_ogl;
+  g->glDisable(GL_DEPTH_TEST);
 }
 
-void RendererSetClearColor(F32 r, F32 g, F32 b, F32 a) {
-  glClearColor(r, g, b, a);
+void RendererSetClearColor(F32 red, F32 green, F32 blue, F32 alpha) {
+  OpenGLAPI* g = &_ogl;
+  g->glClearColor(red, green, blue, alpha);
 }
 
 void RendererSetClearColorV(V4 color) {
@@ -432,7 +500,7 @@ void DrawRoundedRectangleRot(F32 center_x, F32 center_y, F32 width, F32 height, 
   g->glUniform2fv(r->rect_size_uniform, 1, (GLfloat*) &scale);
   g->glUniform1f(r->rect_radius_uniform, radius);
   g->glBindVertexArray(r->quad_vao);
-  glDrawArrays(GL_TRIANGLES, 0, 6);
+  g->glDrawArrays(GL_TRIANGLES, 0, 6);
   g->glBindVertexArray(0);
   g->glUseProgram(0);
 }
@@ -486,7 +554,7 @@ void DrawTriangle(F32 x1, F32 y1, F32 x2, F32 y2, F32 x3, F32 y3, F32 red, F32 g
   g->glUseProgram(r->tri_shader);
   g->glUniformMatrix4fv(r->tri_camera_uniform, 1, GL_FALSE, (GLfloat*) &tri_to_camera_t);
   g->glUniform3fv(r->tri_color_uniform, 1, (GLfloat*) &color);
-  glDrawArrays(GL_TRIANGLES, 0, 3);
+  g->glDrawArrays(GL_TRIANGLES, 0, 3);
   g->glBindVertexArray(0);
   g->glUseProgram(0);
 
@@ -498,30 +566,30 @@ void DrawTriangleV(V2 p1, V2 p2, V2 p3, V3 color) {
   DrawTriangle(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, color.r, color.g, color.b);
 }
 
-void RGBToF32s(U32 hex, F32* r, F32* g, F32* b) {
-  U32 r2, g2, b2;
-  RGBToU32s(hex, &r2, &g2, &b2);
-  *r = r2 / 255.0f;
-  *g = g2 / 255.0f;
-  *b = b2 / 255.0f;
+void DrawImage(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height) {
+  Renderer* r = &_renderer;
+  OpenGLAPI* g = &_ogl;
+
+  V3 pos   = { center_x, center_y, 0 };
+  V3 scale = { width, height, 1 };
+  V4 rot = V4_QUAT_IDENT;
+  M4 image_to_world, image_to_camera, image_to_camera_t;
+  M4FromTransform(&pos, &rot, &scale, &image_to_world);
+  M4MultM4(&r->world_to_camera, &image_to_world, &image_to_camera);
+  M4Transpose(&image_to_camera, &image_to_camera_t);
+
+  g->glUseProgram(r->image_shader);
+  g->glUniformMatrix4fv(r->image_camera_uniform, 1, GL_FALSE, (GLfloat*) &image_to_camera_t);
+  g->glBindTexture(GL_TEXTURE_2D, image_handle);
+  g->glBindVertexArray(r->quad_vao);
+  g->glDrawArrays(GL_TRIANGLES, 0, 6);
+  g->glBindTexture(GL_TEXTURE_2D, 0);
+  g->glBindVertexArray(0);
+  g->glUseProgram(0);
 }
 
-void RGBToU32s(U32 hex, U32* r, U32* g, U32* b) {
-  *r = (U32) ((hex & 0xff0000) >> 16);
-  *g = (U32) ((hex & 0x00ff00) >> 8);
-  *b = (U32) ((hex & 0x0000ff) >> 0);
-}
-
-U32 RGBFromF32s(F32 r, F32 g, F32 b) {
-  U32 r2, g2, b2;
-  r2 = (U32) (r * 255);
-  g2 = (U32) (g * 255);
-  b2 = (U32) (b * 255);
-  return RGBFromU32s(r2, g2, b2);
-}
-
-U32 RGBFromU32s(U32 r, U32 g, U32 b) {
-  return (r << 16) | (g << 8) | (b << 0);
+void DrawImageV(U32 image_handle, V2 pos, V2 size) {
+  DrawImage(image_handle, pos.x, pos.y, size.x, size.y);
 }
 
 #if defined(OS_WINDOWS)
@@ -571,17 +639,15 @@ static LRESULT CALLBACK WIN_WindowCallback(HWND hwnd, UINT umsg, WPARAM wparam, 
   }
 }
 
-B32 WIN_WindowInit(WindowInitOpts opts) {
+B32 WIN_WindowInit(S32 width, S32 height, char* title) {
   WIN_Window* window = &_win_window;
   DEBUG_ASSERT(!window->initialized);
 
   LOG_INFO("[VIDEO] Initializing window.");
 
-  if (opts.x == 0)          { opts.x = CW_USEDEFAULT;      }
-  if (opts.y == 0)          { opts.y = CW_USEDEFAULT;      }
-  if (opts.width == 0)      { opts.width = CW_USEDEFAULT;  }
-  if (opts.height == 0)     { opts.height = CW_USEDEFAULT; }
-  if (opts.title == NULL)   { opts.title = "title";        }
+  if (width == 0)    { width = CW_USEDEFAULT;  }
+  if (height == 0)   { height = CW_USEDEFAULT; }
+  if (title == NULL) { title = "";             }
 
   B32 success = false;
 
@@ -593,7 +659,6 @@ B32 WIN_WindowInit(WindowInitOpts opts) {
   window_class.hInstance = hinstance;
   window_class.hCursor = LoadCursor(NULL, IDC_ARROW);
   window_class.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-  window_class.lpszMenuName = "CDEFAULT_MENU";
   window_class.lpszClassName = "CDEFAULT_WINDOW_CLASS";
   RegisterClass(&window_class);
 
@@ -602,8 +667,8 @@ B32 WIN_WindowInit(WindowInitOpts opts) {
   create_window_flags |= WS_VISIBLE;
 
   HWND handle = CreateWindowExA(
-      0, window_class.lpszClassName, opts.title, create_window_flags,
-      opts.x, opts.y, opts.width, opts.height, NULL, NULL, hinstance, NULL);
+      0, window_class.lpszClassName, title, create_window_flags,
+      CW_USEDEFAULT, CW_USEDEFAULT, width, height, NULL, NULL, hinstance, NULL);
   if (handle == NULL) {
     LOG_ERROR("[VIDEO] Failed to create window: %d", GetLastError());
     goto win_window_create_exit;
@@ -668,20 +733,6 @@ B32 WIN_WindowInit(WindowInitOpts opts) {
     goto win_window_create_exit;
   }
 
-  // TODO: verify availability.
-  // TODO: move to renderer init.
-  glEnable(GL_FRAMEBUFFER_SRGB);
-  glEnable(GL_CULL_FACE);
-  glEnable(GL_TEXTURE_2D);
-  glEnable(GL_BLEND);
-  glCullFace(GL_BACK);
-  glFrontFace(GL_CCW);
-
-  F32 clear_r, clear_g, clear_b;
-  RGBToF32s(opts.clear_rgb, &clear_r, &clear_g, &clear_b);
-  glClearColor(clear_r, clear_g, clear_b, 0);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
   // TODO: cover all ogl functions.
 #define WIN_LINK_GL(fn) \
     _ogl.fn = (fn##_Fn*) wglGetProcAddress(#fn); \
@@ -711,8 +762,21 @@ B32 WIN_WindowInit(WindowInitOpts opts) {
   WIN_LINK_GL(glUniform1f);
   WIN_LINK_GL(glDeleteBuffers);
   WIN_LINK_GL(glDeleteVertexArrays);
+  WIN_LINK_GL(glGenTextures);
+  WIN_LINK_GL(glBindTexture);
+  WIN_LINK_GL(glDeleteTextures);
   _ogl.glScissor = glScissor;
   _ogl.glViewport = glViewport;
+  _ogl.glTexImage2D = glTexImage2D;
+  _ogl.glTexParameteri = glTexParameteri;
+  _ogl.glEnable = glEnable;
+  _ogl.glDisable = glDisable;
+  _ogl.glCullFace = glCullFace;
+  _ogl.glFrontFace = glFrontFace;
+  _ogl.glClearColor = glClearColor;
+  _ogl.glBlendFunc = glBlendFunc;
+  _ogl.glClear = glClear;
+  _ogl.glDrawArrays = glDrawArrays;
 
 #undef WIN_LINK_GL
 
@@ -762,10 +826,11 @@ void WIN_WindowFlushEvents() {
 }
 
 void WIN_WindowSwapBuffers() {
+  OpenGLAPI* g = &_ogl;
   WIN_Window* window = &_win_window;
   DEBUG_ASSERT(window->initialized);
   SwapBuffers(window->device_context);
-  glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+  g->glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 }
 
 void WIN_WindowGetDims(S32* x, S32* y, S32* width, S32* height) {
@@ -838,8 +903,8 @@ void WIN_WindowFullscreen(B32 enable) {
 #define CDEFAULT_VIDEO_BACKEND_FN_IMPL(ns, fn) GLUE(ns, fn)
 #define CDEFAULT_VIDEO_BACKEND_FN(x) CDEFAULT_VIDEO_BACKEND_FN_IMPL(CDEFAULT_VIDEO_BACKEND_NAMESPACE, x)
 
-B32 WindowInit(WindowInitOpts opts) {
-  return CDEFAULT_VIDEO_BACKEND_FN(WindowInit(opts));
+B32 WindowInit(S32 width, S32 height, char* title) {
+  return CDEFAULT_VIDEO_BACKEND_FN(WindowInit(width, height, title));
 }
 
 void WindowDeinit() {
