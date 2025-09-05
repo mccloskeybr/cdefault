@@ -87,6 +87,7 @@ typedef double   F64;
 #define CLAMP(a, x, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
 #define CLAMP_TOP(a, x) MIN((a), (x))
 #define CLAMP_BOT(x, b) MAX((x), (b))
+#define SIGN(x) (((x) > 0) ? 1 : (((x) < 0) ? -1 : 0))
 
 #define BIT(idx) (1 << (idx))
 #define EXTRACT_BIT(word, idx) (((word) >> (idx)) & 1)

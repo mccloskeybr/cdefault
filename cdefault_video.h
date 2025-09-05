@@ -10,6 +10,7 @@
 // draw frames not just solid shapes?
 // draw more shapes
 // softer edges?
+// 3d?
 
 // NOTE: A window must exist before any renderer / draw functions can be called.
 // NOTE: Sensible defaults are chosen if field values are 0.
@@ -25,10 +26,20 @@ void WindowShowCursor(B32 enable);
 void WindowFullscreen(B32 enable);
 
 typedef enum KeyboardKey KeyboardKey;
+typedef enum MouseButton MouseButton;
 B32  WindowIsKeyPressed(KeyboardKey key);
 B32  WindowIsKeyReleased(KeyboardKey key);
 B32  WindowIsKeyJustPressed(KeyboardKey key);
 B32  WindowIsKeyJustReleased(KeyboardKey key);
+B32  WindowIsMouseButtonPressed(MouseButton button);
+B32  WindowIsMouseButtonReleased(MouseButton button);
+B32  WindowIsMouseButtonJustPressed(MouseButton button);
+B32  WindowIsMouseButtonJustReleased(MouseButton button);
+F32  WindowGetMouseScrollSign();
+void WindowGetMousePosition(F32* x, F32* y); // NOTE: In screen coordinates. May need to project to renderer / viewport space separately (RendererCastRay).
+void WindowGetMousePositionV(V2* pos);
+void WindowGetMouseDeltaPosition(F32* x, F32* y);
+void WindowGetMouseDeltaPositionV(V2* pos);
 
 void RendererSetProjection(M4 projection);
 void RendererRegisterImage(U32* image_handle, U8* image_bytes, U32 width, U32 height);
@@ -39,7 +50,10 @@ void RendererEnableDepthTest(void);
 void RendererDisableDepthTest(void);
 void RendererSetClearColor(F32 red, F32 green, F32 blue, F32 alpha);
 void RendererSetClearColorV(V4 color);
-void RendererCastRay(F32 x, F32 y, V3* start, V3* dir);
+void RendererCastRay(F32 x, F32 y, V2* intersect);
+void RendererCastRayV(V2 pos, V2* intersect);
+void RendererCastRay3(F32 x, F32 y, V3* start, V3* dir);
+void RendererCastRay3V(V2 pos, V3* start, V3* dir);
 
 void DrawLine(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32 red, F32 green, F32 blue);
 void DrawLineV(V2 start, V2 end, F32 thickness, V3 color);
@@ -125,6 +139,15 @@ enum KeyboardKey {
   Key_Delete,
   Key_Escape,
   Key_Count,
+};
+
+enum MouseButton {
+  MouseButton_Left,
+  MouseButton_Right,
+  MouseButton_Middle,
+  MouseButton_X1,
+  MouseButton_X2,
+  MouseButton_Count,
 };
 
 #endif // CDEFAULT_VIDEO_H_
@@ -496,7 +519,18 @@ static V3 UnprojectPoint(V3 p, M4* inv_vp) {
   return (V3) { v2.x, v2.y, v2.z };
 }
 
-void RendererCastRay(F32 x, F32 y, V3* start, V3* dir) {
+void RendererCastRay(F32 x, F32 y, V2* intersect) {
+  V3 start;
+  RendererCastRay3(x, y, &start, NULL);
+  intersect->x = start.x;
+  intersect->y = start.y;
+}
+
+void RendererCastRayV(V2 pos, V2* intersect) {
+  RendererCastRay(pos.x, pos.y, intersect);
+}
+
+void RendererCastRay3(F32 x, F32 y, V3* start, V3* dir) {
   Renderer* r = &_renderer;
 
   S32 width, height;
@@ -516,6 +550,10 @@ void RendererCastRay(F32 x, F32 y, V3* start, V3* dir) {
 
   if (start != NULL) { *start = n; }
   if (dir != NULL) { *dir = delta; }
+}
+
+void RendererCastRay3V(V2 pos, V3* start, V3* dir) {
+  RendererCastRay3(pos.x, pos.y, start, dir);
 }
 
 void DrawLine(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32 red, F32 green, F32 blue) {
@@ -692,6 +730,10 @@ typedef struct WIN_Window WIN_Window;
 struct WIN_Window {
   B8 initialized;
   B8 key_states[Key_Count];
+  B8 mouse_states[MouseButton_Count];
+  F32 m_scroll_sign;
+  V2 mouse_pos;
+  V2 mouse_pos_delta;
   B8 should_close;
   HWND handle;
   HDC device_context;
@@ -709,16 +751,33 @@ static LRESULT CALLBACK WIN_WindowCallback(HWND hwnd, UINT umsg, WPARAM wparam, 
   OpenGLAPI* g = &_ogl;
   switch (umsg) {
     case WM_KEYDOWN:
-    case WM_KEYUP: {
+    case WM_KEYUP:
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP:
+    case WM_XBUTTONDOWN:
+    case WM_XBUTTONUP:
+    case WM_MOUSEWHEEL: {
       // NOTE: should be handled by the event loop instead.
       UNREACHABLE();
       return 0;
     } break;
-    case WM_WINDOWPOSCHANGED: {
-      if (g->glViewport != NULL) {
-        S32 width, height;
-        WindowGetDims(NULL, NULL, &width, &height);
-        g->glViewport(0, 0, width, height);
+    case WM_SIZE: {
+      S32 width  = (S32) LOWORD(lparam);
+      S32 height = (S32) HIWORD(lparam);
+      if (width != window->width || height != window->height) {
+        if (g->glViewport != NULL) {
+          // NOTE: only update the cached width / height on explicit resizes.
+          // this may be called e.g. when toggling fullscreen, where we want to
+          // maintain the existing viewport size.
+          //
+          // the current implementation basically assumes that the screen size
+          // will be some multiple of the resolution, tracked through the renderer's
+          // perspective matrix. maybe we will want to support divergence (e.g.
+          // adding vertical black bars kind of thing) at some point.
+          g->glViewport(0, 0, width, height);
+        }
       }
       return DefWindowProc(hwnd, umsg, wparam, lparam);
     } break;
@@ -872,12 +931,8 @@ B32 WIN_WindowInit(S32 width, S32 height, char* title) {
 
 #undef WIN_LINK_GL
 
-  WINDOWPLACEMENT window_placement;
-  MEMORY_ZERO_STRUCT(&window_placement);
-  window_placement.length = sizeof(window_placement);
-  GetWindowPlacement(window->handle, &window_placement);
-  window->width = window_placement.rcNormalPosition.right - window_placement.rcNormalPosition.left;
-  window->height = window_placement.rcNormalPosition.bottom - window_placement.rcNormalPosition.top;
+  window->width = width;
+  window->height = height;
   window->handle = handle;
   window->device_context = device_context;
   window->ogl_context = ogl_context;
@@ -907,13 +962,12 @@ void WIN_WindowDeinit() {
   CloseWindow(window->handle);
 }
 
-static void WIN_KeyUpdate(KeyboardKey key, B32 is_pressed) {
-  WIN_Window* window = &_win_window;
+static void WIN_KeyUpdate(B8* state, B32 is_pressed) {
   B8 new_state = 0;
-  new_state |= (is_pressed && !(window->key_states[key] & BIT(WIN_KEY_PRESSED))) << WIN_KEY_JUST_PRESSED;
-  new_state |= (!is_pressed && (window->key_states[key] & BIT(WIN_KEY_PRESSED))) << WIN_KEY_JUST_RELEASED;
+  new_state |= (is_pressed && !(*state & BIT(WIN_KEY_PRESSED))) << WIN_KEY_JUST_PRESSED;
+  new_state |= (!is_pressed && (*state & BIT(WIN_KEY_PRESSED))) << WIN_KEY_JUST_RELEASED;
   new_state |= is_pressed << WIN_KEY_PRESSED;
-  window->key_states[key] = new_state;
+  *state = new_state;
 }
 
 void WIN_WindowFlushEvents() {
@@ -924,83 +978,132 @@ void WIN_WindowFlushEvents() {
   for (S32 i = 0; i < Key_Count; i++) {
     window->key_states[i] &= ~(BIT(WIN_KEY_JUST_PRESSED) | BIT(WIN_KEY_JUST_RELEASED));
   }
+  for (S32 i = 0; i < MouseButton_Count; i++) {
+    window->mouse_states[i] &= ~(BIT(WIN_KEY_JUST_PRESSED) | BIT(WIN_KEY_JUST_RELEASED));
+  }
+
+  POINT mouse_point = { 0, 0 };
+  if (GetCursorPos(&mouse_point)) {
+    if (ScreenToClient(window->handle, &mouse_point)) {
+      // TODO: can't use regular height here because that takes the menu bar into account, but this may be slow?
+      S32 viewport_height;
+      WindowGetDims(NULL, NULL, NULL, &viewport_height);
+      mouse_point.y = viewport_height - mouse_point.y;
+      window->mouse_pos_delta.x = mouse_point.x - window->mouse_pos.x;
+      window->mouse_pos_delta.y = mouse_point.y - window->mouse_pos.y;
+      window->mouse_pos.x = mouse_point.x;
+      window->mouse_pos.y = mouse_point.y;
+    } else {
+      LOG_ERROR("Failed to find mouse point relative to the screen.");
+    }
+  } else {
+    LOG_ERROR("Failed to get the mouse point.");
+  }
 
   MSG msg;
   while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
     switch (msg.message) {
+
+#define WIN_KEY_UPDATE(x) WIN_KeyUpdate(&window->key_states[x], is_down);
+
       case WM_KEYDOWN:
       case WM_KEYUP: {
         U32 key_code = (U32) msg.wParam;
         U32 key_state = (U32) msg.lParam;
         B32 is_down = (key_state & (1UL << 31)) == 0;
         switch (key_code) {
-          case 'A': { WIN_KeyUpdate(Key_A, is_down); } break;
-          case 'B': { WIN_KeyUpdate(Key_B, is_down); } break;
-          case 'C': { WIN_KeyUpdate(Key_C, is_down); } break;
-          case 'D': { WIN_KeyUpdate(Key_D, is_down); } break;
-          case 'E': { WIN_KeyUpdate(Key_E, is_down); } break;
-          case 'F': { WIN_KeyUpdate(Key_F, is_down); } break;
-          case 'G': { WIN_KeyUpdate(Key_G, is_down); } break;
-          case 'H': { WIN_KeyUpdate(Key_H, is_down); } break;
-          case 'I': { WIN_KeyUpdate(Key_I, is_down); } break;
-          case 'J': { WIN_KeyUpdate(Key_J, is_down); } break;
-          case 'K': { WIN_KeyUpdate(Key_K, is_down); } break;
-          case 'L': { WIN_KeyUpdate(Key_L, is_down); } break;
-          case 'M': { WIN_KeyUpdate(Key_M, is_down); } break;
-          case 'N': { WIN_KeyUpdate(Key_N, is_down); } break;
-          case 'O': { WIN_KeyUpdate(Key_O, is_down); } break;
-          case 'P': { WIN_KeyUpdate(Key_P, is_down); } break;
-          case 'Q': { WIN_KeyUpdate(Key_Q, is_down); } break;
-          case 'R': { WIN_KeyUpdate(Key_R, is_down); } break;
-          case 'S': { WIN_KeyUpdate(Key_S, is_down); } break;
-          case 'T': { WIN_KeyUpdate(Key_T, is_down); } break;
-          case 'U': { WIN_KeyUpdate(Key_U, is_down); } break;
-          case 'V': { WIN_KeyUpdate(Key_V, is_down); } break;
-          case 'W': { WIN_KeyUpdate(Key_W, is_down); } break;
-          case 'X': { WIN_KeyUpdate(Key_X, is_down); } break;
-          case 'Y': { WIN_KeyUpdate(Key_Y, is_down); } break;
-          case 'Z': { WIN_KeyUpdate(Key_Z, is_down); } break;
-          case '0': { WIN_KeyUpdate(Key_0, is_down); } break;
-          case '1': { WIN_KeyUpdate(Key_1, is_down); } break;
-          case '2': { WIN_KeyUpdate(Key_2, is_down); } break;
-          case '3': { WIN_KeyUpdate(Key_3, is_down); } break;
-          case '4': { WIN_KeyUpdate(Key_4, is_down); } break;
-          case '5': { WIN_KeyUpdate(Key_5, is_down); } break;
-          case '6': { WIN_KeyUpdate(Key_6, is_down); } break;
-          case '7': { WIN_KeyUpdate(Key_7, is_down); } break;
-          case '8': { WIN_KeyUpdate(Key_8, is_down); } break;
-          case '9': { WIN_KeyUpdate(Key_9, is_down); } break;
-          case VK_F1:       { WIN_KeyUpdate(Key_F1, is_down);           } break;
-          case VK_F2:       { WIN_KeyUpdate(Key_F2, is_down);           } break;
-          case VK_F3:       { WIN_KeyUpdate(Key_F3, is_down);           } break;
-          case VK_F4:       { WIN_KeyUpdate(Key_F4, is_down);           } break;
-          case VK_F5:       { WIN_KeyUpdate(Key_F5, is_down);           } break;
-          case VK_F6:       { WIN_KeyUpdate(Key_F6, is_down);           } break;
-          case VK_F7:       { WIN_KeyUpdate(Key_F7, is_down);           } break;
-          case VK_F8:       { WIN_KeyUpdate(Key_F8, is_down);           } break;
-          case VK_F9:       { WIN_KeyUpdate(Key_F9, is_down);           } break;
-          case VK_F10:      { WIN_KeyUpdate(Key_F10, is_down);          } break;
-          case VK_F11:      { WIN_KeyUpdate(Key_F11, is_down);          } break;
-          case VK_F12:      { WIN_KeyUpdate(Key_F12, is_down);          } break;
-          case VK_SPACE:    { WIN_KeyUpdate(Key_Space, is_down);        } break;
-          case VK_CONTROL:  { WIN_KeyUpdate(Key_Control, is_down);      } break;
-          case VK_LCONTROL: { WIN_KeyUpdate(Key_LeftControl, is_down);  } break;
-          case VK_RCONTROL: { WIN_KeyUpdate(Key_RightControl, is_down); } break;
-          case VK_SHIFT:    { WIN_KeyUpdate(Key_Shift, is_down);        } break;
-          case VK_LSHIFT:   { WIN_KeyUpdate(Key_LeftShift, is_down);    } break;
-          case VK_RSHIFT:   { WIN_KeyUpdate(Key_RightShift, is_down);   } break;
-          case VK_CAPITAL:  { WIN_KeyUpdate(Key_CapsLock, is_down);     } break;
-          case VK_TAB:      { WIN_KeyUpdate(Key_Tab, is_down);          } break;
-          case VK_MENU:     { WIN_KeyUpdate(Key_Alt, is_down);          } break;
-          case VK_UP:       { WIN_KeyUpdate(Key_Up, is_down);           } break;
-          case VK_DOWN:     { WIN_KeyUpdate(Key_Down, is_down);         } break;
-          case VK_LEFT:     { WIN_KeyUpdate(Key_Left, is_down);         } break;
-          case VK_RIGHT:    { WIN_KeyUpdate(Key_Right, is_down);        } break;
-          case VK_RETURN:   { WIN_KeyUpdate(Key_Return, is_down);       } break;
-          case VK_DELETE:   { WIN_KeyUpdate(Key_Delete, is_down);       } break;
-          case VK_ESCAPE:   { WIN_KeyUpdate(Key_Escape, is_down);       } break;
+          case 'A': { WIN_KEY_UPDATE(Key_A); } break;
+          case 'B': { WIN_KEY_UPDATE(Key_B); } break;
+          case 'C': { WIN_KEY_UPDATE(Key_C); } break;
+          case 'D': { WIN_KEY_UPDATE(Key_D); } break;
+          case 'E': { WIN_KEY_UPDATE(Key_E); } break;
+          case 'F': { WIN_KEY_UPDATE(Key_F); } break;
+          case 'G': { WIN_KEY_UPDATE(Key_G); } break;
+          case 'H': { WIN_KEY_UPDATE(Key_H); } break;
+          case 'I': { WIN_KEY_UPDATE(Key_I); } break;
+          case 'J': { WIN_KEY_UPDATE(Key_J); } break;
+          case 'K': { WIN_KEY_UPDATE(Key_K); } break;
+          case 'L': { WIN_KEY_UPDATE(Key_L); } break;
+          case 'M': { WIN_KEY_UPDATE(Key_M); } break;
+          case 'N': { WIN_KEY_UPDATE(Key_N); } break;
+          case 'O': { WIN_KEY_UPDATE(Key_O); } break;
+          case 'P': { WIN_KEY_UPDATE(Key_P); } break;
+          case 'Q': { WIN_KEY_UPDATE(Key_Q); } break;
+          case 'R': { WIN_KEY_UPDATE(Key_R); } break;
+          case 'S': { WIN_KEY_UPDATE(Key_S); } break;
+          case 'T': { WIN_KEY_UPDATE(Key_T); } break;
+          case 'U': { WIN_KEY_UPDATE(Key_U); } break;
+          case 'V': { WIN_KEY_UPDATE(Key_V); } break;
+          case 'W': { WIN_KEY_UPDATE(Key_W); } break;
+          case 'X': { WIN_KEY_UPDATE(Key_X); } break;
+          case 'Y': { WIN_KEY_UPDATE(Key_Y); } break;
+          case 'Z': { WIN_KEY_UPDATE(Key_Z); } break;
+          case '0': { WIN_KEY_UPDATE(Key_0); } break;
+          case '1': { WIN_KEY_UPDATE(Key_1); } break;
+          case '2': { WIN_KEY_UPDATE(Key_2); } break;
+          case '3': { WIN_KEY_UPDATE(Key_3); } break;
+          case '4': { WIN_KEY_UPDATE(Key_4); } break;
+          case '5': { WIN_KEY_UPDATE(Key_5); } break;
+          case '6': { WIN_KEY_UPDATE(Key_6); } break;
+          case '7': { WIN_KEY_UPDATE(Key_7); } break;
+          case '8': { WIN_KEY_UPDATE(Key_8); } break;
+          case '9': { WIN_KEY_UPDATE(Key_9); } break;
+          case VK_F1:       { WIN_KEY_UPDATE(Key_F1);           } break;
+          case VK_F2:       { WIN_KEY_UPDATE(Key_F2);           } break;
+          case VK_F3:       { WIN_KEY_UPDATE(Key_F3);           } break;
+          case VK_F4:       { WIN_KEY_UPDATE(Key_F4);           } break;
+          case VK_F5:       { WIN_KEY_UPDATE(Key_F5);           } break;
+          case VK_F6:       { WIN_KEY_UPDATE(Key_F6);           } break;
+          case VK_F7:       { WIN_KEY_UPDATE(Key_F7);           } break;
+          case VK_F8:       { WIN_KEY_UPDATE(Key_F8);           } break;
+          case VK_F9:       { WIN_KEY_UPDATE(Key_F9);           } break;
+          case VK_F10:      { WIN_KEY_UPDATE(Key_F10);          } break;
+          case VK_F11:      { WIN_KEY_UPDATE(Key_F11);          } break;
+          case VK_F12:      { WIN_KEY_UPDATE(Key_F12);          } break;
+          case VK_SPACE:    { WIN_KEY_UPDATE(Key_Space);        } break;
+          case VK_CONTROL:  { WIN_KEY_UPDATE(Key_Control);      } break;
+          case VK_LCONTROL: { WIN_KEY_UPDATE(Key_LeftControl);  } break;
+          case VK_RCONTROL: { WIN_KEY_UPDATE(Key_RightControl); } break;
+          case VK_SHIFT:    { WIN_KEY_UPDATE(Key_Shift);        } break;
+          case VK_LSHIFT:   { WIN_KEY_UPDATE(Key_LeftShift);    } break;
+          case VK_RSHIFT:   { WIN_KEY_UPDATE(Key_RightShift);   } break;
+          case VK_CAPITAL:  { WIN_KEY_UPDATE(Key_CapsLock);     } break;
+          case VK_TAB:      { WIN_KEY_UPDATE(Key_Tab);          } break;
+          case VK_MENU:     { WIN_KEY_UPDATE(Key_Alt);          } break;
+          case VK_UP:       { WIN_KEY_UPDATE(Key_Up);           } break;
+          case VK_DOWN:     { WIN_KEY_UPDATE(Key_Down);         } break;
+          case VK_LEFT:     { WIN_KEY_UPDATE(Key_Left);         } break;
+          case VK_RIGHT:    { WIN_KEY_UPDATE(Key_Right);        } break;
+          case VK_RETURN:   { WIN_KEY_UPDATE(Key_Return);       } break;
+          case VK_DELETE:   { WIN_KEY_UPDATE(Key_Delete);       } break;
+          case VK_ESCAPE:   { WIN_KEY_UPDATE(Key_Escape);       } break;
         }
       } break;
+
+#undef WIN_KEY_UPDATE
+#define WIN_MOUSE_UPDATE(x, y) WIN_KeyUpdate(&window->mouse_states[x], y);
+
+      case WM_LBUTTONDOWN: { WIN_MOUSE_UPDATE(MouseButton_Left, true); } break;
+      case WM_LBUTTONUP:   { WIN_MOUSE_UPDATE(MouseButton_Left, false); } break;
+      case WM_RBUTTONDOWN: { WIN_MOUSE_UPDATE(MouseButton_Right, true); } break;
+      case WM_RBUTTONUP:   { WIN_MOUSE_UPDATE(MouseButton_Right, false); } break;
+      case WM_MBUTTONDOWN: { WIN_MOUSE_UPDATE(MouseButton_Middle, true); } break;
+      case WM_MBUTTONUP:   { WIN_MOUSE_UPDATE(MouseButton_Middle, false); } break;
+      case WM_XBUTTONDOWN: {
+        if      ((msg.wParam & (1 << 16)) != 0) { WIN_MOUSE_UPDATE(MouseButton_X1, true); }
+        else if ((msg.wParam & (1 << 17)) != 0) { WIN_MOUSE_UPDATE(MouseButton_X1, true); }
+      } break;
+      case WM_XBUTTONUP: {
+        if      ((msg.wParam & (1 << 16)) != 0) { WIN_MOUSE_UPDATE(MouseButton_X1, false); }
+        else if ((msg.wParam & (1 << 17)) != 0) { WIN_MOUSE_UPDATE(MouseButton_X1, false); }
+      } break;
+      case WM_MOUSEWHEEL: {
+        F32 scroll_delta = (F32) GET_WHEEL_DELTA_WPARAM(msg.wParam) / WHEEL_DELTA;
+        window->m_scroll_sign = SIGN(scroll_delta);
+      } break;
+
+#undef WIN_MOUSE_UPDATE
+
       default: {
         TranslateMessage(&msg);
         DispatchMessageA(&msg);
@@ -1086,16 +1189,20 @@ void WIN_WindowFullscreen(B32 enable) {
   }
 }
 
-B32 WIN_WindowIsKeyJustPressed(KeyboardKey key) {
-  WIN_Window* window = &_win_window;
-  DEBUG_ASSERT(window->initialized);
-  return window->key_states[key] & BIT(WIN_KEY_JUST_PRESSED);
-}
-
 B32 WIN_WindowIsKeyPressed(KeyboardKey key) {
   WIN_Window* window = &_win_window;
   DEBUG_ASSERT(window->initialized);
   return window->key_states[key] & BIT(WIN_KEY_PRESSED);
+}
+
+B32 WIN_WindowIsKeyReleased(KeyboardKey key) {
+  return !WIN_WindowIsKeyPressed(key);
+}
+
+B32 WIN_WindowIsKeyJustPressed(KeyboardKey key) {
+  WIN_Window* window = &_win_window;
+  DEBUG_ASSERT(window->initialized);
+  return window->key_states[key] & BIT(WIN_KEY_JUST_PRESSED);
 }
 
 B32 WIN_WindowIsKeyJustReleased(KeyboardKey key) {
@@ -1104,8 +1211,54 @@ B32 WIN_WindowIsKeyJustReleased(KeyboardKey key) {
   return window->key_states[key] & BIT(WIN_KEY_JUST_RELEASED);
 }
 
-B32 WIN_WindowIsKeyReleased(KeyboardKey key) {
-  return !WIN_WindowIsKeyPressed(key);
+B32 WIN_WindowIsMouseButtonPressed(MouseButton button) {
+  WIN_Window* window = &_win_window;
+  DEBUG_ASSERT(window->initialized);
+  return window->mouse_states[button] & BIT(WIN_KEY_PRESSED);
+}
+
+B32 WIN_WindowIsMouseButtonReleased(MouseButton button) {
+  return !WIN_WindowIsMouseButtonPressed(button);
+}
+
+B32 WIN_WindowIsMouseButtonJustPressed(MouseButton button) {
+  WIN_Window* window = &_win_window;
+  DEBUG_ASSERT(window->initialized);
+  return window->mouse_states[button] & BIT(WIN_KEY_JUST_PRESSED);
+}
+
+B32 WIN_WindowIsMouseButtonJustReleased(MouseButton button) {
+  WIN_Window* window = &_win_window;
+  DEBUG_ASSERT(window->initialized);
+  return window->mouse_states[button] & BIT(WIN_KEY_JUST_RELEASED);
+}
+
+F32 WIN_WindowGetMouseScrollSign() {
+  WIN_Window* window = &_win_window;
+  DEBUG_ASSERT(window->initialized);
+  return window->m_scroll_sign;
+}
+
+void WIN_WindowGetMousePosition(F32* x, F32* y) {
+  WIN_Window* window = &_win_window;
+  DEBUG_ASSERT(window->initialized);
+  *x = window->mouse_pos.x;
+  *y = window->mouse_pos.y;
+}
+
+void WIN_WindowGetMousePositionV(V2* pos) {
+  WIN_WindowGetMousePosition(&pos->x, &pos->y);
+}
+
+void WIN_WindowGetMouseDeltaPosition(F32* x, F32* y) {
+  WIN_Window* window = &_win_window;
+  DEBUG_ASSERT(window->initialized);
+  *x = window->mouse_pos_delta.x;
+  *y = window->mouse_pos_delta.y;
+}
+
+void WIN_WindowGetMouseDeltaPositionV(V2* pos) {
+  WIN_WindowGetMouseDeltaPosition(&pos->x, &pos->y);
 }
 
 #else
@@ -1169,6 +1322,42 @@ B32 WindowIsKeyJustReleased(KeyboardKey key) {
 
 B32 WindowIsKeyReleased(KeyboardKey key) {
   return CDEFAULT_VIDEO_BACKEND_FN(WindowIsKeyReleased(key));
+}
+
+B32 WindowIsMouseButtonPressed(MouseButton button) {
+  return CDEFAULT_VIDEO_BACKEND_FN(WindowIsMouseButtonPressed(button));
+}
+
+B32 WindowIsMouseButtonReleased(MouseButton button) {
+  return CDEFAULT_VIDEO_BACKEND_FN(WindowIsMouseButtonReleased(button));
+}
+
+B32 WindowIsMouseButtonJustPressed(MouseButton button) {
+  return CDEFAULT_VIDEO_BACKEND_FN(WindowIsMouseButtonJustPressed(button));
+}
+
+B32 WindowIsMouseButtonJustReleased(MouseButton button) {
+  return CDEFAULT_VIDEO_BACKEND_FN(WindowIsMouseButtonJustReleased(button));
+}
+
+F32 WindowGetMouseScrollSign() {
+  return CDEFAULT_VIDEO_BACKEND_FN(WindowGetMouseScrollSign());
+}
+
+void WindowGetMousePosition(F32* x, F32* y) {
+  CDEFAULT_VIDEO_BACKEND_FN(WindowGetMousePosition(x, y));
+}
+
+void WindowGetMousePositionV(V2* pos) {
+  CDEFAULT_VIDEO_BACKEND_FN(WindowGetMousePositionV(pos));
+}
+
+void WindowGetMouseDeltaPosition(F32* x, F32* y) {
+  CDEFAULT_VIDEO_BACKEND_FN(WindowGetMouseDeltaPosition(x, y));
+}
+
+void WindowGetMouseDeltaPositionV(V2* pos) {
+  CDEFAULT_VIDEO_BACKEND_FN(WindowGetMouseDeltaPositionV(pos));
 }
 
 #endif // CDEFAULT_VIDEO_IMPLEMENTATION

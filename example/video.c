@@ -20,20 +20,22 @@ int main(void) {
   RendererRegisterImage(&image_handle, image_data, image_width, image_height);
   stbi_image_free(image_data);
 
+  V2 pos = { 0, 0 };
+  V2 size = { 100, 100 };
+  V3 color = { 1, 0.5, 0 };
+
+  B32 toggle_fullscreen = false;
   while (!WindowShouldClose()) {
-    if (WindowIsKeyJustPressed(Key_A)) {
-      LOG_INFO("A just pressed!");
+    if (WindowIsKeyJustPressed(Key_Space)) {
+      WindowFullscreen(toggle_fullscreen);
+      toggle_fullscreen = !toggle_fullscreen;
     }
-    if (WindowIsKeyJustReleased(Key_A)) {
-      LOG_INFO("A just released!");
-    }
-    if (WindowIsKeyPressed(Key_A)) {
-      LOG_INFO("A is pressed!");
-    }
+    V2 mouse_pos;
+    WindowGetMousePositionV(&mouse_pos);
+    RendererCastRayV(mouse_pos, &pos);
 
     DrawImage(image_handle, 500, 500, image_width, image_height);
-
-    DrawRoundedRectangle(600, 600, 100, 100, 30, 1, 0.5, 0);
+    DrawRoundedRectangleV(pos, size, 30, color);
     DrawLine(10, 10, 400, 100, 20, 1, 0, 1);
 
     WindowSwapBuffers();
