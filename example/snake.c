@@ -36,8 +36,59 @@ struct Snake {
 };
 static Snake snake;
 
+typedef struct SoundEffect SoundEffect;
+struct SoundEffect {
+  stb_vorbis* vorbis;
+  AudioStreamHandle stream;
+  B32 is_looping;
+  SoundEffect* next;
+  SoundEffect* prev;
+};
+SoundEffect sound_memory[64];
+static S32 next_sound_index = 0;
+
+typedef struct AudioManager AudioManager;
+struct AudioManager {
+  Mutex mutex;
+  SoundEffect* head;
+  SoundEffect* tail;
+  SoundEffect* free_sounds;
+};
+static AudioManager audio_manager;
+
 static RandomSeries r;
 static S32 apple_x, apple_y;
+
+static void AudioQueueSound(char* sound, B32 is_looping) {
+  MutexLock(&audio_manager.mutex);
+
+  SoundEffect* effect;
+  if (audio_manager.free_sounds != NULL) {
+    effect = audio_manager.free_sounds;
+    SLL_STACK_POP(audio_manager.free_sounds, next);
+  } else {
+    ASSERT(next_sound_index < STATIC_ARRAY_SIZE(sound_memory);
+    effect = &sound_memory[next_sound_index++];
+  }
+  DLL_PUSH_FRONT(audio_manager.head, audio_manager.tail, effect, prev, next);
+
+  S32 stb_err = 0;
+  effect->vorbis = stb_vorbis_open_filename(sound, &stb_err, NULL);
+  ASSERT(stb_err == 0);
+  stb_vorbis_info vorbis_info = stb_vorbis_get_info(bg_music);
+
+  AudioStreamSpec spec;
+  MEMORY_ZERO_STRUCT(&spec);
+  spec.device_handle = AUDIO_DEFAULT_DEVICE;
+  spec.channels = vorbis_info.channels;
+  spec.frequency = vorbis_info.sample_rate;
+  spec.format = AudioStreamFormat_F32;
+  ASSERT(AudioStreamOpen(&effect->stream, spec));
+
+  effect->is_looping = is_looping;
+
+  MutexUnlock(&audio_manager.mutex);
+}
 
 static S32 AudioEntry(void* UNUSED(user_data)) {
   ASSERT(AudioInit());
