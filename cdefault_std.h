@@ -707,7 +707,8 @@ void* ArenaPush(Arena* arena, U64 size, U64 align) {
 }
 
 void ArenaPopTo(Arena* arena, U64 pos) {
-  ASSERT(pos < arena->pos);
+  DEBUG_ASSERT(pos <= arena->pos);
+  DEBUG_ASSERT(pos >= sizeof(Arena));
   arena->pos = pos;
 }
 
@@ -716,7 +717,7 @@ void ArenaPop(Arena* arena, U64 size) {
 }
 
 void ArenaClear(Arena* arena) {
-  ArenaPopTo(arena, 0);
+  ArenaPopTo(arena, sizeof(Arena));
 }
 
 ArenaTemp ArenaTempBegin(Arena* arena) {

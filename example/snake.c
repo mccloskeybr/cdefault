@@ -8,11 +8,11 @@
 #include "../cdefault_audio.h"
 #include "third_party/stb_vorbis.c"
 
-#define TILE_SIZE 62
-#define TILE_PAD 1
-#define TILE_RADIUS 20 // NOTE: rounded corner radius
-#define NUM_TILES 10 // NOTE: number of tiles per row or column.
-#define WINDOW_WIDTH 1920
+#define TILE_SIZE     62
+#define TILE_PAD      1
+#define TILE_RADIUS   20   // NOTE: rounded corner radius
+#define NUM_TILES     10   // NOTE: number of tiles per row or column.
+#define WINDOW_WIDTH  1920
 #define WINDOW_HEIGHT 1080
 
 #define GRID_COLOR  (V3) { 0.8f, 0.8f, 0.8f }
@@ -34,12 +34,10 @@ struct Snake {
   SnakeSegment* head;
   SnakeSegment* tail;
 };
-static Snake snake;
 
 typedef struct SoundEffect SoundEffect;
 struct SoundEffect {
   stb_vorbis* vorbis;
-  AudioStreamHandle stream;
   B32 is_looping;
   SoundEffect* next;
   SoundEffect* prev;
@@ -50,6 +48,7 @@ static S32 next_sound_index = 0;
 typedef struct AudioManager AudioManager;
 struct AudioManager {
   Mutex mutex;
+  AudioStreamHandle stream;
   SoundEffect* head;
   SoundEffect* tail;
   SoundEffect* free_sounds;
@@ -59,6 +58,68 @@ static AudioManager audio_manager;
 static RandomSeries r;
 static S32 apple_x, apple_y;
 
+static S32 AudioEntry(void* user_data) {
+  Sem* init_done = (Sem*) user_data;
+  ASSERT(AudioInit());
+  MutexInit(&audio_manager.mutex);
+  SemSignal(init_done);
+  Arena* arena = ArenaAllocate();
+
+  AudioStreamSpec spec;
+  MEMORY_ZERO_STRUCT(&spec);
+  spec.device_handle = AUDIO_DEFAULT_DEVICE;
+  spec.channels = 2;
+  spec.frequency = 44100;
+  spec.format = AudioStreamFormat_F32;
+  ASSERT(AudioStreamOpen(&audio_manager.stream, spec));
+
+  U8* audio_buffer;
+  U32 audio_buffer_size;
+  while (true) {
+    if (!AudioStreamAcquireBuffer(audio_manager.stream, &audio_buffer, &audio_buffer_size)) { continue; }
+    MEMORY_ZERO(audio_buffer, audio_buffer_size);
+
+    U8* temp_buffer = ARENA_PUSH_ARRAY(arena, U8, audio_buffer_size);
+    MutexLock(&audio_manager.mutex);
+    SoundEffect* effect = audio_manager.tail;
+    while (effect != NULL) {
+      MEMORY_ZERO(temp_buffer, audio_buffer_size);
+      U32 read = stb_vorbis_get_samples_float_interleaved(
+          effect->vorbis, spec.channels, (F32*) temp_buffer, audio_buffer_size / sizeof(F32));
+      for (S32 i = 0; i < audio_buffer_size / sizeof(F32); i++) {
+        ((F32*) audio_buffer)[i] += ((F32*) temp_buffer)[i];
+      }
+      if (read == 0) {
+        if (effect->is_looping) {
+          stb_vorbis_seek_start(effect->vorbis);
+          effect = effect->next;
+          continue;
+        }
+        else {
+          SoundEffect* next_effect = effect->next;
+          stb_vorbis_close(effect->vorbis);
+          DLL_REMOVE(audio_manager.head, audio_manager.tail, effect, prev, next);
+          SLL_STACK_PUSH(audio_manager.free_sounds, effect, next);
+          effect = next_effect;
+          continue;
+        }
+      } else {
+        effect = effect->next;
+        continue;
+      }
+    }
+    MutexUnlock(&audio_manager.mutex);
+    ArenaClear(arena);
+
+    if (!AudioStreamReleaseBuffer(audio_manager.stream, audio_buffer, audio_buffer_size)) { continue; }
+    if (!AudioStreamWait(audio_manager.stream)) { continue; }
+  }
+
+  AudioStreamClose(audio_manager.stream);
+  AudioDeinit();
+  return 0;
+}
+
 static void AudioQueueSound(char* sound, B32 is_looping) {
   MutexLock(&audio_manager.mutex);
 
@@ -67,7 +128,7 @@ static void AudioQueueSound(char* sound, B32 is_looping) {
     effect = audio_manager.free_sounds;
     SLL_STACK_POP(audio_manager.free_sounds, next);
   } else {
-    ASSERT(next_sound_index < STATIC_ARRAY_SIZE(sound_memory);
+    ASSERT(next_sound_index < STATIC_ARRAY_SIZE(sound_memory));
     effect = &sound_memory[next_sound_index++];
   }
   DLL_PUSH_FRONT(audio_manager.head, audio_manager.tail, effect, prev, next);
@@ -75,54 +136,10 @@ static void AudioQueueSound(char* sound, B32 is_looping) {
   S32 stb_err = 0;
   effect->vorbis = stb_vorbis_open_filename(sound, &stb_err, NULL);
   ASSERT(stb_err == 0);
-  stb_vorbis_info vorbis_info = stb_vorbis_get_info(bg_music);
-
-  AudioStreamSpec spec;
-  MEMORY_ZERO_STRUCT(&spec);
-  spec.device_handle = AUDIO_DEFAULT_DEVICE;
-  spec.channels = vorbis_info.channels;
-  spec.frequency = vorbis_info.sample_rate;
-  spec.format = AudioStreamFormat_F32;
-  ASSERT(AudioStreamOpen(&effect->stream, spec));
 
   effect->is_looping = is_looping;
 
   MutexUnlock(&audio_manager.mutex);
-}
-
-static S32 AudioEntry(void* UNUSED(user_data)) {
-  ASSERT(AudioInit());
-
-  S32 stb_err = 0;
-  stb_vorbis* bg_music = stb_vorbis_open_filename("Z:\\cdefault\\example\\data\\test_audio.ogg", &stb_err, NULL);
-  ASSERT(stb_err == 0);
-  stb_vorbis_info bg_music_info = stb_vorbis_get_info(bg_music);
-
-  AudioStreamSpec spec;
-  MEMORY_ZERO_STRUCT(&spec);
-  spec.device_handle = AUDIO_DEFAULT_DEVICE;
-  spec.channels = bg_music_info.channels;
-  spec.frequency = bg_music_info.sample_rate;
-  spec.format = AudioStreamFormat_F32;
-  AudioStreamHandle stream;
-  ASSERT(AudioStreamOpen(&stream, spec));
-
-  U8* audio_buffer;
-  U32 audio_buffer_size;
-
-  while (true) {
-    if (!AudioStreamAcquireBuffer(stream, &audio_buffer, &audio_buffer_size)) { continue; }
-    uint32_t read = stb_vorbis_get_samples_float_interleaved(
-        bg_music, bg_music_info.channels, (F32*) audio_buffer, audio_buffer_size / sizeof(F32));
-    if (!AudioStreamReleaseBuffer(stream, audio_buffer, audio_buffer_size)) { continue; }
-    if (read == 0) { stb_vorbis_seek_start(bg_music); }
-    if (!AudioStreamWait(stream)) { continue; }
-  }
-
-  AudioStreamClose(stream);
-  stb_vorbis_close(bg_music);
-  AudioDeinit();
-  return 0;
 }
 
 static void DrawTile(S32 x, S32 y, V3 color) {
@@ -140,21 +157,14 @@ static void DrawTile(S32 x, S32 y, V3 color) {
     color.r, color.g, color.b);
 }
 
-static void AddSnakeSegment(S32 x, S32 y) {
-  SnakeSegment* node = &segments_memory[next_segment_index++];
-  node->x = x;
-  node->y = y;
-  DLL_PUSH_BACK(snake.head, snake.tail, node, prev, next);
-}
-
-static void PickAppleLocation() {
+static void PickAppleLocation(Snake* snake) {
   B32 intersects_snake;
   do {
     apple_x = RandS32(&r, 0, NUM_TILES);
     apple_y = RandS32(&r, 0, NUM_TILES);
 
     intersects_snake = false;
-    for (SnakeSegment* node = snake.tail; node != NULL; node = node->next) {
+    for (SnakeSegment* node = snake->tail; node != NULL; node = node->next) {
       if (node->x == apple_x && node->y == apple_y) {
         intersects_snake = true;
         break;
@@ -163,58 +173,65 @@ static void PickAppleLocation() {
   } while (intersects_snake);
 }
 
-static B32 MoveSnake() {
-  SnakeSegment* head = snake.head;
-  SnakeSegment* tail = snake.tail;
-  DLL_POP_BACK(snake.head, snake.tail, prev, next);
+static B32 MoveSnake(Snake* snake) {
+  SnakeSegment* head = snake->head;
+  SnakeSegment* tail = snake->tail;
+  DLL_POP_BACK(snake->head, snake->tail, prev, next);
 
   S32 orig_x = tail->x;
   S32 orig_y = tail->y;
-  tail->x = head->x + snake.dir.x;
-  tail->y = head->y + snake.dir.y;
+  tail->x = head->x + snake->dir.x;
+  tail->y = head->y + snake->dir.y;
   if      (tail->x < 0)          { tail->x = NUM_TILES - 1; }
   else if (tail->x >= NUM_TILES) { tail->x = 0;             }
   if      (tail->y < 0)          { tail->y = NUM_TILES - 1; }
   else if (tail->y >= NUM_TILES) { tail->y = 0;             }
 
   if (tail->x == apple_x && tail->y == apple_y) {
+    AudioQueueSound("Z:\\cdefault\\example\\data\\apple.ogg", false);
     SnakeSegment* node = &segments_memory[next_segment_index++];
     node->x = orig_x;
     node->y = orig_y;
-    DLL_PUSH_BACK(snake.head, snake.tail, node, prev, next);
-    PickAppleLocation();
+    DLL_PUSH_BACK(snake->head, snake->tail, node, prev, next);
+    PickAppleLocation(snake);
   }
 
-  for (SnakeSegment* node = snake.tail; node != NULL; node = node->next) {
-    if (node->x == tail->x && node->y == tail->y) {
-      return false;
-    }
+  for (SnakeSegment* node = snake->tail; node != NULL; node = node->next) {
+    if (node->x == tail->x && node->y == tail->y) { return false; }
   }
 
-  DLL_PUSH_FRONT(snake.head, snake.tail, tail, prev, next);
+  DLL_PUSH_FRONT(snake->head, snake->tail, tail, prev, next);
   return true;
 }
 
 int main(void) {
   RandInit(&r, 12345);
-  ASSERT(WindowInit(WINDOW_WIDTH, WINDOW_HEIGHT, "video example"));
+  ASSERT(WindowInit(WINDOW_WIDTH, WINDOW_HEIGHT, "snake"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
 
+  Sem audio_init_done;
+  SemInit(&audio_init_done, 0);
   Thread audio_thread;
-  ThreadCreate(&audio_thread, AudioEntry, NULL);
+  ThreadCreate(&audio_thread, AudioEntry, &audio_init_done);
   ThreadDetach(&audio_thread);
+  SemWait(&audio_init_done);
+  SemDeinit(&audio_init_done);
+
+  AudioQueueSound("Z:\\cdefault\\example\\data\\test_audio.ogg", true);
 
   // TODO: create a std timer struct and a way to measure time.
   F32 dt_s = 0.016f;
   F32 input_timer = 0;
   F32 input_timer_max_s = 0.3f;
 
+  Snake snake;
+  MEMORY_ZERO_STRUCT(&snake);
   SnakeSegment* node = &segments_memory[next_segment_index++];
   node->x = NUM_TILES / 2;
   node->y = NUM_TILES / 2;
   DLL_PUSH_BACK(snake.head, snake.tail, node, prev, next);
   snake.dir = V2_Y_POS;
-  PickAppleLocation();
+  PickAppleLocation(&snake);
 
   while (!WindowShouldClose()) {
     for (S32 i = 0; i < NUM_TILES; i++) {
@@ -234,14 +251,10 @@ int main(void) {
       snake.dir = V2_X_POS;
     }
 
-    if (WindowIsKeyJustPressed(Key_Space)) {
-      AddSnakeSegment(0, 0);
-    }
-
     input_timer += dt_s;
     if (input_timer >= input_timer_max_s) {
       input_timer = 0;
-      if (!MoveSnake()) { exit(1); }
+      if (!MoveSnake(&snake)) { exit(1); }
     }
 
     for (SnakeSegment* node = snake.tail; node != NULL; node = node->next) {

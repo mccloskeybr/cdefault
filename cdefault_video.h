@@ -913,9 +913,9 @@ B32 WIN_WindowInit(S32 width, S32 height, char* title) {
   WIN_LINK_GL(glUniform1f);
   WIN_LINK_GL(glDeleteBuffers);
   WIN_LINK_GL(glDeleteVertexArrays);
-  WIN_LINK_GL(glGenTextures);
-  WIN_LINK_GL(glBindTexture);
-  WIN_LINK_GL(glDeleteTextures);
+  _ogl.glDeleteTextures = glDeleteTextures;
+  _ogl.glGenTextures = glGenTextures;
+  _ogl.glBindTexture = glBindTexture;
   _ogl.glScissor = glScissor;
   _ogl.glViewport = glViewport;
   _ogl.glTexImage2D = glTexImage2D;
