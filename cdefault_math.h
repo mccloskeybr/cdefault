@@ -34,10 +34,11 @@ F32 F32Floor(F32 x);
 // NOTE: Random
 ///////////////////////////////////////////////////////////////////////////////
 
+// TODO: make this global?
 typedef struct RandomSeries RandomSeries;
 struct RandomSeries { U32 state; };
 
-void RandInit(RandomSeries* rand, U32 seed);
+void RandSeed(RandomSeries* rand, U32 seed);
 S32 RandS32(RandomSeries* rand, S32 min, S32 max);
 F32 RandF32(RandomSeries* rand, F32 min, F32 max);
 
@@ -63,6 +64,7 @@ void V2SubV2(const V2* x, const V2* y, V2* out);
 void V2SubF32(const V2* x, F32 c, V2* out);
 void V2MultF32(const V2* x, F32 c, V2* out);
 void V2DivF32(const V2* x, F32 c, V2* out);
+B32 V2Eq(const V2* x, const V2* y);
 B32 V2ApproxEq(const V2* x, const V2* y);
 void V2HadamardV2(const V2* x, const V2* y, V2* out);
 F32 V2DotV2(const V2* x, const V2* y);
@@ -262,21 +264,17 @@ void RandInit(RandomSeries* rand, U32 seed) {
 }
 
 S32 RandS32(RandomSeries* rand, S32 min, S32 max) {
-  ASSERT(min < max);
+  DEBUG_ASSERT(min < max);
   rand->state = XOrShift32(rand->state);
-  int32_t r = *(int32_t*)&rand->state;
-  r %= max - min;
-  r += min;
-  return r;
+  U32 r = *(U32*) &rand->state;
+  return min + (S32) (r % (max - min));
 }
 
 F32 RandF32(RandomSeries* rand, F32 min, F32 max) {
-  ASSERT(min < max);
+  DEBUG_ASSERT(min < max);
   rand->state = XOrShift32(rand->state);
-  F32 r = (F32) rand->state / (F32) U32_MAX;
-  r *= (max - min);
-  r += min;
-  return r;
+  F32 r = (F32) rand->state / U32_MAX;
+  return min + (r * (max - min));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -312,6 +310,11 @@ void V2DivF32(const V2* x, F32 c, V2* out) {
   DEBUG_ASSERT(c != 0);
   out->x = x->x / c;
   out->y = x->y / c;
+}
+
+B32 V2Eq(const V2* x, const V2* y) {
+  return (x->x == y->x) &&
+         (x->y == y->y);
 }
 
 B32 V2ApproxEq(const V2* x, const V2* y) {

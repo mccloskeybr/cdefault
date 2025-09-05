@@ -56,11 +56,11 @@ B32 ArenaAlignTest(void) {
 
   U8* test_arr = ARENA_PUSH_ARRAY(arena, U8, 15);
   TEST_EXPECT(test_arr == ((U8*) arena) + sizeof(Arena));
-  TEST_EXPECT(arena->pos = sizeof(Arena) + sizeof(U8) * 15);
+  TEST_EXPECT(arena->pos == sizeof(Arena) + sizeof(U8) * 15);
   U8* test_arr_2 = ARENA_PUSH_ARRAY(arena, U8, 16);
   // NOTE: Aligned to boundary, 16 not 15.
   TEST_EXPECT(test_arr_2 == ((U8*) arena) + sizeof(Arena) + 16);
-  TEST_EXPECT(arena->pos = sizeof(Arena) + sizeof(U8) * 32);
+  TEST_EXPECT(arena->pos == sizeof(Arena) + sizeof(U8) * 32);
 
   ArenaRelease(arena);
   return true;
@@ -71,7 +71,7 @@ B32 ArenaPushStructTest(void) {
 
   TestStruct* test_struct = ARENA_PUSH_STRUCT(arena, TestStruct);
   TEST_EXPECT((U8*) test_struct == ((U8*) arena) + sizeof(Arena));
-  TEST_EXPECT(arena->pos = sizeof(Arena) + sizeof(TestStruct));
+  TEST_EXPECT(arena->pos == sizeof(Arena) + sizeof(TestStruct));
 
   ArenaRelease(arena);
   return true;
@@ -82,7 +82,7 @@ B32 ArenaPushArrayTest(void) {
 
   U8* test_arr = ARENA_PUSH_ARRAY(arena, U8, 32);
   TEST_EXPECT(test_arr == ((U8*) arena) + sizeof(Arena));
-  TEST_EXPECT(arena->pos = sizeof(Arena) + sizeof(U8) * 32);
+  TEST_EXPECT(arena->pos == sizeof(Arena) + sizeof(U8) * 32);
 
   ArenaRelease(arena);
   return true;

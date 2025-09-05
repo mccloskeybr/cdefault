@@ -195,135 +195,159 @@ void MemoryDecommit(void* ptr, U64 size);
 // NOTE: Singly-linked stack
 // E.g.
 // struct Node { Node* next; }
-// struct Stack { Node* front; }
+// struct Stack { Node* head; }
 //
 // Stack stack = {0};
 // Node node = {0};
-// SLL_STACK_PUSH(stack.front, &node, next);
-// SLL_STACK_POP(stack.front, next);
+// SLL_STACK_PUSH(stack.head, &node, next);
+// SLL_STACK_POP(stack.head, next);
 
-#define SLL_STACK_PUSH(front, curr_node, next) \
-  do {                                         \
-    (curr_node)->next = (front);               \
-    (front) = (curr_node);                     \
+#define SLL_STACK_PUSH(head, curr_node, next) \
+  do {                                        \
+    (curr_node)->next = (head);               \
+    (head) = (curr_node);                     \
   } while (0)
-#define SLL_STACK_POP(front, next) \
-  (front) = (front)->next
+#define SLL_STACK_POP(head, next) \
+  (head) = (head)->next
 
 // NOTE: Singly-linked queue
+//
+//        ->next
+//   o - o - o
+// tail     head
+//
 // E.g.
 // struct Node { Node* next; }
-// struct Queue { Node* front, back; }
+// struct Queue { Node* head, tail; }
 //
 // Queue queue = {0};
 // Node node = {0};
-// SLL_QUEUE_PUSH(queue.front, queue.back, &node, next);
-// SLL_QUEUE_POP(queue.front, queue.back next);
+// SLL_QUEUE_PUSH(queue.head, queue.tail, &node, next);
+// SLL_QUEUE_POP(queue.head, queue.tail next);
 
-#define SLL_QUEUE_PUSH(front, back, curr_node, next) \
-  do {                                               \
-    if ((front) == NULL) {                           \
-      (front) = (curr_node);                         \
-      (back) = (curr_node);                          \
-      (curr_node)->next = NULL;                      \
-    }                                                \
-    else {                                           \
-      (back)->next = (curr_node);                    \
-      (back) = (curr_node);                          \
-      (curr_node)->next = NULL;                      \
-    }                                                \
-  } while (0)
-#define SLL_QUEUE_PUSH_FRONT(front, back, curr_node, next) \
-  do {                                                     \
-    if ((front) == NULL) {                                 \
-      (front) = (curr_node);                               \
-      (back) = (curr_node);                                \
-      (curr_node)->next = NULL;                            \
-    }                                                      \
-    else {                                                 \
-      (curr_node)->next = (front);                         \
-      (front) = (curr_node);                               \
-    }                                                      \
-  } while (0)
-#define SLL_QUEUE_POP(front, back, next) \
-  do {                                   \
-    if ((front) == (back)) {             \
-      (front) = NULL;                    \
-      (back) = NULL;                     \
-    }                                    \
-    else {                               \
-      (front) = (front)->next;           \
-    }                                    \
-  } while (0)
+#define SLL_QUEUE_PUSH_FRONT(head, tail, curr_node, next) \
+  if ((head) == NULL) {                                   \
+    (head) = (curr_node);                                 \
+    (tail) = (curr_node);                                 \
+    (curr_node)->next = NULL;                             \
+  }                                                       \
+  else {                                                  \
+    (head)->next = (curr_node);                           \
+    (head) = (curr_node);                                 \
+    (curr_node)->next = NULL;                             \
+  }
+#define SLL_QUEUE_PUSH_BACK(head, tail, curr_node, next) \
+  if ((head) == NULL) {                                  \
+    (head) = (curr_node);                                \
+    (tail) = (curr_node);                                \
+    (curr_node)->next = NULL;                            \
+  }                                                      \
+  else {                                                 \
+    (curr_node)->next = (tail);                          \
+    (tail) = (curr_node);                                \
+  }
+#define SLL_QUEUE_POP(head, tail, next) \
+  if ((head) == (tail)) {               \
+    (head) = NULL;                      \
+    (tail) = NULL;                      \
+  }                                     \
+  else {                                \
+    (tail) = (tail)->next;              \
+  }
 
 // NOTE: Doubly-linked list
+//
+// prev<- ->next
+//   o - o - o
+// tail     head
+//
 // E.g.
 // struct Node { Node* prev, next; }
-// struct NodeManager { Node* front, back; }
+// struct NodeManager { Node* head, tail; }
 //
 // NodeManager man = {0};
 // NodeManager node = {0};
-// DLL_PUSH_BACK(man.front, man.back, &node, prev, next);
-// DLL_POP_BACK(man.front, man.back, prev, next);
+// DLL_PUSH_BACK(man.head, man.tail, &node, prev, next);
+// DLL_POP_BACK(man.head, man.tail, prev, next);
 
-// NOTE: front, back, prev_node, curr_node are node pointers.
+// NOTE: head, tail, prev_node, curr_node are node pointers.
 // prev, next are the member field names.
-#define DLL_INSERT(front, back, prev_node, curr_node, prev, next) \
-  do {                                                            \
-    if ((front) == NULL) {                                        \
-      (front) = (curr_node);                                      \
-      (back) = (curr_node);                                       \
-      (curr_node)->next = NULL;                                   \
-      (curr_node)->prev = NULL;                                   \
-    }                                                             \
-    else if ((prev_node) == NULL) {                               \
-      (curr_node)->next = (front);                                \
-      (front)->prev = (curr_node);                                \
-      (front) = (curr_node);                                      \
-      (curr_node)->prev = NULL;                                   \
-    }                                                             \
-    else if ((prev_node) == (back)) {                             \
-      (back)->next = (curr_node);                                 \
-      (curr_node)->prev = (back);                                 \
-      (back) = (curr_node);                                       \
-      (curr_node)->next = NULL;                                   \
-    }                                                             \
-    else {                                                        \
-      (prev_node)->next->prev = (curr_node);                      \
-      (curr_node)->next = (prev_node)->next;                      \
-      (prev_node)->next = (curr_node);                            \
-      (curr_node)->prev = (prev_node);                            \
-    }                                                             \
-  } while (0)
-#define DLL_REMOVE(front, back, curr_node, prev, next) \
-  do {                                                 \
-    if ((curr_node) == (front)) {                      \
-      (front) = (front)->next;                         \
-    }                                                  \
-    if ((curr_node) == (back)) {                       \
-      (back) = (back)->prev;                           \
-    }                                                  \
-    if ((curr_node)->prev != NULL) {                   \
-      (curr_node)->prev->next = (curr_node)->next;     \
-    }                                                  \
-    if ((curr_node)->next != NULL) {                   \
-      (curr_node)->next->prev = (curr_node)->prev;     \
-    }                                                  \
-  } while (0)
-#define DLL_PUSH_FRONT(front, back, curr_node, prev, next) \
-  DLL_INSERT(front, back, (typeof(curr_node)) NULL, curr_node, prev, next)
-#define DLL_PUSH_BACK(front, back, curr_node, prev, next) \
-  DLL_INSERT(front, back, back, curr_node, prev, next)
-#define DLL_POP_FRONT(front, back, prev, next)                  \
-  do {                                                          \
-    typeof(front) _cdefault_front_copy = front;                \
-    DLL_REMOVE(front, back, _cdefault_front_copy, prev, next); \
-  } while (0)
-#define DLL_POP_BACK(front, back, prev, next)                   \
-  do {                                                          \
-    typeof(front) _cdefault_back_copy = back;                  \
-    DLL_REMOVE(front, back, _cdefault_back_copy, prev, next);  \
-  } while (0)
+#define DLL_INSERT(head, tail, prev_node, curr_node, prev, next) \
+  if ((head) == NULL) {                                          \
+    (head) = (curr_node);                                        \
+    (tail) = (curr_node);                                        \
+    (curr_node)->next = NULL;                                    \
+    (curr_node)->prev = NULL;                                    \
+  }                                                              \
+  else if ((prev_node) == NULL) {                                \
+    (curr_node)->next = (tail);                                  \
+    (tail)->prev = (curr_node);                                  \
+    (tail) = (curr_node);                                        \
+    (curr_node)->prev = NULL;                                    \
+  }                                                              \
+  else if ((prev_node) == (head)) {                              \
+    (head)->next = (curr_node);                                  \
+    (curr_node)->prev = (head);                                  \
+    (head) = (curr_node);                                        \
+    (curr_node)->next = NULL;                                    \
+  }                                                              \
+  else {                                                         \
+    (prev_node)->next->prev = (curr_node);                       \
+    (curr_node)->next = (prev_node)->next;                       \
+    (prev_node)->next = (curr_node);                             \
+    (curr_node)->prev = (prev_node);                             \
+  }
+#define DLL_REMOVE(head, tail, curr_node, prev, next)   \
+  if ((curr_node) == (tail) && (curr_node) == (head)) { \
+    tail = NULL;                                        \
+    head = NULL;                                        \
+  }                                                     \
+  else if ((curr_node) == (tail)) {                     \
+    (tail) = (tail)->next;                              \
+    tail->prev = NULL;                                  \
+  }                                                     \
+  else if ((curr_node) == (head)) {                     \
+    (head) = (head)->prev;                              \
+    head->next = NULL;                                  \
+  }                                                     \
+  else {                                                \
+    if ((curr_node)->prev != NULL) {                    \
+      (curr_node)->prev->next = (curr_node)->next;      \
+    }                                                   \
+    if ((curr_node)->next != NULL) {                    \
+      (curr_node)->next->prev = (curr_node)->prev;      \
+    }                                                   \
+  }
+#define DLL_PUSH_BACK(head, tail, curr_node, prev, next) \
+  if ((tail) == NULL) {                                  \
+    (head) = (curr_node);                                \
+    (tail) = (curr_node);                                \
+    (curr_node)->next = NULL;                            \
+    (curr_node)->prev = NULL;                            \
+  }                                                      \
+  else {                                                 \
+    (curr_node)->next = (tail);                          \
+    (tail)->prev = (curr_node);                          \
+    (tail) = (curr_node);                                \
+    (curr_node)->prev = NULL;                            \
+  }
+#define DLL_PUSH_FRONT(head, tail, curr_node, prev, next) \
+  if ((head) == NULL) {                                   \
+    (head) = (curr_node);                                 \
+    (tail) = (curr_node);                                 \
+    (curr_node)->next = NULL;                             \
+    (curr_node)->prev = NULL;                             \
+  }                                                       \
+  else {                                                  \
+    (curr_node)->prev = (head);                           \
+    (head)->next = (curr_node);                           \
+    (head) = (curr_node);                                 \
+    (curr_node)->next = NULL;                             \
+  }
+#define DLL_POP_FRONT(head, tail, prev, next) \
+    DLL_REMOVE(head, tail, head, prev, next);
+#define DLL_POP_BACK(head, tail, prev, next)  \
+    DLL_REMOVE(head, tail, tail, prev, next);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Log
@@ -1141,7 +1165,7 @@ void String8ListPrepend(String8List* list, String8ListNode* node) {
 }
 
 void String8ListAppend(String8List* list, String8ListNode* node) {
-  SLL_QUEUE_PUSH(list->front, list->back, node, next);
+  SLL_QUEUE_PUSH_BACK(list->front, list->back, node, next);
 }
 
 String8 String8ListJoin(Arena* arena, String8List* list) {
