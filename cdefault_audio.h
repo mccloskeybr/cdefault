@@ -145,8 +145,8 @@ struct WASAPI_AudioContext {
     _err_buffer[0] = '\0';                                  \
     FormatMessageA(                                         \
         FORMAT_MESSAGE_FROM_SYSTEM, NULL, hresult, 0,       \
-        _err_buffer, STATIC_ARRAY_SIZE(_err_buffer), NULL);  \
-    LOG_ERROR(fmt ": %s", ##__VA_ARGS__, _err_buffer);      \
+        _err_buffer, STATIC_ARRAY_SIZE(_err_buffer), NULL); \
+    LOG_ERROR("%s - " fmt, _err_buffer, ##__VA_ARGS__);      \
   } while (0)
 
 // NOTE: UUIDs required for WASAPI. Newer API gives a function to derive them

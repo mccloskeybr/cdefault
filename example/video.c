@@ -20,7 +20,17 @@ int main(void) {
   RendererRegisterImage(&image_handle, image_data, image_width, image_height);
   stbi_image_free(image_data);
 
-  while (true) {
+  while (!WindowShouldClose()) {
+    if (WindowIsKeyJustPressed(Key_A)) {
+      LOG_INFO("A just pressed!");
+    }
+    if (WindowIsKeyJustReleased(Key_A)) {
+      LOG_INFO("A just released!");
+    }
+    if (WindowIsKeyPressed(Key_A)) {
+      LOG_INFO("A is pressed!");
+    }
+
     DrawImage(image_handle, 500, 500, image_width, image_height);
 
     DrawRoundedRectangle(600, 600, 100, 100, 30, 1, 0.5, 0);

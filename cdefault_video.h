@@ -15,13 +15,20 @@
 // NOTE: Sensible defaults are chosen if field values are 0.
 B32  WindowInit(S32 width, S32 height, char* title);
 void WindowDeinit();
-void WindowFlushEvents();
+void WindowFlushEvents(); // NOTE: Must be called regularly, e.g. on some frame boundary.
+B32  WindowShouldClose(); // NOTE: True when the window has been closed.
 void WindowSwapBuffers();
 void WindowGetDims(S32* x, S32* y, S32* width, S32* height); // NOTE: viewport dimensions; not necessarily the raw window size.
 void WindowSetTitle(char* title);
 void WindowSetSize(S32 width, S32 height); // NOTE: Does not update resolution, may need to call RendererSetProjection separately.
 void WindowShowCursor(B32 enable);
 void WindowFullscreen(B32 enable);
+
+typedef enum KeyboardKey KeyboardKey;
+B32  WindowIsKeyPressed(KeyboardKey key);
+B32  WindowIsKeyReleased(KeyboardKey key);
+B32  WindowIsKeyJustPressed(KeyboardKey key);
+B32  WindowIsKeyJustReleased(KeyboardKey key);
 
 void RendererSetProjection(M4 projection);
 void RendererRegisterImage(U32* image_handle, U8* image_bytes, U32 width, U32 height);
@@ -50,6 +57,75 @@ void DrawTriangle(F32 x1, F32 y1, F32 x2, F32 y2, F32 x3, F32 y3, F32 red, F32 g
 void DrawTriangleV(V2 p1, V2 p2, V2 p3, V3 color);
 void DrawImage(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height);
 void DrawImageV(U32 image_handle, V2 pos, V2 size);
+
+enum KeyboardKey {
+  Key_A,
+  Key_B,
+  Key_C,
+  Key_D,
+  Key_E,
+  Key_F,
+  Key_G,
+  Key_H,
+  Key_I,
+  Key_J,
+  Key_K,
+  Key_L,
+  Key_M,
+  Key_N,
+  Key_O,
+  Key_P,
+  Key_Q,
+  Key_R,
+  Key_S,
+  Key_T,
+  Key_U,
+  Key_V,
+  Key_W,
+  Key_X,
+  Key_Y,
+  Key_Z,
+  Key_0,
+  Key_1,
+  Key_2,
+  Key_3,
+  Key_4,
+  Key_5,
+  Key_6,
+  Key_7,
+  Key_8,
+  Key_9,
+  Key_F1,
+  Key_F2,
+  Key_F3,
+  Key_F4,
+  Key_F5,
+  Key_F6,
+  Key_F7,
+  Key_F8,
+  Key_F9,
+  Key_F10,
+  Key_F11,
+  Key_F12,
+  Key_Space,
+  Key_Control,
+  Key_LeftControl,
+  Key_RightControl,
+  Key_Shift,
+  Key_LeftShift,
+  Key_RightShift,
+  Key_CapsLock,
+  Key_Tab,
+  Key_Alt,
+  Key_Up,
+  Key_Down,
+  Key_Left,
+  Key_Right,
+  Key_Return,
+  Key_Delete,
+  Key_Escape,
+  Key_Count,
+};
 
 #endif // CDEFAULT_VIDEO_H_
 
@@ -608,9 +684,15 @@ void DrawImageV(U32 image_handle, V2 pos, V2 size) {
 
 typedef HGLRC WINAPI wglCreateContextAttribsARB_Fn(HDC, HGLRC, const int*);
 
+#define WIN_KEY_JUST_PRESSED  0
+#define WIN_KEY_JUST_RELEASED 1
+#define WIN_KEY_PRESSED       2
+
 typedef struct WIN_Window WIN_Window;
 struct WIN_Window {
-  B32 initialized;
+  B8 initialized;
+  B8 key_states[Key_Count];
+  B8 should_close;
   HWND handle;
   HDC device_context;
   HGLRC ogl_context;
@@ -623,14 +705,25 @@ static WIN_Window _win_window;
 
 // TODO: custom on close callback?
 static LRESULT CALLBACK WIN_WindowCallback(HWND hwnd, UINT umsg, WPARAM wparam, LPARAM lparam) {
+  WIN_Window* window = &_win_window;
   OpenGLAPI* g = &_ogl;
   switch (umsg) {
+    case WM_KEYDOWN:
+    case WM_KEYUP: {
+      // NOTE: should be handled by the event loop instead.
+      UNREACHABLE();
+      return 0;
+    } break;
     case WM_WINDOWPOSCHANGED: {
       if (g->glViewport != NULL) {
         S32 width, height;
         WindowGetDims(NULL, NULL, &width, &height);
         g->glViewport(0, 0, width, height);
       }
+      return DefWindowProc(hwnd, umsg, wparam, lparam);
+    } break;
+    case WM_CLOSE: {
+      window->should_close = true;
       return DefWindowProc(hwnd, umsg, wparam, lparam);
     } break;
     default: {
@@ -733,7 +826,6 @@ B32 WIN_WindowInit(S32 width, S32 height, char* title) {
     goto win_window_create_exit;
   }
 
-  // TODO: cover all ogl functions.
 #define WIN_LINK_GL(fn) \
     _ogl.fn = (fn##_Fn*) wglGetProcAddress(#fn); \
     DEBUG_ASSERT(_ogl.fn != NULL)
@@ -815,14 +907,112 @@ void WIN_WindowDeinit() {
   CloseWindow(window->handle);
 }
 
+static void WIN_KeyUpdate(KeyboardKey key, B32 is_pressed) {
+  WIN_Window* window = &_win_window;
+  B8 new_state = 0;
+  new_state |= (is_pressed && !(window->key_states[key] & BIT(WIN_KEY_PRESSED))) << WIN_KEY_JUST_PRESSED;
+  new_state |= (!is_pressed && (window->key_states[key] & BIT(WIN_KEY_PRESSED))) << WIN_KEY_JUST_RELEASED;
+  new_state |= is_pressed << WIN_KEY_PRESSED;
+  window->key_states[key] = new_state;
+}
+
 void WIN_WindowFlushEvents() {
   WIN_Window* window = &_win_window;
   DEBUG_ASSERT(window->initialized);
+
+  // NOTE: update single frame key events.
+  for (S32 i = 0; i < Key_Count; i++) {
+    window->key_states[i] &= ~(BIT(WIN_KEY_JUST_PRESSED) | BIT(WIN_KEY_JUST_RELEASED));
+  }
+
   MSG msg;
   while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-    TranslateMessage(&msg);
-    DispatchMessage(&msg);
+    switch (msg.message) {
+      case WM_KEYDOWN:
+      case WM_KEYUP: {
+        U32 key_code = (U32) msg.wParam;
+        U32 key_state = (U32) msg.lParam;
+        B32 is_down = (key_state & (1UL << 31)) == 0;
+        switch (key_code) {
+          case 'A': { WIN_KeyUpdate(Key_A, is_down); } break;
+          case 'B': { WIN_KeyUpdate(Key_B, is_down); } break;
+          case 'C': { WIN_KeyUpdate(Key_C, is_down); } break;
+          case 'D': { WIN_KeyUpdate(Key_D, is_down); } break;
+          case 'E': { WIN_KeyUpdate(Key_E, is_down); } break;
+          case 'F': { WIN_KeyUpdate(Key_F, is_down); } break;
+          case 'G': { WIN_KeyUpdate(Key_G, is_down); } break;
+          case 'H': { WIN_KeyUpdate(Key_H, is_down); } break;
+          case 'I': { WIN_KeyUpdate(Key_I, is_down); } break;
+          case 'J': { WIN_KeyUpdate(Key_J, is_down); } break;
+          case 'K': { WIN_KeyUpdate(Key_K, is_down); } break;
+          case 'L': { WIN_KeyUpdate(Key_L, is_down); } break;
+          case 'M': { WIN_KeyUpdate(Key_M, is_down); } break;
+          case 'N': { WIN_KeyUpdate(Key_N, is_down); } break;
+          case 'O': { WIN_KeyUpdate(Key_O, is_down); } break;
+          case 'P': { WIN_KeyUpdate(Key_P, is_down); } break;
+          case 'Q': { WIN_KeyUpdate(Key_Q, is_down); } break;
+          case 'R': { WIN_KeyUpdate(Key_R, is_down); } break;
+          case 'S': { WIN_KeyUpdate(Key_S, is_down); } break;
+          case 'T': { WIN_KeyUpdate(Key_T, is_down); } break;
+          case 'U': { WIN_KeyUpdate(Key_U, is_down); } break;
+          case 'V': { WIN_KeyUpdate(Key_V, is_down); } break;
+          case 'W': { WIN_KeyUpdate(Key_W, is_down); } break;
+          case 'X': { WIN_KeyUpdate(Key_X, is_down); } break;
+          case 'Y': { WIN_KeyUpdate(Key_Y, is_down); } break;
+          case 'Z': { WIN_KeyUpdate(Key_Z, is_down); } break;
+          case '0': { WIN_KeyUpdate(Key_0, is_down); } break;
+          case '1': { WIN_KeyUpdate(Key_1, is_down); } break;
+          case '2': { WIN_KeyUpdate(Key_2, is_down); } break;
+          case '3': { WIN_KeyUpdate(Key_3, is_down); } break;
+          case '4': { WIN_KeyUpdate(Key_4, is_down); } break;
+          case '5': { WIN_KeyUpdate(Key_5, is_down); } break;
+          case '6': { WIN_KeyUpdate(Key_6, is_down); } break;
+          case '7': { WIN_KeyUpdate(Key_7, is_down); } break;
+          case '8': { WIN_KeyUpdate(Key_8, is_down); } break;
+          case '9': { WIN_KeyUpdate(Key_9, is_down); } break;
+          case VK_F1:       { WIN_KeyUpdate(Key_F1, is_down);           } break;
+          case VK_F2:       { WIN_KeyUpdate(Key_F2, is_down);           } break;
+          case VK_F3:       { WIN_KeyUpdate(Key_F3, is_down);           } break;
+          case VK_F4:       { WIN_KeyUpdate(Key_F4, is_down);           } break;
+          case VK_F5:       { WIN_KeyUpdate(Key_F5, is_down);           } break;
+          case VK_F6:       { WIN_KeyUpdate(Key_F6, is_down);           } break;
+          case VK_F7:       { WIN_KeyUpdate(Key_F7, is_down);           } break;
+          case VK_F8:       { WIN_KeyUpdate(Key_F8, is_down);           } break;
+          case VK_F9:       { WIN_KeyUpdate(Key_F9, is_down);           } break;
+          case VK_F10:      { WIN_KeyUpdate(Key_F10, is_down);          } break;
+          case VK_F11:      { WIN_KeyUpdate(Key_F11, is_down);          } break;
+          case VK_F12:      { WIN_KeyUpdate(Key_F12, is_down);          } break;
+          case VK_SPACE:    { WIN_KeyUpdate(Key_Space, is_down);        } break;
+          case VK_CONTROL:  { WIN_KeyUpdate(Key_Control, is_down);      } break;
+          case VK_LCONTROL: { WIN_KeyUpdate(Key_LeftControl, is_down);  } break;
+          case VK_RCONTROL: { WIN_KeyUpdate(Key_RightControl, is_down); } break;
+          case VK_SHIFT:    { WIN_KeyUpdate(Key_Shift, is_down);        } break;
+          case VK_LSHIFT:   { WIN_KeyUpdate(Key_LeftShift, is_down);    } break;
+          case VK_RSHIFT:   { WIN_KeyUpdate(Key_RightShift, is_down);   } break;
+          case VK_CAPITAL:  { WIN_KeyUpdate(Key_CapsLock, is_down);     } break;
+          case VK_TAB:      { WIN_KeyUpdate(Key_Tab, is_down);          } break;
+          case VK_MENU:     { WIN_KeyUpdate(Key_Alt, is_down);          } break;
+          case VK_UP:       { WIN_KeyUpdate(Key_Up, is_down);           } break;
+          case VK_DOWN:     { WIN_KeyUpdate(Key_Down, is_down);         } break;
+          case VK_LEFT:     { WIN_KeyUpdate(Key_Left, is_down);         } break;
+          case VK_RIGHT:    { WIN_KeyUpdate(Key_Right, is_down);        } break;
+          case VK_RETURN:   { WIN_KeyUpdate(Key_Return, is_down);       } break;
+          case VK_DELETE:   { WIN_KeyUpdate(Key_Delete, is_down);       } break;
+          case VK_ESCAPE:   { WIN_KeyUpdate(Key_Escape, is_down);       } break;
+        }
+      } break;
+      default: {
+        TranslateMessage(&msg);
+        DispatchMessageA(&msg);
+      } break;
+    }
   }
+}
+
+B32 WIN_WindowShouldClose() {
+  WIN_Window* window = &_win_window;
+  DEBUG_ASSERT(window->initialized);
+  return window->should_close;
 }
 
 void WIN_WindowSwapBuffers() {
@@ -896,6 +1086,28 @@ void WIN_WindowFullscreen(B32 enable) {
   }
 }
 
+B32 WIN_WindowIsKeyJustPressed(KeyboardKey key) {
+  WIN_Window* window = &_win_window;
+  DEBUG_ASSERT(window->initialized);
+  return window->key_states[key] & BIT(WIN_KEY_JUST_PRESSED);
+}
+
+B32 WIN_WindowIsKeyPressed(KeyboardKey key) {
+  WIN_Window* window = &_win_window;
+  DEBUG_ASSERT(window->initialized);
+  return window->key_states[key] & BIT(WIN_KEY_PRESSED);
+}
+
+B32 WIN_WindowIsKeyJustReleased(KeyboardKey key) {
+  WIN_Window* window = &_win_window;
+  DEBUG_ASSERT(window->initialized);
+  return window->key_states[key] & BIT(WIN_KEY_JUST_RELEASED);
+}
+
+B32 WIN_WindowIsKeyReleased(KeyboardKey key) {
+  return !WIN_WindowIsKeyPressed(key);
+}
+
 #else
 #  error Unsupported OS for cdefault video.
 #endif
@@ -913,6 +1125,10 @@ void WindowDeinit() {
 
 void WindowFlushEvents() {
   CDEFAULT_VIDEO_BACKEND_FN(WindowFlushEvents());
+}
+
+B32 WindowShouldClose() {
+  return CDEFAULT_VIDEO_BACKEND_FN(WindowShouldClose());
 }
 
 void WindowSwapBuffers() {
@@ -937,6 +1153,22 @@ void WindowShowCursor(B32 enable) {
 
 void WindowFullscreen(B32 enable) {
   CDEFAULT_VIDEO_BACKEND_FN(WindowFullscreen(enable));
+}
+
+B32 WindowIsKeyJustPressed(KeyboardKey key) {
+  return CDEFAULT_VIDEO_BACKEND_FN(WindowIsKeyJustPressed(key));
+}
+
+B32 WindowIsKeyPressed(KeyboardKey key) {
+  return CDEFAULT_VIDEO_BACKEND_FN(WindowIsKeyPressed(key));
+}
+
+B32 WindowIsKeyJustReleased(KeyboardKey key) {
+  return CDEFAULT_VIDEO_BACKEND_FN(WindowIsKeyJustReleased(key));
+}
+
+B32 WindowIsKeyReleased(KeyboardKey key) {
+  return CDEFAULT_VIDEO_BACKEND_FN(WindowIsKeyReleased(key));
 }
 
 #endif // CDEFAULT_VIDEO_IMPLEMENTATION

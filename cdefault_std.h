@@ -66,7 +66,7 @@ typedef double   F64;
 ///////////////////////////////////////////////////////////////////////////////
 
 #if defined(COMPILER_MSVC)
-#  define UNUSED(x) x [[maybe_unused]]
+#  define UNUSED(x) __pragma(warning(suppress:4100)) x
 #elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
 #  define UNUSED(x) x __attribute__((unused))
 #else
@@ -142,7 +142,7 @@ typedef double   F64;
 #endif
 #define STATIC_ASSERT(exp, msg) static_assert((exp), msg)
 #define UNIMPLEMENTED() ASSERT(false)
-#define UNREACHABLE() ASSERT(false)
+#define UNREACHABLE() DEBUG_ASSERT(false)
 #define TODO() ASSERT(false)
 
 ///////////////////////////////////////////////////////////////////////////////
