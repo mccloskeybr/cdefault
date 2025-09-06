@@ -284,6 +284,7 @@ struct Renderer {
   GLint rect_camera_uniform;
   GLint rect_color_uniform;
   GLint rect_size_uniform;
+  GLint rect_border_size_uniform;
   GLint rect_radius_uniform;
 
   GLuint tri_shader;
@@ -371,20 +372,22 @@ static B32 RendererInit(void) {
     "#version 330 core\n"
     "uniform vec3 color;\n"
     "uniform vec2 size;\n"
+    "uniform float border_size;\n"
     "uniform float radius;\n"
     "in vec2 tex_coord;\n"
     "out vec4 frag_color;\n"
     "void main() { \n"
+    "  vec2 half_size = size / 2.0;\n"
     "  vec2 centered_pos = (tex_coord - 0.5) * size;\n"
-    "  vec2 q = abs(centered_pos) - (size / 2.0) + radius;\n"
-    "  float dist = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;\n"
-    "  float alpha = 1.0 - smoothstep(0.0, 1.0, dist);\n"
+    "  float dist = length(max(abs(centered_pos) + radius, half_size) - half_size) - radius;\n"
+    "  float alpha = 1 - smoothstep(0, 1, dist);\n"
     "  frag_color = vec4(color, alpha);\n"
     "}\0";
   DEBUG_ASSERT(RendererCompileShader(&r->rect_shader, rect_vertex_shader_source, rect_fragment_shader_source));
   r->rect_camera_uniform = g->glGetUniformLocation(r->rect_shader, "to_camera_transform");
   r->rect_color_uniform = g->glGetUniformLocation(r->rect_shader, "color");
   r->rect_size_uniform = g->glGetUniformLocation(r->rect_shader, "size");
+  r->rect_border_size_uniform = g->glGetUniformLocation(r->rect_shader, "border_size");
   r->rect_radius_uniform = g->glGetUniformLocation(r->rect_shader, "radius");
 
   char* tri_vertex_shader_source =
@@ -614,6 +617,7 @@ void DrawRoundedRectangleRot(F32 center_x, F32 center_y, F32 width, F32 height, 
   g->glUniformMatrix4fv(r->rect_camera_uniform, 1, GL_FALSE, (GLfloat*) &rect_to_camera_t);
   g->glUniform3fv(r->rect_color_uniform, 1, (GLfloat*) &color);
   g->glUniform2fv(r->rect_size_uniform, 1, (GLfloat*) &scale);
+  g->glUniform1f(r->rect_border_size_uniform, 50);
   g->glUniform1f(r->rect_radius_uniform, radius);
   g->glBindVertexArray(r->quad_vao);
   g->glDrawArrays(GL_TRIANGLES, 0, 6);

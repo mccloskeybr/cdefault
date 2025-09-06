@@ -205,6 +205,7 @@ static B32 MoveSnake(Snake* snake) {
 }
 
 int main(void) {
+  TimeInit();
   RandInit(&r, 12345);
   ASSERT(WindowInit(WINDOW_WIDTH, WINDOW_HEIGHT, "snake"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);

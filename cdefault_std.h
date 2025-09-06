@@ -527,6 +527,7 @@ B32 AtomicB32FetchAnd(AtomicB32* a, B32 b);
 // NOTE: Time
 ///////////////////////////////////////////////////////////////////////////////
 
+// NOTE: TimeInit must be called before any time functions can be used.
 void TimeInit();
 F32  TimeSecondsSinceStart();
 void SleepMs(S32 ms);
@@ -1093,7 +1094,6 @@ void SleepMs(S32 ms) {
 #endif
 
 void StopwatchInit(Stopwatch* stopwatch) {
-  TimeInit();
   StopwatchReset(stopwatch);
 }
 
