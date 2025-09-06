@@ -33,6 +33,7 @@
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #elif defined(OS_MAC)
 
@@ -43,6 +44,7 @@
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #endif
 
@@ -367,12 +369,11 @@ void  MemoryDecommit(void* ptr, U64 size);
 // NOTE: If not initialized, will print to stderr.
 void LogInit(FILE* fd);
 void Log(char* level, char* filename, U32 loc, char* fmt, ...);
-#define LOG_INFO(fmt, ...) Log("INFO",  FILENAME, __LINE__, fmt, ##__VA_ARGS__)
-#define LOG_WARN(fmt, ...) Log("WARN",  FILENAME, __LINE__, fmt, ##__VA_ARGS__)
-#define LOG_ERROR(fmt, ...) Log("ERROR", FILENAME, __LINE__, fmt, ##__VA_ARGS__)
-
+#define LOG_INFO(fmt, ...)  Log("INFO",  FILENAME, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_WARN(fmt, ...)  Log(ANSI_COLOR_YELLOW "WARN" ANSI_COLOR_RESET, FILENAME, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_ERROR(fmt, ...) Log(ANSI_COLOR_RED "ERR " ANSI_COLOR_RESET, FILENAME, __LINE__, fmt, ##__VA_ARGS__)
 #ifndef NDEBUG
-#  define LOG_DEBUG(fmt, ...) Log("DEBUG", FILENAME, fmt, ##__VA_ARGS__)
+#  define LOG_DEBUG(fmt, ...) Log(ANSI_COLOR_BLUE "DEBUG" ANSI_COLOR_RESET, FILENAME, fmt, ##__VA_ARGS__)
 #else
 #  define LOG_DEBUG(fmt, ...)
 #endif
@@ -414,11 +415,11 @@ struct ArenaTemp {
 
 Arena* _ArenaAllocate(U64 reserve_size, U64 commit_size);
 #define ArenaAllocate() _ArenaAllocate(CDEFAULT_ARENA_RESERVE_SIZE, CDEFAULT_ARENA_COMMIT_SIZE)
-void ArenaRelease(Arena* arena);
+void  ArenaRelease(Arena* arena);
 void* ArenaPush(Arena* arena, U64 size, U64 align);
-void ArenaPopTo(Arena* arena, U64 pos);
-void ArenaPop(Arena* arena, U64 size);
-void ArenaClear(Arena* arena);
+void  ArenaPopTo(Arena* arena, U64 pos);
+void  ArenaPop(Arena* arena, U64 size);
+void  ArenaClear(Arena* arena);
 
 ArenaTemp ArenaTempBegin(Arena* arena);
 void ArenaTempEnd(ArenaTemp* temp);
@@ -446,7 +447,7 @@ typedef S32 LockWitness;
 
 void ThreadCreate(Thread* thread, ThreadStartFunc* entry, void* arg);
 void ThreadDetach(Thread* thread);
-S32 ThreadJoin(Thread* thread);
+S32  ThreadJoin(Thread* thread);
 
 void MutexInit(Mutex* mutex);
 void MutexDeinit(Mutex* mutex);
@@ -471,10 +472,11 @@ void SemDeinit(Sem* sem);
 void SemSignal(Sem* sem);
 void SemWait(Sem* sem);
 
-typedef Sem Notification;
-void NotificationInit(Notification* notification);
-void NotificationSignal(Notification* notification);
-void NotificationWaitAndDeinit(Notification* notification);
+// NOTE: Notifications are shorthand for semaphores init'd with count = 0.
+typedef Sem Notif;
+void NotifInit(Notif* notification);
+void NotifSignal(Notif* notification);
+void NotifWaitAndDeinit(Notif* notification);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Atomic
@@ -527,6 +529,7 @@ B32 AtomicB32FetchAnd(AtomicB32* a, B32 b);
 
 void TimeInit();
 F32  TimeSecondsSinceStart();
+void SleepMs(S32 ms);
 
 typedef struct Stopwatch Stopwatch;
 struct Stopwatch { F32 start_time; };
@@ -910,15 +913,15 @@ void SemWait(Sem* sem) {
   MutexUnlock(&sem->mutex);
 }
 
-void NotificationInit(Notification* notification) {
+void NotifInit(Notif* notification) {
   SemInit(notification, 0);
 }
 
-void NotificationSignal(Notification* notification) {
+void NotifSignal(Notif* notification) {
   SemSignal(notification);
 }
 
-void NotificationWaitAndDeinit(Notification* notification) {
+void NotifWaitAndDeinit(Notif* notification) {
   SemWait(notification);
   SemDeinit(notification);
 }
@@ -1035,6 +1038,10 @@ F32 TimeSecondsSinceStart() {
     ((F32) _cdef_performance_freq.QuadPart);
 }
 
+void SleepMs(S32 ms) {
+  Sleep(ms);
+}
+
 #elif defined(OS_LINUX)
 
 static B32             _cdef_time_init;
@@ -1052,6 +1059,10 @@ F32 TimeSecondsSinceStart() {
   clock_gettime(CLOCK_MONOTONIC, &time_now);
   return ((F32) (time_now.tv_sec - _cdef_start_time.tv_sec)) +
     ((F32) (time_now.tv_nsec - _cdef_start_time.tv_nsec) * 1e-9f);
+}
+
+void SleepMs(S32 ms) {
+  usleep(ms * 1000);
 }
 
 #elif defined(OS_MAC)
@@ -1073,6 +1084,10 @@ F32 TimeSecondsSinceStart() {
   U64 time_now = mach_absolute_time();
   return ((time_now - _cdef_start_time) * _cdef_timebase_info.numer) /
     _cdef_timebase_info.denom;
+}
+
+void SleepMs(S32 ms) {
+  usleep(ms * 1000);
 }
 
 #endif

@@ -2,8 +2,8 @@
 #include "../cdefault_std.h"
 #define CDEFAULT_MATH_IMPLEMENTATION
 #include "../cdefault_math.h"
-#define CDEFAULT_VIDEO_IMPLEMENTATION
-#include "../cdefault_video.h"
+#define CDEFAULT_RENDER_IMPLEMENTATION
+#include "../cdefault_render.h"
 #define CDEFAULT_AUDIO_IMPLEMENTATION
 #include "../cdefault_audio.h"
 #include "third_party/stb_vorbis.c"
@@ -59,10 +59,10 @@ static RandomSeries r;
 static S32 apple_x, apple_y;
 
 static S32 AudioEntry(void* user_data) {
-  Notification* init_done = (Notification*) user_data;
+  Notif* init_done = (Notif*) user_data;
   ASSERT(AudioInit());
   MutexInit(&audio_manager.mutex);
-  NotificationSignal(init_done);
+  NotifSignal(init_done);
   Arena* arena = ArenaAllocate();
 
   AudioStreamSpec spec;
@@ -209,12 +209,12 @@ int main(void) {
   ASSERT(WindowInit(WINDOW_WIDTH, WINDOW_HEIGHT, "snake"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
 
-  Notification audio_init_done;
-  NotificationInit(&audio_init_done);
+  Notif audio_init_done;
+  NotifInit(&audio_init_done);
   Thread audio_thread;
   ThreadCreate(&audio_thread, AudioEntry, &audio_init_done);
   ThreadDetach(&audio_thread);
-  NotificationWaitAndDeinit(&audio_init_done);
+  NotifWaitAndDeinit(&audio_init_done);
 
   AudioQueueSound("Z:\\cdefault\\example\\data\\test_audio.ogg", true);
 
@@ -244,10 +244,17 @@ int main(void) {
     } else if (WindowIsKeyJustPressed(Key_D)) {
       snake.dir = V2_X_POS;
     }
+    if (WindowIsKeyPressed(Key_Control) && WindowIsKeyJustPressed(Key_C)) {
+      LOG_INFO("SIG_INT received, closing.");
+      exit(0);
+    }
 
     if (StopwatchReadSeconds(&input_stopwatch) >= 0.3f) {
       StopwatchReset(&input_stopwatch);
-      if (!MoveSnake(&snake)) { exit(1); }
+      if (!MoveSnake(&snake)) {
+        LOG_INFO("Game over!");
+        exit(0);
+      }
     }
 
     for (S32 i = 0; i < NUM_TILES; i++) {

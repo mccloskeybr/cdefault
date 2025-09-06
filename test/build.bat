@@ -11,6 +11,7 @@ cl %FLAGS% log_test.c /Fobuild/log_test.obj /Febin/log_test.exe /link %LIBS%
 cl %FLAGS% arena_test.c /Fobuild/arena_test.obj /Febin/arena_test.exe /link %LIBS%
 cl %FLAGS% string_test.c /Fobuild/string_test.obj /Febin/string_test.exe /link %LIBS%
 cl %FLAGS% vector_test.c /Fobuild/vector_test.obj /Febin/vector_test.exe /link %LIBS%
+cl %FLAGS% time_test.c /Fobuild/time_test.obj /Febin/time_test.exe /link %LIBS%
 
 echo Testing:
 bin\dll_test.exe
@@ -19,3 +20,4 @@ bin\log_test.exe
 bin\arena_test.exe
 bin\string_test.exe
 bin\vector_test.exe
+bin\time_test.exe

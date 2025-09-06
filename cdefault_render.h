@@ -1,5 +1,5 @@
-#ifndef CDEFAULT_VIDEO_H_
-#define CDEFAULT_VIDEO_H_
+#ifndef CDEFAULT_RENDER_H_
+#define CDEFAULT_RENDER_H_
 
 #include "cdefault_std.h"
 #include "cdefault_math.h"
@@ -71,6 +71,8 @@ void DrawTriangle(F32 x1, F32 y1, F32 x2, F32 y2, F32 x3, F32 y3, F32 red, F32 g
 void DrawTriangleV(V2 p1, V2 p2, V2 p3, V3 color);
 void DrawImage(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height);
 void DrawImageV(U32 image_handle, V2 pos, V2 size);
+void DrawImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 angle_rad);
+void DrawImageRotV(U32 image_handle, V2 pos, V2 size, F32 angle_rad);
 
 enum KeyboardKey {
   Key_A,
@@ -150,10 +152,10 @@ enum MouseButton {
   MouseButton_Count,
 };
 
-#endif // CDEFAULT_VIDEO_H_
+#endif // CDEFAULT_RENDER_H_
 
-#ifdef CDEFAULT_VIDEO_IMPLEMENTATION
-#undef CDEFAULT_VIDEO_IMPLEMENTATION
+#ifdef CDEFAULT_RENDER_IMPLEMENTATION
+#undef CDEFAULT_RENDER_IMPLEMENTATION
 
 #if defined(OS_WINDOWS) || defined(OS_LINUX)
 #  if defined(OS_WINDOWS)
@@ -307,7 +309,7 @@ static B32 RendererCompileShader(GLuint* shader, char* vertex_shader_source, cha
   g->glCompileShader(vertex_shader);
   g->glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &result);
   if (!result) {
-    LOG_ERROR("[VIDEO] Failed to compile vertex shader."); // TODO: print ogl error message.
+    LOG_ERROR("[RENDER] Failed to compile vertex shader."); // TODO: print ogl error message.
     goto renderer_compile_shader_exit;
   }
 
@@ -316,7 +318,7 @@ static B32 RendererCompileShader(GLuint* shader, char* vertex_shader_source, cha
   g->glCompileShader(fragment_shader);
   g->glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &result);
   if (!result) {
-    LOG_ERROR("[VIDEO] Failed to compile fragment shader.");
+    LOG_ERROR("[RENDER] Failed to compile fragment shader.");
     goto renderer_compile_shader_exit;
   }
 
@@ -326,7 +328,7 @@ static B32 RendererCompileShader(GLuint* shader, char* vertex_shader_source, cha
   g->glLinkProgram(*shader);
   g->glGetShaderiv(*shader, GL_LINK_STATUS, &result);
   if (!result) {
-    LOG_ERROR("[VIDEO] Failed to link shader program.");
+    LOG_ERROR("[RENDER] Failed to link shader program.");
     goto renderer_compile_shader_exit;
   }
 
@@ -344,7 +346,7 @@ static B32 RendererInit(void) {
   OpenGLAPI* g = &_ogl;
   B32 success = false; // TODO: error checking.
 
-  LOG_INFO("[VIDEO] Initializing OpenGL renderer.");
+  LOG_INFO("[RENDER] Initializing OpenGL renderer.");
 
   // TODO: verify existence.
   g->glEnable(GL_FRAMEBUFFER_SRGB);
@@ -450,7 +452,7 @@ static B32 RendererInit(void) {
   M4Orthographic(0, width, 0, height, 0.01f, 100.0f, &projection);
   RendererSetProjection(projection);
 
-  LOG_INFO("[VIDEO] OpenGL renderer initialized.");
+  LOG_INFO("[RENDER] OpenGL renderer initialized.");
   success = true;
 
   return success;
@@ -681,12 +683,21 @@ void DrawTriangleV(V2 p1, V2 p2, V2 p3, V3 color) {
 }
 
 void DrawImage(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height) {
+  DrawImageRot(image_handle, center_x, center_y, width, height, 0.0f);
+}
+
+void DrawImageV(U32 image_handle, V2 pos, V2 size) {
+  DrawImage(image_handle, pos.x, pos.y, size.x, size.y);
+}
+
+void DrawImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 angle_rad) {
   Renderer* r = &_renderer;
   OpenGLAPI* g = &_ogl;
 
   V3 pos   = { center_x, center_y, 0 };
   V3 scale = { width, height, 1 };
-  V4 rot = V4_QUAT_IDENT;
+  V4 rot;
+  V4RotateAroundAxis(&V3_Z_POS, angle_rad, &rot);
   M4 image_to_world, image_to_camera, image_to_camera_t;
   M4FromTransform(&pos, &rot, &scale, &image_to_world);
   M4MultM4(&r->world_to_camera, &image_to_world, &image_to_camera);
@@ -702,12 +713,12 @@ void DrawImage(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 heig
   g->glUseProgram(0);
 }
 
-void DrawImageV(U32 image_handle, V2 pos, V2 size) {
-  DrawImage(image_handle, pos.x, pos.y, size.x, size.y);
+void DrawImageRotV(U32 image_handle, V2 pos, V2 size, F32 angle_rad) {
+  DrawImageRot(image_handle, pos.x, pos.y, size.x, size.y, angle_rad);
 }
 
 #if defined(OS_WINDOWS)
-#define CDEFAULT_VIDEO_BACKEND_NAMESPACE WIN_
+#define CDEFAULT_RENDER_BACKEND_NAMESPACE WIN_
 // NOTE: need to link with user32.lib opengl32.lib gdi32.lib
 
 #define WGL_CONTEXT_MAJOR_VERSION_ARB             0x2091
@@ -795,7 +806,7 @@ B32 WIN_WindowInit(S32 width, S32 height, char* title) {
   WIN_Window* window = &_win_window;
   DEBUG_ASSERT(!window->initialized);
 
-  LOG_INFO("[VIDEO] Initializing window.");
+  LOG_INFO("[RENDER] Initializing window.");
 
   if (width == 0)    { width = CW_USEDEFAULT;  }
   if (height == 0)   { height = CW_USEDEFAULT; }
@@ -822,7 +833,7 @@ B32 WIN_WindowInit(S32 width, S32 height, char* title) {
       0, window_class.lpszClassName, title, create_window_flags,
       CW_USEDEFAULT, CW_USEDEFAULT, width, height, NULL, NULL, hinstance, NULL);
   if (handle == NULL) {
-    LOG_ERROR("[VIDEO] Failed to create window: %d", GetLastError());
+    LOG_ERROR("[RENDER] Failed to create window: %d", GetLastError());
     goto win_window_create_exit;
   }
   HDC device_context = GetDC(handle);
@@ -838,34 +849,34 @@ B32 WIN_WindowInit(S32 width, S32 height, char* title) {
   desired_pixel_format.iLayerType = PFD_MAIN_PLANE;
   S32 suggested_pixel_format_idx = ChoosePixelFormat(device_context, &desired_pixel_format);
   if (suggested_pixel_format_idx == 0) {
-    LOG_ERROR("[VIDEO] Failed to choose a pixel format: %d", GetLastError());
+    LOG_ERROR("[RENDER] Failed to choose a pixel format: %d", GetLastError());
     goto win_window_create_exit;
   }
   PIXELFORMATDESCRIPTOR suggested_pixel_format_desc;
   if (!DescribePixelFormat(device_context, suggested_pixel_format_idx, sizeof(suggested_pixel_format_desc), &suggested_pixel_format_desc)) {
-    LOG_ERROR("[VIDEO] Failed to describe pixel format: %d", GetLastError());
+    LOG_ERROR("[RENDER] Failed to describe pixel format: %d", GetLastError());
     goto win_window_create_exit;
   }
   if (!SetPixelFormat(device_context, suggested_pixel_format_idx, &suggested_pixel_format_desc)) {
-    LOG_ERROR("[VIDEO] Failed to set pixel format: %d", GetLastError());
+    LOG_ERROR("[RENDER] Failed to set pixel format: %d", GetLastError());
     goto win_window_create_exit;
   }
 
   // NOTE: make fake ogl context first.
   HGLRC ogl_context = wglCreateContext(device_context);
   if (ogl_context == NULL) {
-    LOG_ERROR("[VIDEO] Failed to create OpenGL context: %d", GetLastError());
+    LOG_ERROR("[RENDER] Failed to create OpenGL context: %d", GetLastError());
     goto win_window_create_exit;
   }
   if (wglMakeCurrent(device_context, ogl_context) == FALSE) {
-    LOG_ERROR("[VIDEO] Failed to attach the OpenGL context: %d", GetLastError());
+    LOG_ERROR("[RENDER] Failed to attach the OpenGL context: %d", GetLastError());
     wglDeleteContext(ogl_context);
     goto win_window_create_exit;
   }
   wglCreateContextAttribsARB_Fn* wglCreateContextAttribsARB =
     (wglCreateContextAttribsARB_Fn*) wglGetProcAddress("wglCreateContextAttribsARB");
   if (wglCreateContextAttribsARB == NULL) {
-    LOG_ERROR("[VIDEO] Failed to find wglCreateContextAttribsARB function pointer.");
+    LOG_ERROR("[RENDER] Failed to find wglCreateContextAttribsARB function pointer.");
     wglDeleteContext(ogl_context);
     goto win_window_create_exit;
   }
@@ -939,12 +950,12 @@ B32 WIN_WindowInit(S32 width, S32 height, char* title) {
   window->initialized = true;
 
   if (!RendererInit()) {
-    LOG_ERROR("[VIDEO] Failed to initialize renderer.");
+    LOG_ERROR("[RENDER] Failed to initialize renderer.");
     window->initialized = false;
     goto win_window_create_exit;
   }
 
-  LOG_INFO("[VIDEO] Window initialized successfully.");
+  LOG_INFO("[RENDER] Window initialized successfully.");
 
   success = true;
 
@@ -1262,102 +1273,102 @@ void WIN_WindowGetMouseDeltaPositionV(V2* pos) {
 }
 
 #else
-#  error Unsupported OS for cdefault video.
+#  error Unsupported OS for cdefault render.
 #endif
 
-#define CDEFAULT_VIDEO_BACKEND_FN_IMPL(ns, fn) GLUE(ns, fn)
-#define CDEFAULT_VIDEO_BACKEND_FN(x) CDEFAULT_VIDEO_BACKEND_FN_IMPL(CDEFAULT_VIDEO_BACKEND_NAMESPACE, x)
+#define CDEFAULT_RENDER_BACKEND_FN_IMPL(ns, fn) GLUE(ns, fn)
+#define CDEFAULT_RENDER_BACKEND_FN(x) CDEFAULT_RENDER_BACKEND_FN_IMPL(CDEFAULT_RENDER_BACKEND_NAMESPACE, x)
 
 B32 WindowInit(S32 width, S32 height, char* title) {
-  return CDEFAULT_VIDEO_BACKEND_FN(WindowInit(width, height, title));
+  return CDEFAULT_RENDER_BACKEND_FN(WindowInit(width, height, title));
 }
 
 void WindowDeinit() {
-  CDEFAULT_VIDEO_BACKEND_FN(WindowDeinit());
+  CDEFAULT_RENDER_BACKEND_FN(WindowDeinit());
 }
 
 void WindowFlushEvents() {
-  CDEFAULT_VIDEO_BACKEND_FN(WindowFlushEvents());
+  CDEFAULT_RENDER_BACKEND_FN(WindowFlushEvents());
 }
 
 B32 WindowShouldClose() {
-  return CDEFAULT_VIDEO_BACKEND_FN(WindowShouldClose());
+  return CDEFAULT_RENDER_BACKEND_FN(WindowShouldClose());
 }
 
 void WindowSwapBuffers() {
-  CDEFAULT_VIDEO_BACKEND_FN(WindowSwapBuffers());
+  CDEFAULT_RENDER_BACKEND_FN(WindowSwapBuffers());
 }
 
 void WindowGetDims(S32* x, S32* y, S32* width, S32* height) {
-  CDEFAULT_VIDEO_BACKEND_FN(WindowGetDims(x, y, width, height));
+  CDEFAULT_RENDER_BACKEND_FN(WindowGetDims(x, y, width, height));
 }
 
 void WindowSetTitle(char* title) {
-  CDEFAULT_VIDEO_BACKEND_FN(WindowSetTitle(title));
+  CDEFAULT_RENDER_BACKEND_FN(WindowSetTitle(title));
 }
 
 void WindowSetSize(S32 width, S32 height) {
-  CDEFAULT_VIDEO_BACKEND_FN(WindowSetSize(width, height));
+  CDEFAULT_RENDER_BACKEND_FN(WindowSetSize(width, height));
 }
 
 void WindowShowCursor(B32 enable) {
-  CDEFAULT_VIDEO_BACKEND_FN(WindowShowCursor(enable));
+  CDEFAULT_RENDER_BACKEND_FN(WindowShowCursor(enable));
 }
 
 void WindowFullscreen(B32 enable) {
-  CDEFAULT_VIDEO_BACKEND_FN(WindowFullscreen(enable));
+  CDEFAULT_RENDER_BACKEND_FN(WindowFullscreen(enable));
 }
 
 B32 WindowIsKeyJustPressed(KeyboardKey key) {
-  return CDEFAULT_VIDEO_BACKEND_FN(WindowIsKeyJustPressed(key));
+  return CDEFAULT_RENDER_BACKEND_FN(WindowIsKeyJustPressed(key));
 }
 
 B32 WindowIsKeyPressed(KeyboardKey key) {
-  return CDEFAULT_VIDEO_BACKEND_FN(WindowIsKeyPressed(key));
+  return CDEFAULT_RENDER_BACKEND_FN(WindowIsKeyPressed(key));
 }
 
 B32 WindowIsKeyJustReleased(KeyboardKey key) {
-  return CDEFAULT_VIDEO_BACKEND_FN(WindowIsKeyJustReleased(key));
+  return CDEFAULT_RENDER_BACKEND_FN(WindowIsKeyJustReleased(key));
 }
 
 B32 WindowIsKeyReleased(KeyboardKey key) {
-  return CDEFAULT_VIDEO_BACKEND_FN(WindowIsKeyReleased(key));
+  return CDEFAULT_RENDER_BACKEND_FN(WindowIsKeyReleased(key));
 }
 
 B32 WindowIsMouseButtonPressed(MouseButton button) {
-  return CDEFAULT_VIDEO_BACKEND_FN(WindowIsMouseButtonPressed(button));
+  return CDEFAULT_RENDER_BACKEND_FN(WindowIsMouseButtonPressed(button));
 }
 
 B32 WindowIsMouseButtonReleased(MouseButton button) {
-  return CDEFAULT_VIDEO_BACKEND_FN(WindowIsMouseButtonReleased(button));
+  return CDEFAULT_RENDER_BACKEND_FN(WindowIsMouseButtonReleased(button));
 }
 
 B32 WindowIsMouseButtonJustPressed(MouseButton button) {
-  return CDEFAULT_VIDEO_BACKEND_FN(WindowIsMouseButtonJustPressed(button));
+  return CDEFAULT_RENDER_BACKEND_FN(WindowIsMouseButtonJustPressed(button));
 }
 
 B32 WindowIsMouseButtonJustReleased(MouseButton button) {
-  return CDEFAULT_VIDEO_BACKEND_FN(WindowIsMouseButtonJustReleased(button));
+  return CDEFAULT_RENDER_BACKEND_FN(WindowIsMouseButtonJustReleased(button));
 }
 
 F32 WindowGetMouseScrollSign() {
-  return CDEFAULT_VIDEO_BACKEND_FN(WindowGetMouseScrollSign());
+  return CDEFAULT_RENDER_BACKEND_FN(WindowGetMouseScrollSign());
 }
 
 void WindowGetMousePosition(F32* x, F32* y) {
-  CDEFAULT_VIDEO_BACKEND_FN(WindowGetMousePosition(x, y));
+  CDEFAULT_RENDER_BACKEND_FN(WindowGetMousePosition(x, y));
 }
 
 void WindowGetMousePositionV(V2* pos) {
-  CDEFAULT_VIDEO_BACKEND_FN(WindowGetMousePositionV(pos));
+  CDEFAULT_RENDER_BACKEND_FN(WindowGetMousePositionV(pos));
 }
 
 void WindowGetMouseDeltaPosition(F32* x, F32* y) {
-  CDEFAULT_VIDEO_BACKEND_FN(WindowGetMouseDeltaPosition(x, y));
+  CDEFAULT_RENDER_BACKEND_FN(WindowGetMouseDeltaPosition(x, y));
 }
 
 void WindowGetMouseDeltaPositionV(V2* pos) {
-  CDEFAULT_VIDEO_BACKEND_FN(WindowGetMouseDeltaPositionV(pos));
+  CDEFAULT_RENDER_BACKEND_FN(WindowGetMouseDeltaPositionV(pos));
 }
 
-#endif // CDEFAULT_VIDEO_IMPLEMENTATION
+#endif // CDEFAULT_RENDER_IMPLEMENTATION

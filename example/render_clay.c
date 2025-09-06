@@ -2,8 +2,8 @@
 #include "../cdefault_std.h"
 #define CDEFAULT_MATH_IMPLEMENTATION
 #include "../cdefault_math.h"
-#define CDEFAULT_VIDEO_IMPLEMENTATION
-#include "../cdefault_video.h"
+#define CDEFAULT_RENDER_IMPLEMENTATION
+#include "../cdefault_render.h"
 #define CLAY_IMPLEMENTATION
 #include "third_party/clay.h"
 
@@ -30,7 +30,7 @@ static void SidebarItemComponent() {
 int main(void) {
   WindowInitOpts opts;
   MEMORY_ZERO_STRUCT(&opts);
-  opts.title = "video example";
+  opts.title = "render clay example";
   opts.clear_rgb = 0x6495ed;
   ASSERT(WindowInit(opts));
 

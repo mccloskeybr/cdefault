@@ -2,13 +2,13 @@
 #include "../cdefault_std.h"
 #define CDEFAULT_MATH_IMPLEMENTATION
 #include "../cdefault_math.h"
-#define CDEFAULT_VIDEO_IMPLEMENTATION
-#include "../cdefault_video.h"
+#define CDEFAULT_RENDER_IMPLEMENTATION
+#include "../cdefault_render.h"
 #define CDEFAULT_GEOMETRY_IMPLEMENTATION
 #include "../cdefault_geometry.h"
 
 int main(void) {
-  ASSERT(WindowInit(1920, 1080, "video example"));
+  ASSERT(WindowInit(1920, 1080, "render example"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
 
   Tri2 tri;
