@@ -25,8 +25,19 @@
 
 #include <windows.h>
 
-#elif defined(OS_LINUX) || defined(OS_MAC)
+#elif defined(OS_LINUX)
 
+#include <sys/mman.h>
+#include <threads.h>
+#include <time.h>
+#include <stdatomic.h>
+#include <stdlib.h>
+#include <string.h>
+
+#elif defined(OS_MAC)
+
+#include <mach/mach.h>
+#include <mach/mach_time.h>
 #include <sys/mman.h>
 #include <threads.h>
 #include <stdatomic.h>
@@ -80,14 +91,14 @@ typedef double   F64;
 
 #define STATIC_ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
-#define MIN(a, b) (((a) < (b)) ? (a) : (b))
-#define MIN3(a, b, c) (MIN(MIN((a), (b)), (c)))
-#define MAX(a, b) (((a) < (b)) ? (b) : (a))
-#define MAX3(a, b, c) (MAX(MAX((a), (b)), (c)))
-#define CLAMP(a, x, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
+#define MIN(a, b)       (((a) < (b)) ? (a) : (b))
+#define MIN3(a, b, c)   (MIN(MIN((a), (b)), (c)))
+#define MAX(a, b)       (((a) < (b)) ? (b) : (a))
+#define MAX3(a, b, c)   (MAX(MAX((a), (b)), (c)))
+#define CLAMP(a, x, b)  (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
 #define CLAMP_TOP(a, x) MIN((a), (x))
 #define CLAMP_BOT(x, b) MAX((x), (b))
-#define SIGN(x) (((x) > 0) ? 1 : (((x) < 0) ? -1 : 0))
+#define SIGN(x)         (((x) > 0) ? 1 : (((x) < 0) ? -1 : 0))
 
 #define BIT(idx) (1 << (idx))
 #define EXTRACT_BIT(word, idx) (((word) >> (idx)) & 1)
@@ -129,7 +140,7 @@ typedef double   F64;
 
 #ifndef NDEBUG
 #  define DEBUG_ASSERT(exp) assert(LIKELY(exp))
-#  define ASSERT(exp) DEBUG_ASSERT(LIKELY(exp))
+#  define ASSERT(exp) DEBUG_ASSERT(exp)
 #else
 #  define DEBUG_ASSERT(exp) (exp)
 #  define ASSERT(exp) if (LIKELY(!(exp))) { *(int*)0 = 0; }
@@ -184,9 +195,9 @@ typedef double   F64;
 #define IS_MEMORY_EQUAL_STATIC_ARRAY(a,b) IS_MEMORY_EQUAL((a), (b), sizeof(a))
 
 void* MemoryReserve(U64 size);
-B32 MemoryCommit(void* ptr, U64 size);
-void MemoryRelease(void* ptr, U64 size);
-void MemoryDecommit(void* ptr, U64 size);
+B32   MemoryCommit(void* ptr, U64 size);
+void  MemoryRelease(void* ptr, U64 size);
+void  MemoryDecommit(void* ptr, U64 size);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: List macros
@@ -460,6 +471,11 @@ void SemDeinit(Sem* sem);
 void SemSignal(Sem* sem);
 void SemWait(Sem* sem);
 
+typedef Sem Notification;
+void NotificationInit(Notification* notification);
+void NotificationSignal(Notification* notification);
+void NotificationWaitAndDeinit(Notification* notification);
+
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Atomic
 ///////////////////////////////////////////////////////////////////////////////
@@ -506,6 +522,19 @@ B32 AtomicB32FetchXor(AtomicB32* a, B32 b);
 B32 AtomicB32FetchAnd(AtomicB32* a, B32 b);
 
 ///////////////////////////////////////////////////////////////////////////////
+// NOTE: Time
+///////////////////////////////////////////////////////////////////////////////
+
+void TimeInit();
+F32  TimeSecondsSinceStart();
+
+typedef struct Stopwatch Stopwatch;
+struct Stopwatch { F32 start_time; };
+void StopwatchInit(Stopwatch* stopwatch);
+void StopwatchReset(Stopwatch* stopwatch);
+F32  StopwatchReadSeconds(Stopwatch* stopwatch);
+
+///////////////////////////////////////////////////////////////////////////////
 // NOTE: String
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -523,8 +552,8 @@ struct String8ListNode {
 
 typedef struct String8List String8List;
 struct String8List {
-  String8ListNode* front;
-  String8ListNode* back;
+  String8ListNode* head;
+  String8ListNode* tail;
 };
 
 B32 CharIsWhitespace(U8 c);
@@ -881,6 +910,19 @@ void SemWait(Sem* sem) {
   MutexUnlock(&sem->mutex);
 }
 
+void NotificationInit(Notification* notification) {
+  SemInit(notification, 0);
+}
+
+void NotificationSignal(Notification* notification) {
+  SemSignal(notification);
+}
+
+void NotificationWaitAndDeinit(Notification* notification) {
+  SemWait(notification);
+  SemDeinit(notification);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Atomic Implementation
 ///////////////////////////////////////////////////////////////////////////////
@@ -969,6 +1011,86 @@ B8 AtomicB32CompareExchange(AtomicB32* a, B32* expected, B32 desired) {
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////
+// NOTE: Time Implementation
+///////////////////////////////////////////////////////////////////////////////
+
+#if defined(OS_WINDOWS)
+
+static B32           _cdef_time_init;
+static LARGE_INTEGER _cdef_performance_freq;
+static LARGE_INTEGER _cdef_start_time;
+
+void TimeInit() {
+  if (_cdef_time_init) { return; }
+  QueryPerformanceFrequency(&_cdef_performance_freq);
+  QueryPerformanceCounter(&_cdef_start_time);
+  _cdef_time_init = true;
+}
+
+F32 TimeSecondsSinceStart() {
+  DEBUG_ASSERT(_cdef_time_init);
+  LARGE_INTEGER time_now;
+  QueryPerformanceCounter(&time_now);
+  return ((F32) time_now.QuadPart - _cdef_start_time.QuadPart) /
+    ((F32) _cdef_performance_freq.QuadPart);
+}
+
+#elif defined(OS_LINUX)
+
+static B32             _cdef_time_init;
+static struct timespec _cdef_start_time;
+
+void TimeInit() {
+  if (_cdef_time_init) { return; }
+  clock_gettime(CLOCK_MONOTONIC, &_cdef_start_time);
+  _cdef_time_init = true;
+}
+
+F32 TimeSecondsSinceStart() {
+  DEBUG_ASSERT(_cdef_time_init);
+  struct timespec time_now;
+  clock_gettime(CLOCK_MONOTONIC, &time_now);
+  return ((F32) (time_now.tv_sec - _cdef_start_time.tv_sec)) +
+    ((F32) (time_now.tv_nsec - _cdef_start_time.tv_nsec) * 1e-9f);
+}
+
+#elif defined(OS_MAC)
+#error std time module not tested on mac.
+
+static B32 _cdef_time_init;
+static U64 _cdef_start_time;
+static mach_timebase_info_data_t _cdef_timebase_info;
+
+void TimeInit() {
+  if (_cdef_time_init) { return; }
+  _cdef_start_time = mach_absolute_time();
+  mach_timebase_info(&_cdef_timebase_info);
+  _cdef_time_init = true;
+}
+
+F32 TimeSecondsSinceStart() {
+  DEBUG_ASSERT(_cdef_time_init);
+  U64 time_now = mach_absolute_time();
+  return ((time_now - _cdef_start_time) * _cdef_timebase_info.numer) /
+    _cdef_timebase_info.denom;
+}
+
+#endif
+
+void StopwatchInit(Stopwatch* stopwatch) {
+  TimeInit();
+  StopwatchReset(stopwatch);
+}
+
+void StopwatchReset(Stopwatch* stopwatch) {
+  stopwatch->start_time = TimeSecondsSinceStart();
+}
+
+F32 StopwatchReadSeconds(Stopwatch* stopwatch) {
+  return TimeSecondsSinceStart() - stopwatch->start_time;
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // NOTE: String Implementation
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -1010,7 +1132,7 @@ U8 CharToUpper(U8 c) {
 
 U32 CStringSize(U8* str) {
   U8* end = str;
-  while (end != '\0') { end++; }
+  while (*end != '\0') { end++; }
   return (U32) (end - str);
 }
 
@@ -1162,16 +1284,16 @@ String8 _String8Format(Arena* arena, U8* fmt, ...) {
 }
 
 void String8ListPrepend(String8List* list, String8ListNode* node) {
-  SLL_QUEUE_PUSH_FRONT(list->front, list->back, node, next);
+  SLL_QUEUE_PUSH_BACK(list->head, list->tail, node, next);
 }
 
 void String8ListAppend(String8List* list, String8ListNode* node) {
-  SLL_QUEUE_PUSH_BACK(list->front, list->back, node, next);
+  SLL_QUEUE_PUSH_FRONT(list->head, list->tail, node, next);
 }
 
 String8 String8ListJoin(Arena* arena, String8List* list) {
   U64 size = 0;
-  for (String8ListNode* node = list->front; node != NULL; node = node->next) {
+  for (String8ListNode* node = list->tail; node != NULL; node = node->next) {
     size += node->string.size;
   }
   String8 result;
@@ -1179,7 +1301,7 @@ String8 String8ListJoin(Arena* arena, String8List* list) {
   result.size = size;
   result.str = ARENA_PUSH_ARRAY(arena, U8, size);
   size = 0;
-  for (String8ListNode* node = list->front; node != NULL; node = node->next) {
+  for (String8ListNode* node = list->tail; node != NULL; node = node->next) {
     MEMORY_COPY(result.str + size, node->string.str, node->string.size);
     size += node->string.size;
   }

@@ -5,12 +5,12 @@
 #include "cdefault_math.h"
 
 // TODO:
+// separate renderer from window? more intuitive to separate 2d vs 3d renderer then.
 // vsync
 // shader abstraction?
 // draw frames not just solid shapes?
 // draw more shapes
 // softer edges?
-// 3d?
 
 // NOTE: A window must exist before any renderer / draw functions can be called.
 // NOTE: Sensible defaults are chosen if field values are 0.

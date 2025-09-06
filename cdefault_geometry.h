@@ -42,7 +42,7 @@ void Aabb2FromMinMax(Aabb2* aabb2, V2* min, V2* max);
 void Aabb2FromTopLeft(Aabb2* aabb2, V2* point, V2* size);
 void Aabb2GetMinMax(Aabb2* aabb2, V2* min, V2* max);
 
-void Aabb3FromMinMax(Aabb3 aabb, V3* min, V3* max);
+void Aabb3FromMinMax(Aabb3* aabb, V3* min, V3* max);
 void Aabb3GetMinMax(Aabb3* aabb, V3* min, V3* max);
 void Aabb3RelativeNormal(Aabb3* aabb, V3* pt, V3* normal);
 B32  Aabb3ContainsPoint(Aabb3* aabb, V3* pos);
@@ -153,7 +153,7 @@ void Aabb2GetMinMax(Aabb2* aabb2, V2* min, V2* max) {
   max->y = aabb2->center_point.y + (aabb2->size.y / 2.0f);
 }
 
-void Aabb3FromMinMax(Aabb3 aabb3, V3* min, V3* max) {
+void Aabb3FromMinMax(Aabb3* aabb3, V3* min, V3* max) {
   DEBUG_ASSERT(min->x < max->x);
   DEBUG_ASSERT(min->y < max->y);
   DEBUG_ASSERT(min->z < max->z);
@@ -191,7 +191,7 @@ void Aabb3RelativeNormal(Aabb3* aabb, V3* pt, V3* normal) {
 }
 
 B32 Aabb3ContainsPoint(Aabb3* aabb, V3* pos) {
-  V3 min, V3 max;
+  V3 min, max;
   Aabb3GetMinMax(aabb, &min, &max);
   return ((min.x <= pos->x && pos->x <= max.x) &&
           (min.y <= pos->y && pos->y <= max.y) &&

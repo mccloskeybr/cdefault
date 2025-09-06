@@ -137,7 +137,7 @@ B32 String8ListBuildTest(void) {
   String8ListAppend(&list, &b);
   String8ListPrepend(&list, &a);
   String8ListAppend(&list, &c);
-  test = list.front;
+  test = list.tail;
   TEST_EXPECT(IS_MEMORY_EQUAL(test, &a, sizeof(String8ListNode)));
   test = test->next;
   TEST_EXPECT(IS_MEMORY_EQUAL(test, &b, sizeof(String8ListNode)));
@@ -158,7 +158,7 @@ B32 String8SplitTest(void) {
   Arena* arena = ArenaAllocate();
   String8List list = String8Split(arena, &original, ' ');
 
-  test = list.front;
+  test = list.tail;
   expected = String8CreateStatic("hi");
   TEST_EXPECT(String8Equals(&test->string, &expected));
 

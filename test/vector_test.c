@@ -2,8 +2,8 @@
 #include "../cdefault_std.h"
 #define CDEFAULT_MATH_IMPLEMENTATION
 #include "../cdefault_math.h"
-#define CDEFAULT_3DGEOMETRY_IMPLEMENTATION
-#include "../cdefault_3dgeo.h"
+#define CDEFAULT_GEOMETRY_IMPLEMENTATION
+#include "../cdefault_geometry.h"
 
 B32 V2Test(void) {
   V2 x = { 1, 2 };

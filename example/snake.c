@@ -59,10 +59,10 @@ static RandomSeries r;
 static S32 apple_x, apple_y;
 
 static S32 AudioEntry(void* user_data) {
-  Sem* init_done = (Sem*) user_data;
+  Notification* init_done = (Notification*) user_data;
   ASSERT(AudioInit());
   MutexInit(&audio_manager.mutex);
-  SemSignal(init_done);
+  NotificationSignal(init_done);
   Arena* arena = ArenaAllocate();
 
   AudioStreamSpec spec;
@@ -209,20 +209,20 @@ int main(void) {
   ASSERT(WindowInit(WINDOW_WIDTH, WINDOW_HEIGHT, "snake"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
 
-  Sem audio_init_done;
-  SemInit(&audio_init_done, 0);
+  Notification audio_init_done;
+  NotificationInit(&audio_init_done);
   Thread audio_thread;
   ThreadCreate(&audio_thread, AudioEntry, &audio_init_done);
   ThreadDetach(&audio_thread);
-  SemWait(&audio_init_done);
-  SemDeinit(&audio_init_done);
+  NotificationWaitAndDeinit(&audio_init_done);
 
   AudioQueueSound("Z:\\cdefault\\example\\data\\test_audio.ogg", true);
 
-  // TODO: create a std timer struct and a way to measure time.
-  F32 dt_s = 0.016f;
-  F32 input_timer = 0;
-  F32 input_timer_max_s = 0.3f;
+  F32 dt_s = 0.0f;
+  Stopwatch frame_stopwatch;
+  StopwatchInit(&frame_stopwatch);
+  Stopwatch input_stopwatch;
+  StopwatchInit(&input_stopwatch);
 
   Snake snake;
   MEMORY_ZERO_STRUCT(&snake);
@@ -234,12 +234,6 @@ int main(void) {
   PickAppleLocation(&snake);
 
   while (!WindowShouldClose()) {
-    for (S32 i = 0; i < NUM_TILES; i++) {
-      for (S32 j = 0; j < NUM_TILES; j++) {
-        DrawTile(i, j, GRID_COLOR);
-      }
-    }
-
     if (WindowIsKeyJustPressed(Key_W)) {
       snake.dir = V2_Y_POS;
     } else if (WindowIsKeyJustPressed(Key_S)) {
@@ -251,16 +245,24 @@ int main(void) {
       snake.dir = V2_X_POS;
     }
 
-    input_timer += dt_s;
-    if (input_timer >= input_timer_max_s) {
-      input_timer = 0;
+    if (StopwatchReadSeconds(&input_stopwatch) >= 0.3f) {
+      StopwatchReset(&input_stopwatch);
       if (!MoveSnake(&snake)) { exit(1); }
     }
 
+    for (S32 i = 0; i < NUM_TILES; i++) {
+      for (S32 j = 0; j < NUM_TILES; j++) {
+        DrawTile(i, j, GRID_COLOR);
+      }
+    }
     for (SnakeSegment* node = snake.tail; node != NULL; node = node->next) {
       DrawTile(node->x, node->y, SNAKE_COLOR);
     }
     DrawTile(apple_x, apple_y, APPLE_COLOR);
+
+    do { dt_s = StopwatchReadSeconds(&frame_stopwatch); } while (dt_s < 0.016);
+    StopwatchReset(&frame_stopwatch);
+    // LOG_INFO("%.05f", dt_s);
 
     WindowSwapBuffers();
     WindowFlushEvents();

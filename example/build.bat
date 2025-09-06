@@ -7,6 +7,6 @@ set LIBS=ole32.lib user32.lib opengl32.lib gdi32.lib
 
 echo Compiling:
 REM cl %FLAGS% audio.c /Fobuild/audio.obj /Febin/audio.exe /link %LIBS%
-cl %FLAGS% video.c /Fobuild/video.obj /Febin/video.exe /link %LIBS%
+REM cl %FLAGS% video.c /Fobuild/video.obj /Febin/video.exe /link %LIBS%
 REM cl %FLAGS% video_clay.c /Fobuild/video_clay.obj /Febin/video_clay.exe /link %LIBS%
-REM cl %FLAGS% snake.c /Fobuild/snake.obj /Febin/snake.exe /link %LIBS%
+cl %FLAGS% snake.c /Fobuild/snake.obj /Febin/snake.exe /link %LIBS%
