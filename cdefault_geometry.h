@@ -16,6 +16,9 @@ struct Aabb2 { V2 center_point; V2 size; };
 typedef struct Aabb3 Aabb3;
 struct Aabb3 { V3 center_point; V3 size; };
 
+typedef struct Ray2 Ray2;
+struct Ray2 { V2 start; V2 dir; };
+
 typedef struct Ray3 Ray3;
 struct Ray3 { V3 start; V3 dir; };
 
@@ -34,6 +37,7 @@ struct IntersectionManifold3 { V3 normal; F32 penetration; };
 void Tri2Offset(Tri2* src, V2* offset, Tri2* dest);
 B32  Tri2ContainsPoint(Tri2* src, V2* point);
 
+void Tri3FromTri2(Tri3* tri3, Tri2* tri2);
 void Tri3Offset(Tri3* src, V3* offset, Tri3* dest);
 B32  Tri3CreatePlane3(Tri3* t, Plane3* plane);
 B32  Tri3ContainsPoint(Tri3* t, V3* point);
@@ -42,12 +46,14 @@ void Aabb2FromMinMax(Aabb2* aabb2, V2* min, V2* max);
 void Aabb2FromTopLeft(Aabb2* aabb2, V2* point, V2* size);
 void Aabb2GetMinMax(Aabb2* aabb2, V2* min, V2* max);
 
+void Aabb3FromAabb2(Aabb3* aabb3, Aabb2* aabb2);
 void Aabb3FromMinMax(Aabb3* aabb, V3* min, V3* max);
 void Aabb3GetMinMax(Aabb3* aabb, V3* min, V3* max);
 void Aabb3RelativeNormal(Aabb3* aabb, V3* pt, V3* normal);
 B32  Aabb3ContainsPoint(Aabb3* aabb, V3* pos);
 
 void Ray3DirInv(Ray3* r, V3* dir_inv);
+void Ray3FromRay2(Ray3* ray3, Ray2* ray2);
 
 void Plane3WithAnchor(V3* anchor, V3* normal, Plane3* plane);
 void Plane3Basis(Plane3* plane, V3* u, V3* v);
@@ -56,6 +62,9 @@ B32  Plane3ContainsPoint(Plane3* plane, V3* point);
 void Plane3CreatePoint(Plane3* plane, V3* point);
 void Plane3Flip(Plane3* plane, Plane3* flipped_plane);
 B32  Plane3ApproxEq(Plane3* a, Plane3* b);
+
+B32  IntersectionRay2Aabb2(Ray2* ray, Aabb2* aabb, V2* enter_point, V2* exit_point);
+B32  IntersectionRay2Tri2(Ray2* ray, Tri2* tri, V2* intersect_point);
 
 B32  IntersectionRay3Plane3(Ray3* ray, Plane3* plane, V3* intersect_point);
 B32  IntersectionRay3Aabb3(Ray3* ray, Aabb3* aabb, V3* enter_point, V3* exit_point);
@@ -84,6 +93,12 @@ B32 Tri2ContainsPoint(Tri2* src, V2* point) {
   F32 b = ((p[2].y - p[0].y) * (point->x - p[2].x) + (p[0].x - p[2].x) * (point->y - p[2].y)) / denom;
   F32 c = 1 - a - b;
   return a >= 0 && b >= 0 && c >= 0;
+}
+
+void Tri3FromTri2(Tri3* tri3, Tri2* tri2) {
+  V3FromV2(&tri3->points[0], &tri2->points[0]);
+  V3FromV2(&tri3->points[1], &tri2->points[1]);
+  V3FromV2(&tri3->points[2], &tri2->points[2]);
 }
 
 void Tri3Offset(Tri3* src, V3* offset, Tri3* dest) {
@@ -153,6 +168,11 @@ void Aabb2GetMinMax(Aabb2* aabb2, V2* min, V2* max) {
   max->y = aabb2->center_point.y + (aabb2->size.y / 2.0f);
 }
 
+void Aabb3FromAabb2(Aabb3* aabb3, Aabb2* aabb2) {
+  V3FromV2(&aabb3->center_point, &aabb2->center_point);
+  V3FromV2(&aabb3->size, &aabb2->size);
+}
+
 void Aabb3FromMinMax(Aabb3* aabb3, V3* min, V3* max) {
   DEBUG_ASSERT(min->x < max->x);
   DEBUG_ASSERT(min->y < max->y);
@@ -204,6 +224,11 @@ void Ray3DirInv(Ray3* r, V3* dir_inv) {
   dir_inv->z = 1.0f / r->dir.z;
 }
 
+void Ray3FromRay2(Ray3* ray3, Ray2* ray2) {
+  V3FromV2(&ray3->start, &ray2->start);
+  V3FromV2(&ray3->dir, &ray2->dir);
+}
+
 // https://mathinsight.org/distance_point_plane
 void Plane3WithAnchor(V3* anchor, V3* normal, Plane3* plane) {
   plane->normal = *normal;
@@ -239,16 +264,41 @@ B32 Plane3ContainsPoint(Plane3* plane, V3* point) {
 // https://math.stackexchange.com/questions/723937/find-the-point-on-a-plane-3x-4y-z-1-that-is-closest-to-1-0-1
 void Plane3CreatePoint(Plane3* plane, V3* point) {
   F32 t = plane->d / V3DotV3(&plane->normal, &plane->normal);
-  V3MultF32(&plane->normal, t, point);
+  V3MultF32(point, &plane->normal, t);
 }
 
 void Plane3Flip(Plane3* plane, Plane3* flipped_plane) {
-  V3MultF32(&plane->normal, -1, &flipped_plane->normal);
+  V3MultF32(&flipped_plane->normal, &plane->normal, -1);
   flipped_plane->d = plane->d * -1;
 }
 
 B32 Plane3ApproxEq(Plane3* a, Plane3* b) {
   return V3ApproxEq(&a->normal, &b->normal) && F32ApproxEq(a->d, b->d);
+}
+
+// TODO: implement for 2d.
+B32 IntersectionRay2Aabb2(Ray2* ray, Aabb2* aabb, V2* enter_point, V2* exit_point) {
+  Ray3 ray3;
+  Ray3FromRay2(&ray3, ray);
+  Aabb3 aabb3;
+  Aabb3FromAabb2(&aabb3, aabb);
+  V3 enter3, exit3;
+  B32 result = IntersectionRay3Aabb3(&ray3, &aabb3, &enter3, &exit3);
+  if (enter_point != NULL) { V2_SWIZZLE(enter_point, &enter3, x, y); }
+  if (exit_point != NULL)  { V2_SWIZZLE(exit_point, &exit3, x, y);   }
+  return result;
+}
+
+// TODO: implement for 2d.
+B32 IntersectionRay2Tri2(Ray2* ray, Tri2* tri, V2* intersect_point) {
+  Ray3 ray3;
+  Ray3FromRay2(&ray3, ray);
+  Tri3 tri3;
+  Tri3FromTri2(&tri3, tri);
+  V3 i;
+  B32 result = IntersectionRay3Tri3(&ray3, &tri3, &i);
+  if (intersect_point != NULL) { V2_SWIZZLE(intersect_point, &i, x, y); }
+  return result;
 }
 
 B32 IntersectionRay3Plane3(Ray3* ray, Plane3* plane, V3* intersect_point) {
@@ -260,8 +310,8 @@ B32 IntersectionRay3Plane3(Ray3* ray, Plane3* plane, V3* intersect_point) {
   F32 t = (V3DotV3(&ray_to_plane, &plane->normal)) / denom;
   if (t < 0) { return false; }
   if (intersect_point != NULL) {
-    V3MultF32(&ray->dir, t, intersect_point);
-    V3AddV3(&ray->start, intersect_point, intersect_point);
+    V3MultF32(intersect_point, &ray->dir, t);
+    V3AddV3(intersect_point, &ray->start, intersect_point);
   }
   return true;
 }
@@ -274,22 +324,22 @@ B32 IntersectionRay3Aabb3(Ray3* ray, Aabb3* aabb, V3* enter_point, V3* exit_poin
   Ray3DirInv(ray, &ray_dir_inv);
 
   V3 t_1, t_2;
-  V3SubV3(&aabb_min, &ray->start, &t_1);
-  V3HadamardV3(&t_1, &ray_dir_inv, &t_1);
-  V3SubV3(&aabb_max, &ray->start, &t_2);
-  V3HadamardV3(&t_2, &ray_dir_inv, &t_2);
+  V3SubV3(&t_1, &aabb_min, &ray->start);
+  V3HadamardV3(&t_1, &t_1, &ray_dir_inv);
+  V3SubV3(&t_2, &aabb_max, &ray->start);
+  V3HadamardV3(&t_2, &t_2, &ray_dir_inv);
 
   F32 t_min = MAX3(MIN(t_1.x, t_2.x), MIN(t_1.y, t_2.y), MIN(t_1.z, t_2.z));
   F32 t_max = MIN3(MAX(t_1.x, t_2.x), MAX(t_1.y, t_2.y), MAX(t_1.z, t_2.z));
   if (t_max < t_min) { return false; }
 
   if (enter_point != NULL) {
-    V3MultF32(&ray->dir, t_min, enter_point);
-    V3AddV3(&ray->start, enter_point, enter_point);
+    V3MultF32(enter_point, &ray->dir, t_min);
+    V3AddV3(enter_point, &ray->start, enter_point);
   }
   if (exit_point != NULL) {
-    V3MultF32(&ray->dir, t_max, exit_point);
-    V3AddV3(&ray->start, exit_point, exit_point);
+    V3MultF32(exit_point, &ray->dir, t_max);
+    V3AddV3(exit_point, &ray->start, exit_point);
   }
   return true;
 }
@@ -314,14 +364,14 @@ B32 IntersectionRay3Tri3(Ray3* ray, Tri3* tri, V3* intersect_point) {
 
 B32 IntersectionSphere3Sphere3(Sphere3* a, Sphere3* b, IntersectionManifold3* manifold) {
   V3 center_diff;
-  V3SubV3(&b->center_point, &a->center_point, &center_diff);
+  V3SubV3(&center_diff, &b->center_point, &a->center_point);
   F32 min_distance = a->radius + b->radius;
   F32 distance = V3Length(&center_diff);
   if (min_distance < distance) { return false; }
 
   if (manifold != NULL) {
     if (V3LengthSq(&center_diff) == 0) { center_diff.z = 1.0f; }
-    V3Normalize(&center_diff, &manifold->normal);
+    V3Normalize(&manifold->normal, &center_diff);
     manifold->penetration = min_distance - distance;
   }
   return true;
@@ -329,8 +379,8 @@ B32 IntersectionSphere3Sphere3(Sphere3* a, Sphere3* b, IntersectionManifold3* ma
 
 B32 IntersectionSphere3Aabb3(Sphere3* a, Aabb3* b, IntersectionManifold3* manifold) {
   V3 rel_center, b_half_size;
-  V3SubV3(&a->center_point, &b->center_point, &rel_center);
-  V3MultF32(&b->size, 0.5f, &b_half_size);
+  V3SubV3(&rel_center, &a->center_point, &b->center_point);
+  V3MultF32(&b_half_size, &b->size, 0.5f);
   if ((F32Abs(rel_center.x) - a->radius) > b_half_size.x ||
       (F32Abs(rel_center.y) - a->radius) > b_half_size.y ||
       (F32Abs(rel_center.z) - a->radius) > b_half_size.z) {
@@ -343,18 +393,18 @@ B32 IntersectionSphere3Aabb3(Sphere3* a, Aabb3* b, IntersectionManifold3* manifo
   rel_closest_point.z = CLAMP(-b_half_size.z, rel_center.z, +b_half_size.z);
 
   V3 to_closest_point;
-  V3SubV3(&rel_closest_point, &rel_center, &to_closest_point);
+  V3SubV3(&to_closest_point, &rel_closest_point, &rel_center);
   F32 dist = V3Length(&to_closest_point);
   if (dist > a->radius) { return false; }
 
   if (manifold != NULL) {
     V3 normal;
-    V3SubV3(&rel_closest_point, &rel_center, &normal);
+    V3SubV3(&normal, &rel_closest_point, &rel_center);
     if (V3LengthSq(&normal) == 0) {
       normal = rel_center;
       if (V3LengthSq(&normal) == 0) { normal.z = 1; }
     }
-    V3Normalize(&normal, &manifold->normal);
+    V3Normalize(&manifold->normal, &normal);
     manifold->penetration = a->radius - dist;
   }
   return true;

@@ -8,7 +8,7 @@
 #elif defined(__APPLE__) && defined(__MACH__)
 #  define OS_MAC 1
 #else
-#  error Unknown operating system.
+#  error Unknown / unsupported operating system.
 #endif
 
 #if defined(__GNUC__) || defined(__GNUG__)
@@ -18,7 +18,7 @@
 #elif defined(_MSC_VER)
 #  define COMPILER_MSVC 1
 #else
-#  error Unknown compiler.
+#  error Unknown / unsupported compiler.
 #endif
 
 #if defined(OS_WINDOWS)
@@ -438,6 +438,7 @@ typedef HANDLE Thread;
 typedef CRITICAL_SECTION Mutex;
 typedef CONDITION_VARIABLE CV;
 #else
+// TODO: use OS native structs for linux / mac
 typedef thrd_t Thread;
 typedef mtx_t Mutex;
 typedef cnd_t CV;
@@ -746,6 +747,7 @@ void ArenaPopTo(Arena* arena, U64 pos) {
 }
 
 void ArenaPop(Arena* arena, U64 size) {
+  DEBUG_ASSERT(arena->pos - size > sizeof(Arena));
   ArenaPopTo(arena, arena->pos - size);
 }
 

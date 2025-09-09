@@ -8,7 +8,6 @@
 // separate renderer from window? more intuitive to separate 2d vs 3d renderer then.
 // vsync
 // shader abstraction?
-// draw frames not just solid shapes?
 // draw more shapes
 // softer edges?
 
@@ -59,14 +58,24 @@ void DrawLine(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32
 void DrawLineV(V2 start, V2 end, F32 thickness, V3 color);
 void DrawRectangle(F32 center_x, F32 center_y, F32 width, F32 height, F32 red, F32 green, F32 blue);
 void DrawRectangleV(V2 center, V2 size, V3 color);
+void DrawRectangleFrame(F32 center_x, F32 center_y, F32 width, F32 height, F32 border, F32 red, F32 green, F32 blue);
+void DrawRectangleFrameV(V2 center, V2 size, F32 border, V3 color);
 void DrawRectangleRot(F32 center_x, F32 center_y, F32 width, F32 height, F32 andle_rad, F32 red, F32 green, F32 blue);
 void DrawRectangleRotV(V2 center, V2 size, F32 angle_rad, V3 color);
+void DrawRectangleFrameRot(F32 center_x, F32 center_y, F32 width, F32 height, F32 border, F32 angle_rad, F32 red, F32 green, F32 blue);
+void DrawRectangleFrameRotV(V2 center, V2 size, F32 border, F32 angle_rad,  V3 color);
 void DrawRoundedRectangle(F32 center_x, F32 center_y, F32 width, F32 height, F32 radius, F32 red, F32 green, F32 blue);
 void DrawRoundedRectangleV(V2 center, V2 size, F32 radius, V3 color);
+void DrawRoundedRectangleFrame(F32 center_x, F32 center_y, F32 width, F32 height, F32 radius, F32 border, F32 red, F32 green, F32 blue);
+void DrawRoundedRectangleFrameV(V2 center, V2 size, F32 radius, F32 border, V3 color);
 void DrawRoundedRectangleRot(F32 center_x, F32 center_y, F32 width, F32 height, F32 radius, F32 angle_rad, F32 red, F32 green, F32 blue);
 void DrawRoundedRectangleRotV(V2 center, V2 size, F32 radius, F32 angle_rad, V3 color);
+void DrawRoundedRectangleFrameRot(F32 center_x, F32 center_y, F32 width, F32 height, F32 radius, F32 border, F32 angle_rad, F32 red, F32 green, F32 blue);
+void DrawRoundedRectangleFrameRotV(V2 center, V2 size, F32 radius, F32 angle_rad, F32 border, V3 color);
 void DrawCircle(F32 center_x, F32 center_y, F32 radius, F32 red, F32 green, F32 blue);
 void DrawCircleV(V2 center, F32 radius, V3 color);
+void DrawRing(F32 center_x, F32 center_y, F32 radius, F32 border, F32 red, F32 green, F32 blue);
+void DrawRingV(V2 center, F32 radius, F32 border, V3 color);
 void DrawTriangle(F32 x1, F32 y1, F32 x2, F32 y2, F32 x3, F32 y3, F32 red, F32 green, F32 blue); // NOTE: must respect CCW winding order.
 void DrawTriangleV(V2 p1, V2 p2, V2 p3, V3 color);
 void DrawImage(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height);
@@ -284,8 +293,14 @@ struct Renderer {
   GLint rect_camera_uniform;
   GLint rect_color_uniform;
   GLint rect_size_uniform;
-  GLint rect_border_size_uniform;
   GLint rect_radius_uniform;
+
+  GLuint frame_shader;
+  GLint frame_camera_uniform;
+  GLint frame_color_uniform;
+  GLint frame_size_uniform;
+  GLint frame_border_size_uniform;
+  GLint frame_radius_uniform;
 
   GLuint tri_shader;
   GLint tri_camera_uniform;
@@ -372,14 +387,15 @@ static B32 RendererInit(void) {
     "#version 330 core\n"
     "uniform vec3 color;\n"
     "uniform vec2 size;\n"
-    "uniform float border_size;\n"
     "uniform float radius;\n"
     "in vec2 tex_coord;\n"
     "out vec4 frag_color;\n"
     "void main() { \n"
-    "  vec2 half_size = size / 2.0;\n"
+    "  float anti_alias_buffer = 2;\n"
+    "  float r = max(radius - anti_alias_buffer, 0);\n" // NOTE: is this desirable? messes with the user provided value, but it looks kind of bad otherwise.
+    "  vec2 half_size = (size / 2.0) - anti_alias_buffer;\n"
     "  vec2 centered_pos = (tex_coord - 0.5) * size;\n"
-    "  float dist = length(max(abs(centered_pos) + radius, half_size) - half_size) - radius;\n"
+    "  float dist = length(max(abs(centered_pos) + r, half_size) - half_size) - r;\n"
     "  float alpha = 1 - smoothstep(0, 1, dist);\n"
     "  frag_color = vec4(color, alpha);\n"
     "}\0";
@@ -387,8 +403,41 @@ static B32 RendererInit(void) {
   r->rect_camera_uniform = g->glGetUniformLocation(r->rect_shader, "to_camera_transform");
   r->rect_color_uniform = g->glGetUniformLocation(r->rect_shader, "color");
   r->rect_size_uniform = g->glGetUniformLocation(r->rect_shader, "size");
-  r->rect_border_size_uniform = g->glGetUniformLocation(r->rect_shader, "border_size");
   r->rect_radius_uniform = g->glGetUniformLocation(r->rect_shader, "radius");
+
+  char* frame_vertex_shader_source =
+    "#version 330 core\n"
+    "uniform mat4 to_camera_transform;\n"
+    "layout (location = 0) in vec2 in_pos;\n"
+    "layout (location = 1) in vec2 in_tex_coord;\n"
+    "out vec2 tex_coord;\n"
+    "void main() {\n"
+    "  tex_coord = in_tex_coord;\n"
+    "  gl_Position = to_camera_transform * vec4(in_pos, 0.0, 1.0);\n"
+    "}\0";
+  char* frame_fragment_shader_source =
+    "#version 330 core\n"
+    "uniform vec3 color;\n"
+    "uniform vec2 size;\n"
+    "uniform float border_size;\n"
+    "uniform float radius;\n"
+    "in vec2 tex_coord;\n"
+    "out vec4 frag_color;\n"
+    "void main() { \n"
+    "  float anti_alias_buffer = 2;\n"
+    "  float r = max(radius - anti_alias_buffer, 0);\n"
+    "  vec2 half_size = (size / 2.0) - anti_alias_buffer;\n"
+    "  vec2 centered_pos = (tex_coord - 0.5) * size;\n"
+    "  float dist = length(max(abs(centered_pos) + r, half_size) - half_size) - r;\n"
+    "  float alpha = 1 - smoothstep(0, 1, abs(dist + border_size / 2) - border_size / 2);\n"
+    "  frag_color = vec4(color, alpha);\n"
+    "}\0";
+  DEBUG_ASSERT(RendererCompileShader(&r->frame_shader, frame_vertex_shader_source, frame_fragment_shader_source));
+  r->frame_camera_uniform = g->glGetUniformLocation(r->frame_shader, "to_camera_transform");
+  r->frame_color_uniform = g->glGetUniformLocation(r->frame_shader, "color");
+  r->frame_size_uniform = g->glGetUniformLocation(r->frame_shader, "size");
+  r->frame_border_size_uniform = g->glGetUniformLocation(r->frame_shader, "border_size");
+  r->frame_radius_uniform = g->glGetUniformLocation(r->frame_shader, "radius");
 
   char* tri_vertex_shader_source =
     "#version 330 core\n"
@@ -452,7 +501,7 @@ static B32 RendererInit(void) {
   M4 projection;
   S32 width, height;
   WindowGetDims(NULL, NULL, &width, &height);
-  M4Orthographic(0, width, 0, height, 0.01f, 100.0f, &projection);
+  M4Orthographic(&projection, 0, width, 0, height, 0.01f, 100.0f);
   RendererSetProjection(projection);
 
   LOG_INFO("[RENDER] OpenGL renderer initialized.");
@@ -467,8 +516,8 @@ void RendererSetProjection(M4 projection) {
   V3 target = V3_Z_NEG;
   V3 up     = V3_Y_POS;
   M4 camera;
-  M4LookAt(&pos, &target, &up, &camera);
-  M4MultM4(&projection, &camera, &r->world_to_camera);
+  M4LookAt(&camera, &pos, &target, &up);
+  M4MultM4(&r->world_to_camera, &projection, &camera);
 }
 
 void RendererRegisterImage(U32* image_handle, U8* image_bytes, U32 width, U32 height) {
@@ -519,8 +568,8 @@ void RendererSetClearColorV(V4 color) {
 static V3 UnprojectPoint(V3 p, M4* inv_vp) {
   V4 v = { p.x, p.y, p.z, 1.0f };
   V4 v2;
-  M4MultV4(inv_vp, &v, &v2);
-  V4DivF32(&v2, v2.w, &v2);
+  M4MultV4(&v2, inv_vp, &v);
+  V4DivF32(&v2, &v2, v2.w);
   return (V3) { v2.x, v2.y, v2.z };
 }
 
@@ -546,11 +595,11 @@ void RendererCastRay3(F32 x, F32 y, V3* start, V3* dir) {
   y2 = CLAMP(-1, y2, 1);
 
   M4 world_to_camera_inv;
-  M4Invert(&r->world_to_camera, &world_to_camera_inv);
+  M4Invert(&world_to_camera_inv, &r->world_to_camera);
   V3 n = UnprojectPoint((V3) { x2, y2, -1}, &world_to_camera_inv);
   V3 f = UnprojectPoint((V3) { x2, y2, +1}, &world_to_camera_inv);
   V3 delta;
-  V3SubV3(&f, &n, &delta);
+  V3SubV3(&delta, &f, &n);
   V3Normalize(&delta, &delta);
 
   if (start != NULL) { *start = n; }
@@ -565,13 +614,14 @@ void DrawLine(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32
   V2 start = { start_x, start_y };
   V2 end   = { end_x, end_y };
   V2 delta;
-  V2SubV2(&end, &start, &delta);
+  V2SubV2(&delta, &end, &start);
   F32 theta = F32ArcTan2(delta.y, delta.x);
   F32 width = V2Length(&delta);
   DrawRoundedRectangleRot(start.x + delta.x / 2, start.y + delta.y / 2, width, thickness, thickness / 2.0f, theta, red, green, blue);
 }
 
 void DrawLineV(V2 start, V2 end, F32 thickness, V3 color) {
+  LOG_INFO("%0.2f %0.2f %0.2f %0.2f", start.x, start.y, end.x, end.y);
   DrawLine(start.x, start.y, end.x, end.y, thickness, color.r, color.g, color.b);
 }
 
@@ -581,6 +631,14 @@ void DrawRectangle(F32 center_x, F32 center_y, F32 width, F32 height, F32 red, F
 
 void DrawRectangleV(V2 center, V2 size, V3 color) {
   DrawRectangle(center.x, center.y, size.x, size.y, color.r, color.g, color.b);
+}
+
+void DrawRectangleFrame(F32 center_x, F32 center_y, F32 width, F32 height, F32 border, F32 red, F32 green, F32 blue) {
+  DrawRectangleFrameRot(center_x, center_y, width, height, border, 0, red, green, blue);
+}
+
+void DrawRectangleFrameV(V2 center, V2 size, F32 border, V3 color) {
+  DrawRectangleFrame(center.x, center.y, size.x, size.y, border, color.r, color.g, color.b);
 }
 
 void DrawRectangleRot(F32 center_x, F32 center_y, F32 width, F32 height, F32 angle_rad, F32 red, F32 green, F32 blue) {
@@ -599,6 +657,14 @@ void DrawRoundedRectangleV(V2 center, V2 size, F32 radius, V3 color) {
   DrawRoundedRectangle(center.x, center.y, size.x, size.y, radius, color.r, color.g, color.b);
 }
 
+void DrawRoundedRectangleFrame(F32 center_x, F32 center_y, F32 width, F32 height, F32 radius, F32 border, F32 red, F32 green, F32 blue) {
+  DrawRoundedRectangleFrameRot(center_x, center_y, width, height, radius, border, 0, red, green, blue);
+}
+
+void DrawRoundedRectangleFrameV(V2 center, V2 size, F32 radius, F32 border, V3 color) {
+  DrawRoundedRectangleFrame(center.x, center.y, size.x, size.y, radius, border, color.r, color.g, color.b);
+}
+
 void DrawRoundedRectangleRot(F32 center_x, F32 center_y, F32 width, F32 height, F32 radius, F32 angle_rad, F32 red, F32 green, F32 blue) {
   Renderer* r = &_renderer;
   OpenGLAPI* g = &_ogl;
@@ -607,17 +673,16 @@ void DrawRoundedRectangleRot(F32 center_x, F32 center_y, F32 width, F32 height, 
   V3 pos   = { center_x, center_y, 0 };
   V3 scale = { width, height, 1 };
   V4 rot;
-  V4RotateAroundAxis(&V3_Z_POS, angle_rad, &rot);
+  V4RotateAroundAxis(&rot, &V3_Z_POS, angle_rad);
   M4 rect_to_world, rect_to_camera, rect_to_camera_t;
-  M4FromTransform(&pos, &rot, &scale, &rect_to_world);
-  M4MultM4(&r->world_to_camera, &rect_to_world, &rect_to_camera);
-  M4Transpose(&rect_to_camera, &rect_to_camera_t);
+  M4FromTransform(&rect_to_world, &pos, &rot, &scale);
+  M4MultM4(&rect_to_camera, &r->world_to_camera, &rect_to_world);
+  M4Transpose(&rect_to_camera_t, &rect_to_camera);
 
   g->glUseProgram(r->rect_shader);
   g->glUniformMatrix4fv(r->rect_camera_uniform, 1, GL_FALSE, (GLfloat*) &rect_to_camera_t);
   g->glUniform3fv(r->rect_color_uniform, 1, (GLfloat*) &color);
   g->glUniform2fv(r->rect_size_uniform, 1, (GLfloat*) &scale);
-  g->glUniform1f(r->rect_border_size_uniform, 50);
   g->glUniform1f(r->rect_radius_uniform, radius);
   g->glBindVertexArray(r->quad_vao);
   g->glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -629,12 +694,58 @@ void DrawRoundedRectangleRotV(V2 center, V2 size, F32 radius, F32 angle, V3 colo
   DrawRoundedRectangleRot(center.x, center.y, size.x, size.y, radius, angle, color.r, color.g, color.b);
 }
 
+void DrawRectangleFrameRot(F32 center_x, F32 center_y, F32 width, F32 height, F32 border, F32 angle_rad, F32 red, F32 green, F32 blue) {
+  DrawRoundedRectangleFrameRot(center_x, center_y, width, height, 0, border, angle_rad, red, green, blue);
+}
+
+void DrawRectangleFrameRotV(V2 center, V2 size, F32 border, F32 angle_rad,  V3 color) {
+  DrawRectangleFrameRot(center.x, center.y, size.x, size.y, border, angle_rad, color.r, color.g, color.b);
+}
+
+void DrawRoundedRectangleFrameRot(F32 center_x, F32 center_y, F32 width, F32 height, F32 radius, F32 border, F32 angle_rad, F32 red, F32 green, F32 blue) {
+  Renderer* r = &_renderer;
+  OpenGLAPI* g = &_ogl;
+
+  V3 color = { red, green, blue };
+  V3 pos   = { center_x, center_y, 0 };
+  V3 scale = { width, height, 1 };
+  V4 rot;
+  V4RotateAroundAxis(&rot, &V3_Z_POS, angle_rad);
+  M4 frame_to_world, frame_to_camera, frame_to_camera_t;
+  M4FromTransform(&frame_to_world, &pos, &rot, &scale);
+  M4MultM4(&frame_to_camera, &r->world_to_camera, &frame_to_world);
+  M4Transpose(&frame_to_camera_t, &frame_to_camera);
+
+  g->glUseProgram(r->frame_shader);
+  g->glUniformMatrix4fv(r->frame_camera_uniform, 1, GL_FALSE, (GLfloat*) &frame_to_camera_t);
+  g->glUniform3fv(r->frame_color_uniform, 1, (GLfloat*) &color);
+  g->glUniform2fv(r->frame_size_uniform, 1, (GLfloat*) &scale);
+  g->glUniform1f(r->frame_border_size_uniform, border);
+  g->glUniform1f(r->frame_radius_uniform, radius);
+  g->glBindVertexArray(r->quad_vao);
+  g->glDrawArrays(GL_TRIANGLES, 0, 6);
+  g->glBindVertexArray(0);
+  g->glUseProgram(0);
+}
+
+void DrawRoundedRectangleFrameRotV(V2 center, V2 size, F32 radius, F32 border, F32 angle_rad, V3 color) {
+  DrawRoundedRectangleFrameRot(center.x, center.y, size.x, size.y, radius, border, angle_rad, color.r, color.g, color.b);
+}
+
 void DrawCircle(F32 center_x, F32 center_y, F32 radius, F32 red, F32 green, F32 blue) {
   DrawRoundedRectangle(center_x, center_y, radius * 2, radius * 2, radius, red, green, blue);
 }
 
 void DrawCircleV(V2 center, F32 radius, V3 color) {
   DrawCircle(center.x, center.y, radius, color.r, color.g, color.b);
+}
+
+void DrawRing(F32 center_x, F32 center_y, F32 radius, F32 border, F32 red, F32 green, F32 blue) {
+  DrawRoundedRectangleFrame(center_x, center_y, radius * 2, radius * 2, radius, border, red, green, blue);
+}
+
+void DrawRingV(V2 center, F32 radius, F32 border, V3 color) {
+  DrawRing(center.x, center.y, radius, border, color.r, color.g, color.b);
 }
 
 void DrawTriangle(F32 x1, F32 y1, F32 x2, F32 y2, F32 x3, F32 y3, F32 red, F32 green, F32 blue) {
@@ -667,9 +778,9 @@ void DrawTriangle(F32 x1, F32 y1, F32 x2, F32 y2, F32 x3, F32 y3, F32 red, F32 g
   V3 scale = { x_scale, y_scale, 1 };
   V4 rot = V4_QUAT_IDENT;
   M4 tri_to_world, tri_to_camera, tri_to_camera_t;
-  M4FromTransform(&pos, &rot, &scale, &tri_to_world);
-  M4MultM4(&r->world_to_camera, &tri_to_world, &tri_to_camera);
-  M4Transpose(&tri_to_camera, &tri_to_camera_t);
+  M4FromTransform(&tri_to_world, &pos, &rot, &scale);
+  M4MultM4(&tri_to_camera, &r->world_to_camera, &tri_to_world);
+  M4Transpose(&tri_to_camera_t, &tri_to_camera);
 
   g->glUseProgram(r->tri_shader);
   g->glUniformMatrix4fv(r->tri_camera_uniform, 1, GL_FALSE, (GLfloat*) &tri_to_camera_t);
@@ -701,11 +812,11 @@ void DrawImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 h
   V3 pos   = { center_x, center_y, 0 };
   V3 scale = { width, height, 1 };
   V4 rot;
-  V4RotateAroundAxis(&V3_Z_POS, angle_rad, &rot);
+  V4RotateAroundAxis(&rot, &V3_Z_POS, angle_rad);
   M4 image_to_world, image_to_camera, image_to_camera_t;
-  M4FromTransform(&pos, &rot, &scale, &image_to_world);
-  M4MultM4(&r->world_to_camera, &image_to_world, &image_to_camera);
-  M4Transpose(&image_to_camera, &image_to_camera_t);
+  M4FromTransform(&image_to_world, &pos, &rot, &scale);
+  M4MultM4(&image_to_camera, &r->world_to_camera, &image_to_world);
+  M4Transpose(&image_to_camera_t, &image_to_camera);
 
   g->glUseProgram(r->image_shader);
   g->glUniformMatrix4fv(r->image_camera_uniform, 1, GL_FALSE, (GLfloat*) &image_to_camera_t);

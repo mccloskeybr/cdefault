@@ -55,7 +55,6 @@ struct AudioManager {
 };
 static AudioManager audio_manager;
 
-static RandomSeries r;
 static S32 apple_x, apple_y;
 
 static S32 AudioEntry(void* user_data) {
@@ -160,8 +159,8 @@ static void DrawTile(S32 x, S32 y, V3 color) {
 static void PickAppleLocation(Snake* snake) {
   B32 intersects_snake;
   do {
-    apple_x = RandS32(&r, 0, NUM_TILES);
-    apple_y = RandS32(&r, 0, NUM_TILES);
+    apple_x = RandS32(NULL, 0, NUM_TILES);
+    apple_y = RandS32(NULL, 0, NUM_TILES);
 
     intersects_snake = false;
     for (SnakeSegment* node = snake->tail; node != NULL; node = node->next) {
@@ -206,7 +205,7 @@ static B32 MoveSnake(Snake* snake) {
 
 int main(void) {
   TimeInit();
-  RandInit(&r, 12345);
+  RandSeed(NULL, 12345);
   ASSERT(WindowInit(WINDOW_WIDTH, WINDOW_HEIGHT, "snake"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
 
