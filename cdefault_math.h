@@ -296,6 +296,8 @@ void M3Transpose(M3* dest, M3* x);
 F32  M3Det(M3* m);
 void M3Invert(M3* dest, M3* x);
 void M3FromQuaternion(M3* dest, V4* q);
+B32  M3ApproxEq(M3* x, M3* y);
+B32  M3Eq(M3* x, M3* y);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: M4
@@ -306,6 +308,10 @@ void M3FromQuaternion(M3* dest, V4* q);
                           0, 0, 1, 0, \
                           0, 0, 0, 1}
 
+void M4Perspective(M4* dest, F32 fov_y_rad, F32 aspect_ratio, F32 near_plane, F32 far_plane);
+void M4Orthographic(M4* dest, F32 left, F32 right, F32 bottom, F32 top, F32 near_plane, F32 far_plane);
+void M4LookAt(M4* dest, V3* eye, V3* target, V3* up);
+void M4FromTransform(M4* dest, V3* pos, V4* rot, V3* scale);
 void M4AddM4(M4* dest, M4* x, M4* y);
 void M4SubM4(M4* dest, M4* x, M4* y);
 void M4MultF32(M4* dest, F32 c,  M4* m);
@@ -314,10 +320,8 @@ void M4MultV4(V4* dest, M4* x, V4* y);
 void M4Transpose(M4* dest, M4* x);
 F32  M4Det(M4* m);
 void M4Invert(M4* dest, M4* x);
-void M4Perspective(M4* dest, F32 fov_y_rad, F32 aspect_ratio, F32 near_plane, F32 far_plane);
-void M4Orthographic(M4* dest, F32 left, F32 right, F32 bottom, F32 top, F32 near_plane, F32 far_plane);
-void M4LookAt(M4* dest, V3* eye, V3* target, V3* up);
-void M4FromTransform(M4* dest, V3* pos, V4* rot, V3* scale);
+B32  M4ApproxEq(M4* x, M4* y);
+B32  M4Eq(M4* x, M4* y);
 
 #endif // CDEFAULT_MATH_H_
 
@@ -1035,9 +1039,109 @@ void M3FromQuaternion(M3* dest, V4* q) {
   dest->e[2][2] = 2.0f*(q->w*q->w + q->z*q->z) - 1.0f;
 }
 
+B32 M3ApproxEq(M3* x, M3* y) {
+  for (U32 i = 0; i < 9; i++) {
+    if (!F32ApproxEq(x->i[i], y->i[i])) { return false; }
+  }
+  return true;
+}
+
+B32 M3Eq(M3* x, M3* y) {
+  for (U32 i = 0; i < 9; i++) {
+    if (x->i[i] != y->i[i]) { return false; }
+  }
+  return true;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: M4 implementation
 ///////////////////////////////////////////////////////////////////////////////
+
+// TODO: faster way to do this?
+void M4FromTransform(M4* dest, V3* pos, V4* rot, V3* scale) {
+  M3 scale_m;
+  MEMORY_ZERO_STRUCT(&scale_m);
+  scale_m.e[0][0] = scale->x;
+  scale_m.e[1][1] = scale->y;
+  scale_m.e[2][2] = scale->z;
+
+  M3 rot_m;
+  M3FromQuaternion(&rot_m, rot);
+
+  M3 rot_scale;
+  M3MultM3(&rot_scale, &rot_m, &scale_m);
+
+  MEMORY_ZERO_STRUCT(dest);
+  dest->e[0][0] = rot_scale.e[0][0];
+  dest->e[0][1] = rot_scale.e[0][1];
+  dest->e[0][2] = rot_scale.e[0][2];
+  dest->e[1][0] = rot_scale.e[1][0];
+  dest->e[1][1] = rot_scale.e[1][1];
+  dest->e[1][2] = rot_scale.e[1][2];
+  dest->e[2][0] = rot_scale.e[2][0];
+  dest->e[2][1] = rot_scale.e[2][1];
+  dest->e[2][2] = rot_scale.e[2][2];
+
+  dest->e[0][3] = pos->x;
+  dest->e[1][3] = pos->y;
+  dest->e[2][3] = pos->z;
+  dest->e[3][3] = 1;
+}
+
+void M4Perspective(M4* dest, F32 fov_y_rad, F32 aspect_ratio, F32 near_plane, F32 far_plane) {
+  F32 tan_half_fov_y = F32Tan(fov_y_rad / 2.0f);
+
+  F32 a = 1.0f / (aspect_ratio * tan_half_fov_y);
+  F32 b = 1.0f / (tan_half_fov_y);
+  F32 c = - (far_plane + near_plane) / (far_plane - near_plane);
+  F32 d = - (2 * far_plane * near_plane) / (far_plane - near_plane);
+
+  *dest = (M4) {
+    a,  0,  0,  0,
+    0,  b,  0,  0,
+    0,  0,  c,  d,
+    0,  0, -1,  0,
+  };
+}
+
+void M4Orthographic(M4* dest, F32 left, F32 right, F32 bottom, F32 top, F32 near_plane, F32 far_plane) {
+  F32 a = 2 / (right - left);
+  F32 b = 2 / (top - bottom);
+  F32 c = -2 / (far_plane - near_plane);
+  F32 d = -(right + left) / (right - left);
+  F32 e = -(top + bottom) / (top - bottom);
+  F32 f = -(far_plane + near_plane) / (far_plane - near_plane);
+
+  *dest = (M4) {
+    a, 0, 0, d,
+    0, b, 0, e,
+    0, 0, c, f,
+    0, 0, 0, 1,
+  };
+}
+
+void M4LookAt(M4* dest, V3* eye, V3* target, V3* up) {
+  V3 x, y, z;
+  V3SubV3(&z, eye, target);
+  V3Normalize(&z, &z);
+  y = *up;
+  V3CrossV3(&x, &y, &z);
+  V3CrossV3(&y, &z, &x);
+
+  V3Normalize(&x, &x);
+  V3Normalize(&y, &y);
+
+  F32 a = -V3DotV3(&x, eye);
+  F32 b = -V3DotV3(&y, eye);
+  F32 c = -V3DotV3(&z, eye);
+
+  *dest = (M4) {
+    x.x, x.y, x.z, a,
+    y.x, y.y, y.z, b,
+    z.x, z.y, z.z, c,
+      0,   0,   0, 1,
+  };
+}
 
 void M4AddM4(M4* dest, M4* x, M4* y) {
   for (U32 i = 0; i < 4; i++) {
@@ -1140,90 +1244,19 @@ void M4Invert(M4* dest, M4* x) {
   for(int32_t j = 0; j < 16; j++) { dest->i[j] = t.i[j] * det; }
 }
 
-void M4Perspective(M4* dest, F32 fov_y_rad, F32 aspect_ratio, F32 near_plane, F32 far_plane) {
-  F32 tan_half_fov_y = F32Tan(fov_y_rad / 2.0f);
-
-  F32 a = 1.0f / (aspect_ratio * tan_half_fov_y);
-  F32 b = 1.0f / (tan_half_fov_y);
-  F32 c = - (far_plane + near_plane) / (far_plane - near_plane);
-  F32 d = - (2 * far_plane * near_plane) / (far_plane - near_plane);
-
-  *dest = (M4) {
-    a,  0,  0,  0,
-    0,  b,  0,  0,
-    0,  0,  c,  d,
-    0,  0, -1,  0,
-  };
+B32 M4ApproxEq(M4* x, M4* y) {
+  for (U32 i = 0; i < 16; i++) {
+    if (!F32ApproxEq(x->i[i], y->i[i])) { return false; }
+  }
+  return true;
 }
 
-void M4Orthographic(M4* dest, F32 left, F32 right, F32 bottom, F32 top, F32 near_plane, F32 far_plane) {
-  F32 a = 2 / (right - left);
-  F32 b = 2 / (top - bottom);
-  F32 c = -2 / (far_plane - near_plane);
-  F32 d = -(right + left) / (right - left);
-  F32 e = -(top + bottom) / (top - bottom);
-  F32 f = -(far_plane + near_plane) / (far_plane - near_plane);
-
-  *dest = (M4) {
-    a, 0, 0, d,
-    0, b, 0, e,
-    0, 0, c, f,
-    0, 0, 0, 1,
-  };
+B32 M4Eq(M4* x, M4* y) {
+  for (U32 i = 0; i < 16; i++) {
+    if (x->i[i] != y->i[i]) { return false; }
+  }
+  return true;
 }
 
-void M4LookAt(M4* dest, V3* eye, V3* target, V3* up) {
-  V3 x, y, z;
-  V3SubV3(&z, eye, target);
-  V3Normalize(&z, &z);
-  y = *up;
-  V3CrossV3(&x, &y, &z);
-  V3CrossV3(&y, &z, &x);
-
-  V3Normalize(&x, &x);
-  V3Normalize(&y, &y);
-
-  F32 a = -V3DotV3(&x, eye);
-  F32 b = -V3DotV3(&y, eye);
-  F32 c = -V3DotV3(&z, eye);
-
-  *dest = (M4) {
-    x.x, x.y, x.z, a,
-    y.x, y.y, y.z, b,
-    z.x, z.y, z.z, c,
-      0,   0,   0, 1,
-  };
-}
-
-// TODO: faster way to do this?
-void M4FromTransform(M4* dest, V3* pos, V4* rot, V3* scale) {
-  M3 scale_m;
-  MEMORY_ZERO_STRUCT(&scale_m);
-  scale_m.e[0][0] = scale->x;
-  scale_m.e[1][1] = scale->y;
-  scale_m.e[2][2] = scale->z;
-
-  M3 rot_m;
-  M3FromQuaternion(&rot_m, rot);
-
-  M3 rot_scale;
-  M3MultM3(&rot_scale, &rot_m, &scale_m);
-
-  MEMORY_ZERO_STRUCT(dest);
-  dest->e[0][0] = rot_scale.e[0][0];
-  dest->e[0][1] = rot_scale.e[0][1];
-  dest->e[0][2] = rot_scale.e[0][2];
-  dest->e[1][0] = rot_scale.e[1][0];
-  dest->e[1][1] = rot_scale.e[1][1];
-  dest->e[1][2] = rot_scale.e[1][2];
-  dest->e[2][0] = rot_scale.e[2][0];
-  dest->e[2][1] = rot_scale.e[2][1];
-  dest->e[2][2] = rot_scale.e[2][2];
-
-  dest->e[0][3] = pos->x;
-  dest->e[1][3] = pos->y;
-  dest->e[2][3] = pos->z;
-  dest->e[3][3] = 1;
-}
 
 #endif // CDEFAULT_MATH_IMPLEMENTATION

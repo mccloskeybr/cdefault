@@ -37,7 +37,7 @@ static void DrawRadar(F32 dt_s) {
   Ray2 beam;
   beam.start = self_pos;
   beam.dir = sweep_dir;
-  if (IntersectionRay2Aabb2(&beam, &enemy, NULL, NULL)) {
+  if (IntersectRay2Aabb2(NULL, NULL, &beam, &enemy)) {
     DrawRectangleV(enemy.center_point, enemy.size, (V3) { 1, 0, 0 });
   }
 }

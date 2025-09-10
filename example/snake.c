@@ -219,9 +219,8 @@ int main(void) {
   AudioQueueSound("Z:\\cdefault\\example\\data\\test_audio.ogg", true);
 
   F32 dt_s = 0.0f;
-  Stopwatch frame_stopwatch;
+  Stopwatch frame_stopwatch, input_stopwatch;
   StopwatchInit(&frame_stopwatch);
-  Stopwatch input_stopwatch;
   StopwatchInit(&input_stopwatch);
 
   Snake snake;
@@ -234,6 +233,10 @@ int main(void) {
   PickAppleLocation(&snake);
 
   while (!WindowShouldClose()) {
+    if (WindowIsKeyPressed(Key_Control) && WindowIsKeyJustPressed(Key_C)) {
+      LOG_INFO("SIG_INT received, closing.");
+      exit(0);
+    }
     if (WindowIsKeyJustPressed(Key_W)) {
       snake.dir = V2_Y_POS;
     } else if (WindowIsKeyJustPressed(Key_S)) {
@@ -243,10 +246,6 @@ int main(void) {
       snake.dir = V2_X_NEG;
     } else if (WindowIsKeyJustPressed(Key_D)) {
       snake.dir = V2_X_POS;
-    }
-    if (WindowIsKeyPressed(Key_Control) && WindowIsKeyJustPressed(Key_C)) {
-      LOG_INFO("SIG_INT received, closing.");
-      exit(0);
     }
 
     if (StopwatchReadSeconds(&input_stopwatch) >= 0.3f) {

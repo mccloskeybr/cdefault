@@ -621,7 +621,6 @@ void DrawLine(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32
 }
 
 void DrawLineV(V2 start, V2 end, F32 thickness, V3 color) {
-  LOG_INFO("%0.2f %0.2f %0.2f %0.2f", start.x, start.y, end.x, end.y);
   DrawLine(start.x, start.y, end.x, end.y, thickness, color.r, color.g, color.b);
 }
 

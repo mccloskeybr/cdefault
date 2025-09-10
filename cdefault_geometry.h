@@ -4,20 +4,30 @@
 #include "cdefault_math.h"
 #include "cdefault_std.h"
 
+// NOTE: 2D shapes.
+
+typedef struct Ray2 Ray2;
+struct Ray2 { V2 start; V2 dir; };
+
 typedef struct Tri2 Tri2;
 struct Tri2 { V2 points[3]; };
-
-typedef struct Tri3 Tri3;
-struct Tri3 { V3 points[3]; };
 
 typedef struct Aabb2 Aabb2;
 struct Aabb2 { V2 center_point; V2 size; };
 
+typedef struct Circle2 Circle2;
+struct Circle2 { V2 center_point; F32 radius; };
+
+typedef struct IntersectManifold2 IntersectManifold2;
+struct IntersectManifold2 { V2 normal; F32 penetration; };
+
+// NOTE: 3D shapes.
+
+typedef struct Tri3 Tri3;
+struct Tri3 { V3 points[3]; };
+
 typedef struct Aabb3 Aabb3;
 struct Aabb3 { V3 center_point; V3 size; };
-
-typedef struct Ray2 Ray2;
-struct Ray2 { V2 start; V2 dir; };
 
 typedef struct Ray3 Ray3;
 struct Ray3 { V3 start; V3 dir; };
@@ -25,61 +35,66 @@ struct Ray3 { V3 start; V3 dir; };
 typedef struct Plane3 Plane3;
 struct Plane3 { V3 normal; F32 d; };
 
-typedef struct Circle2 Circle2;
-struct Circle2 { V2 center_point; F32 radius; };
-
 typedef struct Sphere3 Sphere3;
 struct Sphere3 { V3 center_point; F32 radius; };
 
-typedef struct IntersectionManifold3 IntersectionManifold3;
-struct IntersectionManifold3 { V3 normal; F32 penetration; };
+typedef struct IntersectManifold3 IntersectManifold3;
+struct IntersectManifold3 { V3 normal; F32 penetration; };
 
-void Tri2Offset(Tri2* src, V2* offset, Tri2* dest);
+// NOTE: Functions.
+
+void Tri2Offset(Tri2* dest, Tri2* src, V2* offset);
 B32  Tri2ContainsPoint(Tri2* src, V2* point);
-
-void Tri3FromTri2(Tri3* tri3, Tri2* tri2);
-void Tri3Offset(Tri3* src, V3* offset, Tri3* dest);
-B32  Tri3CreatePlane3(Tri3* t, Plane3* plane);
-B32  Tri3ContainsPoint(Tri3* t, V3* point);
 
 void Aabb2FromMinMax(Aabb2* aabb2, V2* min, V2* max);
 void Aabb2FromTopLeft(Aabb2* aabb2, V2* point, V2* size);
 void Aabb2GetMinMax(Aabb2* aabb2, V2* min, V2* max);
+B32  Aabb2ContainsPoint(Aabb2* aabb2, V2* point);
+
+void Tri3FromTri2(Tri3* tri3, Tri2* tri2);
+void Tri3Offset(Tri3* dest, Tri3* src, V3* offset);
+B32  Tri3CreatePlane3(Tri3* t, Plane3* plane);
+B32  Tri3ContainsPoint(Tri3* t, V3* point);
 
 void Aabb3FromAabb2(Aabb3* aabb3, Aabb2* aabb2);
 void Aabb3FromMinMax(Aabb3* aabb, V3* min, V3* max);
 void Aabb3GetMinMax(Aabb3* aabb, V3* min, V3* max);
 void Aabb3RelativeNormal(Aabb3* aabb, V3* pt, V3* normal);
-B32  Aabb3ContainsPoint(Aabb3* aabb, V3* pos);
+B32  Aabb3ContainsPoint(Aabb3* aabb, V3* point);
 
 void Ray3DirInv(Ray3* r, V3* dir_inv);
 void Ray3FromRay2(Ray3* ray3, Ray2* ray2);
 
-void Plane3WithAnchor(V3* anchor, V3* normal, Plane3* plane);
+void Plane3WithAnchor(Plane3* plane, V3* anchor, V3* normal);
 void Plane3Basis(Plane3* plane, V3* u, V3* v);
 B32  Plane3IsPointAbove(Plane3* plane, V3* point);
 B32  Plane3ContainsPoint(Plane3* plane, V3* point);
 void Plane3CreatePoint(Plane3* plane, V3* point);
-void Plane3Flip(Plane3* plane, Plane3* flipped_plane);
+void Plane3Flip(Plane3* flipped_plane, Plane3* plane);
 B32  Plane3ApproxEq(Plane3* a, Plane3* b);
 
-B32  IntersectionRay2Aabb2(Ray2* ray, Aabb2* aabb, V2* enter_point, V2* exit_point);
-B32  IntersectionRay2Tri2(Ray2* ray, Tri2* tri, V2* intersect_point);
+// NOTE: Can pass NULL as intersection outputs if you don't care about them.
 
-B32  IntersectionRay3Plane3(Ray3* ray, Plane3* plane, V3* intersect_point);
-B32  IntersectionRay3Aabb3(Ray3* ray, Aabb3* aabb, V3* enter_point, V3* exit_point);
-B32  IntersectionRay3Tri3(Ray3* ray, Tri3* tri, V3* intersect_point);
+B32  IntersectRay2Aabb2(V2* enter_point, V2* exit_point, Ray2* ray, Aabb2* aabb);
+B32  IntersectRay2Tri2(V2* intersect_point, Ray2* ray, Tri2* tri);
+B32  IntersectCircle2Circle2(IntersectManifold2* manifold, Circle2* a, Circle2* b);
+B32  IntersectCircle2Aabb2(IntersectManifold2* manifold, Circle2* a, Aabb2* b);
+B32  IntersectCircle2Tri2(IntersectManifold2* manifold, Circle2* a, Tri2* b);
+B32  IntersectAabb2Aabb2(IntersectManifold2* manifold, Aabb2* a, Aabb2* b);
 
-B32  IntersectionSphere3Sphere3(Sphere3* a, Sphere3* b, IntersectionManifold3* manifold);
-B32  IntersectionSphere3Aabb3(Sphere3* a, Aabb3* b, IntersectionManifold3* manifold);
-B32  IntersectionAabb3Aabb3(Aabb3* a, Aabb3* b, IntersectionManifold3* manifold);
+B32  IntersectRay3Plane3(V3* intersect_point, Ray3* ray, Plane3* plane);
+B32  IntersectRay3Aabb3(V3* enter_point, V3* exit_point, Ray3* ray, Aabb3* aabb);
+B32  IntersectRay3Tri3(V3* intersect_point, Ray3* ray, Tri3* tri);
+B32  IntersectSphere3Sphere3(IntersectManifold3* manifold, Sphere3* a, Sphere3* b);
+B32  IntersectSphere3Aabb3(IntersectManifold3* manifold, Sphere3* a, Aabb3* b);
+B32  IntersectAabb3Aabb3(IntersectManifold3* manifold, Aabb3* a, Aabb3* b);
 
 #endif // CDEFAULT_GEOMETRY_H_
 
 #ifdef CDEFAULT_GEOMETRY_IMPLEMENTATION
 #undef CDEFAULT_GEOMETRY_IMPLEMENTATION
 
-void Tri2Offset(Tri2* src, V2* offset, Tri2* dest) {
+void Tri2Offset(Tri2* dest, Tri2* src, V2* offset) {
   MEMORY_ZERO_STRUCT(dest);
   V2AddV2(&src->points[0], offset, &dest->points[0]);
   V2AddV2(&src->points[1], offset, &dest->points[1]);
@@ -101,7 +116,7 @@ void Tri3FromTri2(Tri3* tri3, Tri2* tri2) {
   V3FromV2(&tri3->points[2], &tri2->points[2]);
 }
 
-void Tri3Offset(Tri3* src, V3* offset, Tri3* dest) {
+void Tri3Offset(Tri3* dest, Tri3* src, V3* offset) {
   V3AddV3(&src->points[0], offset, &dest->points[0]);
   V3AddV3(&src->points[1], offset, &dest->points[1]);
   V3AddV3(&src->points[2], offset, &dest->points[2]);
@@ -125,7 +140,7 @@ B32 Tri3CreatePlane3(Tri3* t, Plane3* plane) {
   if (V3LengthSq(&tri_norm) == 0) { return false; }
   V3Normalize(&tri_norm, &tri_norm);
 
-  Plane3WithAnchor(&t->points[0], &tri_norm, plane);
+  Plane3WithAnchor(plane, &t->points[0], &tri_norm);
   return true;
 }
 
@@ -166,6 +181,13 @@ void Aabb2GetMinMax(Aabb2* aabb2, V2* min, V2* max) {
   min->y = aabb2->center_point.y - (aabb2->size.y / 2.0f);
   max->x = aabb2->center_point.x + (aabb2->size.x / 2.0f);
   max->y = aabb2->center_point.y + (aabb2->size.y / 2.0f);
+}
+
+B32 Aabb2ContainsPoint(Aabb2* aabb2, V2* point) {
+  V2 min, max;
+  Aabb2GetMinMax(aabb2, &min, &max);
+  return (min->x <= point->x && point->x <= max->x) &&
+         (min->y <= point->y && point->y <= max->y);
 }
 
 void Aabb3FromAabb2(Aabb3* aabb3, Aabb2* aabb2) {
@@ -210,7 +232,7 @@ void Aabb3RelativeNormal(Aabb3* aabb, V3* pt, V3* normal) {
   UNREACHABLE();
 }
 
-B32 Aabb3ContainsPoint(Aabb3* aabb, V3* pos) {
+B32 Aabb3ContainsPoint(Aabb3* aabb, V3* point) {
   V3 min, max;
   Aabb3GetMinMax(aabb, &min, &max);
   return ((min.x <= pos->x && pos->x <= max.x) &&
@@ -230,7 +252,7 @@ void Ray3FromRay2(Ray3* ray3, Ray2* ray2) {
 }
 
 // https://mathinsight.org/distance_point_plane
-void Plane3WithAnchor(V3* anchor, V3* normal, Plane3* plane) {
+void Plane3WithAnchor(Plane3* plane, V3* anchor, V3* normal) {
   plane->normal = *normal;
   plane->d = V3DotV3(anchor, normal);
 }
@@ -267,7 +289,7 @@ void Plane3CreatePoint(Plane3* plane, V3* point) {
   V3MultF32(point, &plane->normal, t);
 }
 
-void Plane3Flip(Plane3* plane, Plane3* flipped_plane) {
+void Plane3Flip(Plane3* flipped_plane, Plane3* plane) {
   V3MultF32(&flipped_plane->normal, &plane->normal, -1);
   flipped_plane->d = plane->d * -1;
 }
@@ -277,31 +299,177 @@ B32 Plane3ApproxEq(Plane3* a, Plane3* b) {
 }
 
 // TODO: implement for 2d.
-B32 IntersectionRay2Aabb2(Ray2* ray, Aabb2* aabb, V2* enter_point, V2* exit_point) {
+B32 IntersectRay2Aabb2(V2* enter_point, V2* exit_point, Ray2* ray, Aabb2* aabb) {
   Ray3 ray3;
   Ray3FromRay2(&ray3, ray);
   Aabb3 aabb3;
   Aabb3FromAabb2(&aabb3, aabb);
   V3 enter3, exit3;
-  B32 result = IntersectionRay3Aabb3(&ray3, &aabb3, &enter3, &exit3);
+  B32 result = IntersectRay3Aabb3(&enter3, &exit3, &ray3, &aabb3);
   if (enter_point != NULL) { V2_SWIZZLE(enter_point, &enter3, x, y); }
   if (exit_point != NULL)  { V2_SWIZZLE(exit_point, &exit3, x, y);   }
   return result;
 }
 
 // TODO: implement for 2d.
-B32 IntersectionRay2Tri2(Ray2* ray, Tri2* tri, V2* intersect_point) {
+B32 IntersectRay2Tri2(V2* intersect_point, Ray2* ray, Tri2* tri) {
   Ray3 ray3;
   Ray3FromRay2(&ray3, ray);
   Tri3 tri3;
   Tri3FromTri2(&tri3, tri);
   V3 i;
-  B32 result = IntersectionRay3Tri3(&ray3, &tri3, &i);
+  B32 result = IntersectRay3Tri3(&i, &ray3, &tri3);
   if (intersect_point != NULL) { V2_SWIZZLE(intersect_point, &i, x, y); }
   return result;
 }
 
-B32 IntersectionRay3Plane3(Ray3* ray, Plane3* plane, V3* intersect_point) {
+B32 IntersectCircle2Circle2(IntersectManifold2* manifold, Circle2* a, Circle2* b) {
+  V2 center_diff;
+  V2SubV2(&center_diff, &b->center_point, &a->center_point);
+  F32 min_distance = a->radius + b->radius;
+  F32 distance = V2Length(&center_diff);
+  if (min_distance < distance) { return false; }
+
+  if (manifold != NULL) {
+    if (V2LengthSq(&center_diff) == 0) { center_diff.y = 1.0f; }
+    V2Normalize(&manifold->normal, &center_diff);
+    manifold->penetration = min_distance - distance;
+  }
+  return true;
+}
+
+B32 IntersectCircle2Aabb2(IntersectManifold2* manifold, Circle2* a, Aabb2* b) {
+  V2 rel_center, b_half_size;
+  V2SubV2(&rel_center, &a->center_point, &b->center_point);
+  V2MultF32(&b_half_size, &b->size, 0.5f);
+  if ((F32Abs(rel_center.x) - a->radius) > b_half_size.x ||
+      (F32Abs(rel_center.y) - a->radius) > b_half_size.y) {
+    return false;
+  }
+
+  V2 rel_closest_point;
+  rel_closest_point.x = CLAMP(-b_half_size.x, rel_center.x, +b_half_size.x);
+  rel_closest_point.y = CLAMP(-b_half_size.y, rel_center.y, +b_half_size.y);
+
+  V2 to_closest_point;
+  V2SubV2(&to_closest_point, &rel_closest_point, &rel_center);
+  F32 dist = V2Length(&to_closest_point);
+  if (dist > a->radius) { return false; }
+
+  if (manifold != NULL) {
+    V2 normal;
+    V2SubV2(&normal, &rel_closest_point, &rel_center);
+    if (V2LengthSq(&normal) == 0) {
+      normal = rel_center;
+      if (V2LengthSq(&normal) == 0) { normal.y = 1; }
+    }
+    V2Normalize(&manifold->normal, &normal);
+    manifold->penetration = a->radius - dist;
+  }
+  return true;
+}
+
+// TODO: formalize a line segment shape?
+static void LineSegmentClosestPoint(V2* closest, V2* line_start, V2* line_end, V2* p) {
+  V2* a = line_start;
+  V2* b = line_end;
+  V2 ab, ap;
+  V2SubV2(&ab, b, a);
+  V2SubV2(&ap, p, a);
+  F32 t = V2DotV2(&ap, &ab) / V2LengthSq(&ab);
+  if (t < 0) {
+    *closest = *a;
+  } else if (t > 1) {
+    *closest = *b;
+  } else {
+    V2MultF32(&ab, &ab, t);
+    V2AddV2(closest, a, &ab);
+  }
+}
+
+B32 IntersectCircle2Tri2(IntersectManifold2* manifold, Circle2* a, Tri2* b) {
+  V2 p_p0p1, p_p1p2, p_p2p0;
+  LineSegmentClosestPoint(&p_p0p1, &b->points[0], &b->points[1], &a->center_point);
+  LineSegmentClosestPoint(&p_p1p2, &b->points[1], &b->points[2], &a->center_point);
+  LineSegmentClosestPoint(&p_p2p0, &b->points[2], &b->points[0], &a->center_point);
+  V2 to_p_p0p1, to_p_p1p2, to_p_p2p0;
+  V2SubV2(&to_p_p0p1, &p_p0p1, &a->center_point);
+  V2SubV2(&to_p_p1p2, &p_p1p2, &a->center_point);
+  V2SubV2(&to_p_p2p0, &p_p2p0, &a->center_point);
+  F32 to_p_p0p1_len_sq = V2LengthSq(&to_p_p0p1);
+  F32 to_p_p1p2_len_sq = V2LengthSq(&to_p_p1p2);
+  F32 to_p_p2p0_len_sq = V2LengthSq(&to_p_p2p0);
+
+  V2 min_to_p = to_p_p0p1;
+  F32 min_len_sq = to_p_p0p1_len_sq;
+  if (to_p_p1p2_len_sq < min_len_sq) {
+    min_to_p = to_p_p1p2;
+    min_len_sq = to_p_p1p2_len_sq;
+  }
+  if (to_p_p2p0_len_sq < min_len_sq) {
+    min_to_p = to_p_p2p0;
+    min_len_sq = to_p_p2p0_len_sq;
+  }
+
+  F32 min_len = F32Sqrt(min_len_sq);
+  if (Tri2ContainsPoint(b, &a->center_point)) {
+    // SPEEDUP: wasting cycles when manifold == NULL here, but this is more readable for now.
+    if (manifold != NULL) {
+      manifold->penetration = a->radius + min_len;
+      if (min_len != 0) {
+        V2Normalize(&manifold->normal, &min_to_p);
+      }
+    }
+    return true;
+  } else if (min_len < a->radius) {
+    if (manifold != NULL) {
+      manifold->penetration = a->radius - min_len;
+      if (min_len != 0) {
+        V2Normalize(&manifold->normal, &min_to_p);
+        V2MultF32(&manifold->normal, &manifold->normal, -1.0f);
+      }
+    }
+    return true;
+  } else {
+    return false;
+  }
+}
+
+B32 IntersectAabb2Aabb2(IntersectManifold2* manifold, Aabb2* a, Aabb2* b) {
+  V2 a_min, a_max;
+  Aabb2GetMinMax(a, &a_min, &a_max);
+  V2 b_min, b_max;
+  Aabb2GetMinMax(b, &b_min, &b_max);
+
+  if (!(a_max.x > b_min.x &&
+        a_min.x < b_max.x &&
+        a_max.y > b_min.y &&
+        a_min.y < b_max.y)) {
+    return false;
+  }
+
+  if (manifold != NULL) {
+    F32 penetration = F32_MAX;
+    F32 penetration_test = 0;
+    V2 min_axis = {};
+#define CDEFAULT_PENETRATION_TEST(test, axis) \
+      penetration_test = (test);              \
+      if (penetration_test < penetration) {   \
+        penetration = penetration_test;       \
+        min_axis = (axis);                    \
+      }
+    CDEFAULT_PENETRATION_TEST(b_max.x - a_min.x, V2_X_NEG);
+    CDEFAULT_PENETRATION_TEST(a_max.x - b_min.x, V2_X_POS);
+    CDEFAULT_PENETRATION_TEST(b_max.y - a_min.y, V2_Y_NEG);
+    CDEFAULT_PENETRATION_TEST(a_max.y - b_min.y, V2_Y_POS);
+#undef CDEFAULT_PENETRATION_TEST
+    manifold->normal = min_axis;
+    manifold->penetration = penetration;
+  }
+  return true;
+}
+
+B32 IntersectRay3Plane3(V3* intersect_point, Ray3* ray, Plane3* plane) {
   V3 point_on_plane, ray_to_plane;
   Plane3CreatePoint(plane, &point_on_plane);
   F32 denom = V3DotV3(&plane->normal, &ray->dir);
@@ -317,7 +485,7 @@ B32 IntersectionRay3Plane3(Ray3* ray, Plane3* plane, V3* intersect_point) {
 }
 
 // https://tavianator.com/2011/ray_box.html
-B32 IntersectionRay3Aabb3(Ray3* ray, Aabb3* aabb, V3* enter_point, V3* exit_point) {
+B32 IntersectRay3Aabb3(V3* enter_point, V3* exit_point, Ray3* ray, Aabb3* aabb) {
   V3 aabb_min, aabb_max;
   Aabb3GetMinMax(aabb, &aabb_min, &aabb_max);
   V3 ray_dir_inv;
@@ -344,13 +512,13 @@ B32 IntersectionRay3Aabb3(Ray3* ray, Aabb3* aabb, V3* enter_point, V3* exit_poin
   return true;
 }
 
-B32 IntersectionRay3Tri3(Ray3* ray, Tri3* tri, V3* intersect_point) {
+B32 IntersectRay3Tri3(V3* intersect_point, Ray3* ray, Tri3* tri) {
   Plane3 tri_plane;
   if (!Tri3CreatePlane3(tri, &tri_plane)) {
     return false;
   }
   V3 plane_intersection;
-  if (!IntersectionRay3Plane3(ray, &tri_plane, &plane_intersection)) {
+  if (!IntersectRay3Plane3(&plane_intersection, ray, &tri_plane)) {
     return false;
   }
   if (!Tri3ContainsPoint(tri, &plane_intersection)) {
@@ -362,7 +530,7 @@ B32 IntersectionRay3Tri3(Ray3* ray, Tri3* tri, V3* intersect_point) {
   return true;
 }
 
-B32 IntersectionSphere3Sphere3(Sphere3* a, Sphere3* b, IntersectionManifold3* manifold) {
+B32 IntersectSphere3Sphere3(IntersectManifold3* manifold, Sphere3* a, Sphere3* b) {
   V3 center_diff;
   V3SubV3(&center_diff, &b->center_point, &a->center_point);
   F32 min_distance = a->radius + b->radius;
@@ -377,7 +545,7 @@ B32 IntersectionSphere3Sphere3(Sphere3* a, Sphere3* b, IntersectionManifold3* ma
   return true;
 }
 
-B32 IntersectionSphere3Aabb3(Sphere3* a, Aabb3* b, IntersectionManifold3* manifold) {
+B32 IntersectSphere3Aabb3(IntersectManifold3* manifold, Sphere3* a, Aabb3* b) {
   V3 rel_center, b_half_size;
   V3SubV3(&rel_center, &a->center_point, &b->center_point);
   V3MultF32(&b_half_size, &b->size, 0.5f);
@@ -410,7 +578,7 @@ B32 IntersectionSphere3Aabb3(Sphere3* a, Aabb3* b, IntersectionManifold3* manifo
   return true;
 }
 
-B32 IntersectionAabb3Aabb3(Aabb3* a, Aabb3* b, IntersectionManifold3* manifold) {
+B32 IntersectAabb3Aabb3(IntersectManifold3* manifold, Aabb3* a, Aabb3* b) {
   V3 a_min, a_max;
   Aabb3GetMinMax(a, &a_min, &a_max);
   V3 b_min, b_max;
@@ -442,7 +610,6 @@ B32 IntersectionAabb3Aabb3(Aabb3* a, Aabb3* b, IntersectionManifold3* manifold) 
     CDEFAULT_PENETRATION_TEST(b_max.z - a_min.z, V3_Z_NEG);
     CDEFAULT_PENETRATION_TEST(a_max.z - b_min.z, V3_Z_POS);
 #undef CDEFAULT_PENETRATION_TEST
-
     manifold->normal = min_axis;
     manifold->penetration = penetration;
   }

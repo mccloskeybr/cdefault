@@ -23,6 +23,11 @@ int main(void) {
   F32 theta = 0;
   F32 scale = 0;
   while (!WindowShouldClose()) {
+    if (WindowIsKeyPressed(Key_Control) && WindowIsKeyJustPressed(Key_C)) {
+      LOG_INFO("SIGINT received");
+      exit(0);
+    }
+
     DrawImageRot(image_handle, 750, 500, image_width * scale * 5, image_height * scale * 5, theta);
     theta += 0.05f;
     scale = F32Sin(TimeSecondsSinceStart());
