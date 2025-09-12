@@ -165,6 +165,7 @@ void V2AddV2(V2* dest, V2* x, V2* y);
 void V2SubV2(V2* dest, V2* x, V2* y);
 void V2HadamardV2(V2* dest, V2* x, V2* y);
 F32  V2DotV2(V2* x, V2* y);
+F32  V2CrossV2(V2* x, V2* y);
 F32  V2InnerMultV2(V2* x, V2* y);
 B32  V2Eq(V2* x, V2* y);
 B32  V2ApproxEq(V2* x, V2* y);
@@ -530,6 +531,10 @@ void V2HadamardV2(V2* dest, V2* x, V2* y) {
 
 F32 V2DotV2(V2* x, V2* y) {
   return (x->x * y->x) + (x->y * y->y);
+}
+
+F32 V2CrossV2(V2* x, V2* y) {
+  return (x->x * y->y) - (x->y * y->x);
 }
 
 F32 V2InnerMultV2(V2* x, V2* y) {

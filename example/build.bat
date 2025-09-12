@@ -12,4 +12,3 @@ REM cl %FLAGS% render_image.c /Fobuild/render_image.obj /Febin/render_image.exe 
 REM cl %FLAGS% render_clay.c /Fobuild/render_clay.obj /Febin/render_clay.exe /link %LIBS%
 REM cl %FLAGS% snake.c /Fobuild/snake.obj /Febin/snake.exe /link %LIBS%
 REM cl %FLAGS% space_wars.c /Fobuild/space_wars.obj /Febin/space_wars.exe /link %LIBS%
-cl %FLAGS% collision.c /Fobuild/collision.obj /Febin/collision.exe /link %LIBS%

@@ -1,11 +1,15 @@
 @echo off
 cls
 
-set FLAGS=/W4 /wd4127 /wd4201 /Zo /Z7 /nologo
-set LIBS=ole32.lib
+set WARN=/W4 /wd4127 /wd4244 /wd4456 /wd4355 /wd4457 /wd4245 /wd4701 /wd4201
+set FLAGS=/Zo /Z7 /nologo %WARN%
+set LIBS=ole32.lib user32.lib opengl32.lib gdi32.lib
 
-echo Compiling:
-cl %FLAGS% dll_test.c /Fobuild/dll_test.obj /Febin/dll_test.exe /link %LIBS% 
+goto skip_unit_tests
+
+REM unit tests
+echo Compiling unit tests:
+cl %FLAGS% dll_test.c /Fobuild/dll_test.obj /Febin/dll_test.exe /link %LIBS%
 cl %FLAGS% sll_test.c /Fobuild/sll_test.obj /Febin/sll_test.exe /link %LIBS%
 cl %FLAGS% log_test.c /Fobuild/log_test.obj /Febin/log_test.exe /link %LIBS%
 cl %FLAGS% arena_test.c /Fobuild/arena_test.obj /Febin/arena_test.exe /link %LIBS%
@@ -14,7 +18,7 @@ cl %FLAGS% vector_test.c /Fobuild/vector_test.obj /Febin/vector_test.exe /link %
 cl %FLAGS% matrix_test.c /Fobuild/matrix_test.obj /Febin/matrix_test.exe /link %LIBS%
 cl %FLAGS% time_test.c /Fobuild/time_test.obj /Febin/time_test.exe /link %LIBS%
 
-echo Testing:
+echo Running unit tests:
 bin\dll_test.exe
 bin\sll_test.exe
 bin\log_test.exe
@@ -23,3 +27,10 @@ bin\string_test.exe
 bin\vector_test.exe
 bin\matrix_test.exe
 bin\time_test.exe
+
+:skip_unit_tests
+
+REM visual tests
+REM cl %FLAGS% collision_ray_test.c /Fobuild/collision_line_test.obj /Febin/collision_ray_test.exe /link %LIBS%
+REM cl %FLAGS% collision_line_test.c /Fobuild/collision_line_test.obj /Febin/collision_line_test.exe /link %LIBS%
+cl %FLAGS% collision_circle_test.c /Fobuild/collision_circle_test.obj /Febin/collision_circle_test.exe /link %LIBS%
