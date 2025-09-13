@@ -37,6 +37,13 @@ int main(void) {
   other_aabb.size.x = 200;
   other_aabb.size.y = 100;
 
+  Obb2 obb;
+  obb.center_point.x = 500;
+  obb.center_point.y = 500;
+  obb.size.x = 100;
+  obb.size.y = 50;
+  obb.angle_rad = F32_PI / 4.0f;
+
   Tri2 tri;
   tri.points[0] = (V2) { 700, 250 };
   tri.points[1] = (V2) { 800, 250 };
@@ -81,13 +88,18 @@ int main(void) {
     DrawRectangleV(other_aabb.center_point, other_aabb.size, V3_BLUE);
     DrawTriangleV(tri.points[0], tri.points[1], tri.points[2], V3_BLUE);
     DrawLineV(line.start, line.end, 5, V3_BLUE);
+    DrawConvexHullV(hull.points, hull.points_len, V3_BLUE);
+
+    obb.angle_rad += 0.05f;
+    V2 points[4];
+    ConvexHull2 obb_hull;
+    ConvexHull2FromObb2(&obb_hull, &obb, points);
+    DrawConvexHullV(obb_hull.points, obb_hull.points_len, V3_BLUE);
 
     V2 ray_end;
     V2MultF32(&ray_end, &ray.dir, 5000);
     V2AddV2(&ray_end, &ray.start, &ray_end);
     DrawLineV(ray.start, ray_end, 5, V3_BLUE);
-
-    DrawConvexHullV(hull.points, hull.points_len, V3_BLUE);
 
     DrawRectangleV(aabb.center_point, aabb.size, V3_WHITE);
 
@@ -97,6 +109,9 @@ int main(void) {
       DrawIntersectManifold(aabb, manifold, V3_GREEN);
     }
     if (Aabb2IntersectAabb2(&aabb, &other_aabb, &manifold)) {
+      DrawIntersectManifold(aabb, manifold, V3_GREEN);
+    }
+    if (Aabb2IntersectObb2(&aabb, &obb, &manifold)) {
       DrawIntersectManifold(aabb, manifold, V3_GREEN);
     }
     if (Aabb2IntersectTri2(&aabb, &tri, &manifold)) {

@@ -30,6 +30,7 @@ int main(void) {
     DrawTriangle(200, 200, 400, 200, 300, 300, red.r, red.g, red.b);
     DrawRectangle(600, 200, 100 * scale, 100, 1, 0, 0);
     DrawRectangle(600, 200, 80, 80 * scale, 0, 1, 0);
+    DrawRoundedRectangleFrame(800, 350, 100, 100, 10, 20, 0, 0, 1);
     DrawRoundedRectangleFrameRot(800, 200, 100, 100, 20, 1, theta, 0, 0, 1);
     DrawRing(1000, 200, 50, 5, 1, 0, 0);
     DrawRing(1000, 200, 45 * (1 - scale), 5, 0, 1, 0);
