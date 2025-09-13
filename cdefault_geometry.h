@@ -5,11 +5,11 @@
 #include "cdefault_std.h"
 
 // TODO: OBBs
-// TODO: convex polygons, gjk
-// TODO: 2/3d capsule?
-// TODO: dumb fns, like equals / offsets for all.
+// TODO: capsule?
+// TODO: 3d match 2d api
 
-// NOTE: Collections of points (e.g. Tri2) must follow CCW winding order.
+// NOTE: Collections of points (e.g. Tri2, ConvexHull2) must follow CCW winding order.
+// NOTE: For intersection routines, may pass NULL.
 
 ////////////////////////////////////////////////////////////////////////////////
 // 2D shapes
@@ -30,49 +30,91 @@ struct Aabb2 { V2 center_point; V2 size; };
 typedef struct Circle2 Circle2;
 struct Circle2 { V2 center_point; F32 radius; };
 
+typedef struct ConvexHull2 ConvexHull2;
+struct ConvexHull2 { V2* points; U32 points_len; };
+
 typedef struct IntersectManifold2 IntersectManifold2;
 struct IntersectManifold2 { V2 normal; F32 penetration; };
 
+void Line2Offset(Line2* line, V2* offset);
+void Line2Rotate(Line2* line, F32 angle_rad);
 F32  Line2Length(Line2* line);
 F32  Line2LengthSq(Line2* line);
 void Line2ClosestPoint(Line2* line, V2* point, V2* closest);
+void Line2NormalIn(Line2* line, V2* normal);  // NOTE: points into CCW center.
+void Line2NormalOut(Line2* line, V2* normal); // NOTE: points away from CCW center.
+B32  Line2Eq(Line2* a, Line2* b);
+B32  Line2ApproxEq(Line2* a, Line2* b);
 B32  Line2IntersectLine2(Line2* line_0, Line2* line_1, V2* intersect_point);
 B32  Line2IntersectRay2(Line2* line, Ray2* ray, V2* intersect_point);
 B32  Line2IntersectTri2(Line2* line, Tri2* tri, V2* enter_point, V2* exit_point);
 B32  Line2IntersectAabb2(Line2* line, Aabb2* aabb, V2* enter_point, V2* exit_point);
 B32  Line2IntersectCircle2(Line2* line, Circle2* circle, V2* enter_point, V2* exit_point);
+B32  Line2IntersectConvexHull2(Line2* line, ConvexHull2* hull, V2* enter_point, V2* exit_point);
 
+// TODO: ray rotation
 void Ray2DirInv(Ray2* ray, V2* dir_inv);
+B32  Ray2Eq(Ray2* a, Ray2* b);
+B32  Ray2ApproxEq(Ray2* a, Ray2* b);
 B32  Ray2IntersectLine2(Ray2* ray, Line2* line, V2* intersect_point);
 B32  Ray2IntersectRay2(Ray2* ray_0, Ray2* ray_2, V2* intersect_point);
 B32  Ray2IntersectTri2(Ray2* ray, Tri2* tri, V2* enter_point, V2* exit_point);
 B32  Ray2IntersectAabb2(Ray2* ray, Aabb2* aabb, V2* enter_point, V2* exit_point);
 B32  Ray2IntersectCircle2(Ray2* ray, Circle2* circle, V2* enter_point, V2* exit_point);
+B32  Ray2IntersectConvexHull2(Ray2* ray, ConvexHull2* hull, V2* enter_point, V2* exit_point);
 
-void Tri2Offset(Tri2* dest, Tri2* src, V2* offset);
+// TODO: tri2 point validation
+// TODO: tri2 rotation
+void Tri2Offset(Tri2* tri, V2* offset);
+void Tri2GetCenter(Tri2* tri, V2* center);
+B32  Tri2Eq(Tri2* a, Tri2* b);
+B32  Tri2ApproxEq(Tri2* a, Tri2* b);
 B32  Tri2ContainsPoint(Tri2* src, V2* point);
 B32  Tri2IntersectLine2(Tri2* tri, Line2* line, V2* enter_point, V2* exit_point);
 B32  Tri2IntersectRay2(Tri2* tri, Ray2* ray, V2* enter_point, V2* exit_point);
 B32  Tri2IntersectTri2(Tri2* tri_0, Tri2* tri_1, IntersectManifold2* manifold);
 B32  Tri2IntersectAabb2(Tri2* tri, Aabb2* aabb, IntersectManifold2* manifold);
 B32  Tri2IntersectCircle2(Tri2* tri, Circle2* circle, IntersectManifold2* manifold);
+B32  Tri2IntersectConvexHull2(Tri2* tri, ConvexHull2* hull, IntersectManifold2* manifold);
 
 void Aabb2FromMinMax(Aabb2* aabb2, V2* min, V2* max);
 void Aabb2FromTopLeft(Aabb2* aabb2, V2* point, V2* size);
 void Aabb2GetMinMax(Aabb2* aabb2, V2* min, V2* max);
+B32  Aabb2Eq(Aabb2* a, Aabb2* b);
+B32  Aabb2ApproxEq(Aabb2* a, Aabb2* b);
 B32  Aabb2ContainsPoint(Aabb2* aabb2, V2* point);
 B32  Aabb2IntersectLine2(Aabb2* aabb, Line2* line, V2* enter_point, V2* exit_point);
 B32  Aabb2IntersectRay2(Aabb2* aabb, Ray2* ray, V2* enter_point, V2* exit_point);
 B32  Aabb2IntersectTri2(Aabb2* aabb, Tri2* tri, IntersectManifold2* manifold);
 B32  Aabb2IntersectAabb2(Aabb2* aabb_0, Aabb2* aabb_1, IntersectManifold2* manifold);
 B32  Aabb2IntersectCircle2(Aabb2* aabb, Circle2* circle, IntersectManifold2* manifold);
+B32  Aabb2IntersectConvexHull2(Aabb2* aabb, ConvexHull2* hull, IntersectManifold2* manifold);
 
+B32  Circle2Eq(Circle2* a, Circle2* b);
+B32  Circle2ApproxEq(Circle2* a, Circle2* b);
 B32  Circle2ContainsPoint(Circle2* circle, V2* point);
 B32  Circle2IntersectLine2(Circle2* circle, Line2* line, V2* enter_point, V2* exit_point);
 B32  Circle2IntersectRay2(Circle2* circle, Ray2* ray, V2* enter_point, V2* exit_point);
 B32  Circle2IntersectTri2(Circle2* a, Tri2* b, IntersectManifold2* manifold);
 B32  Circle2IntersectAabb2(Circle2* a, Aabb2* b, IntersectManifold2* manifold);
 B32  Circle2IntersectCircle2(Circle2* a, Circle2* b, IntersectManifold2* manifold);
+B32  Circle2IntersectConvexHull2(Circle2* circle, ConvexHull2* hull, IntersectManifold2* manifold);
+
+// TODO: convex hull rotation
+// TODO: convex hull validation
+// TODO: break concave hull into convex hull
+void ConvexHull2Offset(ConvexHull2* hull, V2* offset);
+void ConvexHull2GetCenter(ConvexHull2* hull, V2* center);
+void ConvexHull2SetCenter(ConvexHull2* hull, V2* center);
+B32  ConvexHull2Eq(ConvexHull2* a, ConvexHull2* b);
+B32  ConvexHull2ApproxEq(ConvexHull2* a, ConvexHull2* b);
+B32  ConvexHull2ContainsPoint(ConvexHull2* hull, V2* point);
+B32  ConvexHull2IntersectLine2(ConvexHull2* hull, Line2* line, V2* enter_point, V2* exit_point);
+B32  ConvexHull2IntersectRay2(ConvexHull2* hull, Ray2* ray, V2* enter_point, V2* exit_point);
+B32  ConvexHull2IntersectTri2(ConvexHull2* hull, Tri2* tri, IntersectManifold2* manifold);
+B32  ConvexHull2IntersectAabb2(ConvexHull2* hull, Aabb2* aabb, IntersectManifold2* manifold);
+B32  ConvexHull2IntersectCircle2(ConvexHull2* hull, Circle2* circle, IntersectManifold2* manifold);
+B32  ConvexHull2IntersectConvexHull2(ConvexHull2* a, ConvexHull2* b, IntersectManifold2* manifold);
 
 ////////////////////////////////////////////////////////////////////////////////
 // 3D shapes
@@ -132,6 +174,22 @@ B32  Sphere3IntersectAabb3(Sphere3* a, Aabb3* b, IntersectManifold3* manifold);
 #ifdef CDEFAULT_GEOMETRY_IMPLEMENTATION
 #undef CDEFAULT_GEOMETRY_IMPLEMENTATION
 
+void Line2Offset(Line2* line, V2* offset) {
+  V2AddV2(&line->start, &line->start, offset);
+  V2AddV2(&line->end, &line->end, offset);
+}
+
+void Line2Rotate(Line2* line, F32 angle_rad) {
+  V2 rel, new_end;
+  V2SubV2(&rel, &line->end, &line->start);
+  F32 c = F32Cos(angle_rad);
+  F32 s = F32Sin(angle_rad);
+  new_end.x = rel.x * c - rel.y * s;
+  new_end.y = rel.x * s + rel.y * c;
+  V2AddV2(&new_end, &new_end, &line->start);
+  line->end = new_end;
+}
+
 F32 Line2Length(Line2* line) {
   return F32Sqrt(Line2LengthSq(line));
 }
@@ -157,6 +215,30 @@ void Line2ClosestPoint(Line2* line, V2* point, V2* closest) {
     V2MultF32(&ab, &ab, t);
     V2AddV2(closest, a, &ab);
   }
+}
+
+void Line2NormalIn(Line2* line, V2* normal) {
+  V2 delta;
+  V2SubV2(&delta, &line->end, &line->start);
+  normal->x = -delta.y;
+  normal->y = delta.x;
+  V2Normalize(normal, normal);
+}
+
+void Line2NormalOut(Line2* line, V2* normal) {
+  V2 delta;
+  V2SubV2(&delta, &line->end, &line->start);
+  normal->x = delta.y;
+  normal->y = -delta.x;
+  V2Normalize(normal, normal);
+}
+
+B32 Line2Eq(Line2* a, Line2* b) {
+  return V2Eq(&a->start, &b->start) && V2Eq(&a->end, &b->end);
+}
+
+B32 Line2ApproxEq(Line2* a, Line2* b) {
+  return V2ApproxEq(&a->start, &b->start) && V2ApproxEq(&a->end, &b->end);
 }
 
 // SPEEDUP: for all line intersections, we just convert to ray and then determine if the
@@ -271,9 +353,40 @@ B32 Line2IntersectCircle2(Line2* line, Circle2* circle, V2* enter_point, V2* exi
   return true;
 }
 
+B32 Line2IntersectConvexHull2(Line2* line, ConvexHull2* hull, V2* enter_point, V2* exit_point) {
+  if (UNLIKELY(Line2LengthSq(line) == 0)) { return false; }
+
+  Ray2 ray;
+  ray.start = line->start;
+  V2SubV2(&ray.dir, &line->end, &line->start);
+  V2Normalize(&ray.dir, &ray.dir);
+
+  V2 enter, exit;
+  if (!Ray2IntersectConvexHull2(&ray, hull, &enter, &exit)) { return false; }
+
+  Line2 test;
+  test.start = line->start;
+  test.end = enter;
+  if (Line2LengthSq(line) < Line2LengthSq(&test)) { return false; }
+  test.end = exit;
+  if (Line2LengthSq(line) < Line2LengthSq(&test)) { exit = enter; }
+
+  if (enter_point != NULL) { *enter_point = enter; }
+  if (exit_point != NULL) { *exit_point = exit; }
+  return true;
+}
+
 void Ray2DirInv(Ray2* ray, V2* dir_inv) {
   dir_inv->x = 1.0f / ray->dir.x;
   dir_inv->y = 1.0f / ray->dir.y;
+}
+
+B32 Ray2Eq(Ray2* a, Ray2* b) {
+  return V2Eq(&a->start, &b->start) && V2Eq(&a->dir, &b->dir);
+}
+
+B32 Ray2ApproxEq(Ray2* a, Ray2* b) {
+  return V2ApproxEq(&a->start, &b->start) && V2ApproxEq(&a->dir, &b->dir);
 }
 
 B32 Ray2IntersectLine2(Ray2* ray, Line2* line, V2* intersect_point) {
@@ -310,34 +423,10 @@ B32 Ray2IntersectRay2(Ray2* ray_0, Ray2* ray_1, V2* intersect_point) {
 }
 
 B32 Ray2IntersectTri2(Ray2* ray, Tri2* tri, V2* enter_point, V2* exit_point) {
-  Line2 p0p1, p1p2, p2p0;
-  p0p1.start = tri->points[0]; p0p1.end = tri->points[1];
-  p1p2.start = tri->points[1]; p1p2.end = tri->points[2];
-  p2p0.start = tri->points[2]; p2p0.end = tri->points[0];
-  V2 i_p0p1, i_p1p2, i_p2p0;
-  B32 t_i_p0p1 = Ray2IntersectLine2(ray, &p0p1, &i_p0p1);
-  B32 t_i_p1p2 = Ray2IntersectLine2(ray, &p1p2, &i_p1p2);
-  B32 t_i_p2p0 = Ray2IntersectLine2(ray, &p2p0, &i_p2p0);
-  if (!t_i_p0p1 && !t_i_p1p2 && !t_i_p2p0) { return false; }
-  if (enter_point == NULL && exit_point == NULL) { return true; }
-  F32 min = F32_MAX; F32 max = 0;
-  V2 enter, exit;
-  Line2 test; test.start = ray->start;
-  F32 d;
-#define CDEFAULT_PENETRATION_TEST(t, p)  \
-  if (t) {                               \
-    test.end = p;                        \
-    d = Line2LengthSq(&test);            \
-    if (d < min) { enter = p; min = d; } \
-    if (d > max) { exit = p; max = d; }  \
-  }
-  CDEFAULT_PENETRATION_TEST(t_i_p0p1, i_p0p1);
-  CDEFAULT_PENETRATION_TEST(t_i_p1p2, i_p1p2);
-  CDEFAULT_PENETRATION_TEST(t_i_p2p0, i_p2p0);
-#undef CDEFAULT_PENETRATION_TEST
-  if (enter_point != NULL) { *enter_point = enter; }
-  if (exit_point != NULL) { *exit_point = exit; }
-  return true;
+  ConvexHull2 hull;
+  hull.points = (V2*) &tri->points;
+  hull.points_len = 3;
+  return Ray2IntersectConvexHull2(ray, &hull, enter_point, exit_point);
 }
 
 B32 Ray2IntersectAabb2(Ray2* ray, Aabb2* aabb, V2* enter_point, V2* exit_point) {
@@ -398,21 +487,71 @@ B32 Ray2IntersectCircle2(Ray2* ray, Circle2* circle, V2* enter_point, V2* exit_p
   return true;
 }
 
+B32 Ray2IntersectConvexHull2(Ray2* ray, ConvexHull2* hull, V2* enter_point, V2* exit_point) {
+  B32 result = false;
+  F32 min_sq = F32_MAX;
+  F32 max_sq = F32_MIN;
+  for (U32 i = 0; i < hull->points_len; i++) {
+    Line2 segment;
+    segment.start = hull->points[i];
+    segment.end = hull->points[(i + 1) % hull->points_len];
 
-void Tri2Offset(Tri2* dest, Tri2* src, V2* offset) {
-  MEMORY_ZERO_STRUCT(dest);
-  V2AddV2(&src->points[0], offset, &dest->points[0]);
-  V2AddV2(&src->points[1], offset, &dest->points[1]);
-  V2AddV2(&src->points[2], offset, &dest->points[2]);
+    V2 intersect;
+    if (Ray2IntersectLine2(ray, &segment, &intersect)) {
+      result = true;
+      if (enter_point == NULL && exit_point == NULL) { continue; }
+      Line2 to_intersect;
+      to_intersect.start = ray->start;
+      to_intersect.end = intersect;
+      F32 d_sq = Line2LengthSq(&to_intersect);
+      if (enter_point != NULL && d_sq < min_sq) {
+        min_sq = d_sq;
+        *enter_point = intersect;
+      }
+      if (exit_point != NULL && d_sq > max_sq) {
+        max_sq = d_sq;
+        *exit_point = intersect;
+      }
+    }
+  }
+  return result;
+}
+
+void Tri2Offset(Tri2* tri, V2* offset) {
+  V2AddV2(&tri->points[0], &tri->points[0], offset);
+  V2AddV2(&tri->points[1], &tri->points[1], offset);
+  V2AddV2(&tri->points[2], &tri->points[2], offset);
+}
+
+void Tri2GetCenter(Tri2* tri, V2* center) {
+  center->x = (tri->points[0].x + tri->points[1].x + tri->points[2].x) / 3.0f;
+  center->y = (tri->points[0].y + tri->points[1].y + tri->points[2].y) / 3.0f;
+}
+
+void Tri2SetCenter(Tri2* tri, V2* center) {
+  V2 curr_center, offset;
+  Tri2GetCenter(tri, &curr_center);
+  V2SubV2(&offset, center, &curr_center);
+  Tri2Offset(tri, &offset);
+}
+
+B32 Tri2Eq(Tri2* a, Tri2* b) {
+  return V2Eq(&a->points[0], &b->points[0]) &&
+         V2Eq(&a->points[1], &b->points[1]) &&
+         V2Eq(&a->points[2], &b->points[2]);
+}
+
+B32 Tri2ApproxEq(Tri2* a, Tri2* b) {
+  return V2ApproxEq(&a->points[0], &b->points[0]) &&
+         V2ApproxEq(&a->points[1], &b->points[1]) &&
+         V2ApproxEq(&a->points[2], &b->points[2]);
 }
 
 B32 Tri2ContainsPoint(Tri2* src, V2* point) {
-  V2* p = src->points;
-  F32 denom = ((p[1].y - p[2].y) * (p[0].x - p[2].x) + (p[2].x - p[1].x) * (p[0].y - p[2].y));
-  F32 a = ((p[1].y - p[2].y) * (point->x - p[2].x) + (p[2].x - p[1].x) * (point->y - p[2].y)) / denom;
-  F32 b = ((p[2].y - p[0].y) * (point->x - p[2].x) + (p[0].x - p[2].x) * (point->y - p[2].y)) / denom;
-  F32 c = 1 - a - b;
-  return a >= 0 && b >= 0 && c >= 0;
+  ConvexHull2 c;
+  c.points = (V2*) src;
+  c.points_len = 3;
+  return ConvexHull2ContainsPoint(&c, point);
 }
 
 B32 Tri2IntersectLine2(Tri2* tri, Line2* line, V2* enter_point, V2* exit_point) {
@@ -424,23 +563,42 @@ B32 Tri2IntersectRay2(Tri2* tri, Ray2* ray, V2* enter_point, V2* exit_point) {
 }
 
 B32 Tri2IntersectTri2(Tri2* tri_0, Tri2* tri_1, IntersectManifold2* manifold) {
-  TODO();
-  tri_0 = tri_0;
-  tri_1 = tri_1;
-  manifold = manifold;
-  return false;
+  ConvexHull2 c_0, c_1;
+  c_0.points = (V2*) &tri_0->points;
+  c_0.points_len = 3;
+  c_1.points = (V2*) &tri_1->points;
+  c_1.points_len = 3;
+  return ConvexHull2IntersectConvexHull2(&c_0, &c_1, manifold);
 }
 
 B32 Tri2IntersectAabb2(Tri2* tri, Aabb2* aabb, IntersectManifold2* manifold) {
-  TODO();
-  tri = tri;
-  aabb = aabb;
-  manifold = manifold;
-  return false;
+  ConvexHull2 c_0;
+  c_0.points = (V2*) &tri->points;
+  c_0.points_len = 3;
+
+  ConvexHull2 c_1;
+  V2 min, max;
+  Aabb2GetMinMax(aabb, &min, &max);
+  V2 aabb_points[4] = {
+    { min.x, min.y },
+    { max.x, min.y },
+    { max.x, max.y },
+    { min.x, max.y },
+  };
+  c_1.points = (V2*) &aabb_points;
+  c_1.points_len = 4;
+  return ConvexHull2IntersectConvexHull2(&c_0, &c_1, manifold);
 }
 
 B32 Tri2IntersectCircle2(Tri2* tri, Circle2* circle, IntersectManifold2* manifold) {
   return Circle2IntersectTri2(circle, tri, manifold);
+}
+
+B32 Tri2IntersectConvexHull2(Tri2* tri, ConvexHull2* hull, IntersectManifold2* manifold) {
+  ConvexHull2 tri_hull;
+  tri_hull.points = (V2*) &tri->points;
+  tri_hull.points_len = 3;
+  return ConvexHull2IntersectConvexHull2(&tri_hull, hull, manifold);
 }
 
 void Aabb2FromMinMax(Aabb2* aabb2, V2* min, V2* max) {
@@ -465,6 +623,14 @@ void Aabb2GetMinMax(Aabb2* aabb2, V2* min, V2* max) {
   max->y = aabb2->center_point.y + (aabb2->size.y / 2.0f);
 }
 
+B32 Aabb2Eq(Aabb2* a, Aabb2* b) {
+  return V2Eq(&a->center_point, &b->center_point) && V2Eq(&a->size, &b->size);
+}
+
+B32 Aabb2ApproxEq(Aabb2* a, Aabb2* b) {
+  return V2ApproxEq(&a->center_point, &b->center_point) && V2ApproxEq(&a->size, &b->size);
+}
+
 B32 Aabb2ContainsPoint(Aabb2* aabb2, V2* point) {
   V2 min, max;
   Aabb2GetMinMax(aabb2, &min, &max);
@@ -481,11 +647,9 @@ B32 Aabb2IntersectRay2(Aabb2* aabb, Ray2* ray, V2* enter_point, V2* exit_point) 
 }
 
 B32 Aabb2IntersectTri2(Aabb2* aabb, Tri2* tri, IntersectManifold2* manifold) {
-  TODO();
-  aabb = aabb;
-  tri = tri;
-  manifold = manifold;
-  return false;
+  B32 result = Tri2IntersectAabb2(tri, aabb, manifold);
+  if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1); }
+  return result;
 }
 
 B32 Aabb2IntersectAabb2(Aabb2* a, Aabb2* b, IntersectManifold2* manifold) {
@@ -511,10 +675,10 @@ B32 Aabb2IntersectAabb2(Aabb2* a, Aabb2* b, IntersectManifold2* manifold) {
         penetration = penetration_test;       \
         min_axis = (axis);                    \
       }
-    CDEFAULT_PENETRATION_TEST(b_max.x - a_min.x, V2_X_NEG);
-    CDEFAULT_PENETRATION_TEST(a_max.x - b_min.x, V2_X_POS);
-    CDEFAULT_PENETRATION_TEST(b_max.y - a_min.y, V2_Y_NEG);
-    CDEFAULT_PENETRATION_TEST(a_max.y - b_min.y, V2_Y_POS);
+    CDEFAULT_PENETRATION_TEST(b_max.x - a_min.x, V2_X_POS);
+    CDEFAULT_PENETRATION_TEST(a_max.x - b_min.x, V2_X_NEG);
+    CDEFAULT_PENETRATION_TEST(b_max.y - a_min.y, V2_Y_POS);
+    CDEFAULT_PENETRATION_TEST(a_max.y - b_min.y, V2_Y_NEG);
 #undef CDEFAULT_PENETRATION_TEST
     manifold->normal = min_axis;
     manifold->penetration = penetration;
@@ -528,10 +692,33 @@ B32 Aabb2IntersectCircle2(Aabb2* aabb, Circle2* circle, IntersectManifold2* mani
   return result;
 }
 
+B32 Aabb2IntersectConvexHull2(Aabb2* aabb, ConvexHull2* hull, IntersectManifold2* manifold) {
+  ConvexHull2 aabb_hull;
+  V2 min, max;
+  Aabb2GetMinMax(aabb, &min, &max);
+  V2 aabb_points[4] = {
+    { min.x, min.y },
+    { max.x, min.y },
+    { max.x, max.y },
+    { min.x, max.y },
+  };
+  aabb_hull.points = (V2*) &aabb_points;
+  aabb_hull.points_len = 4;
+  return ConvexHull2IntersectConvexHull2(&aabb_hull, hull, manifold);
+}
+
 B32 Circle2ContainsPoint(Circle2* circle, V2* point) {
   V2 to_pt;
   V2SubV2(&to_pt, point, &circle->center_point);
   return V2LengthSq(&to_pt) < (circle->radius * circle->radius);
+}
+
+B32 Circle2Eq(Circle2* a, Circle2* b) {
+  return V2Eq(&a->center_point, &b->center_point) && a->radius == b->radius;
+}
+
+B32 Circle2ApproxEq(Circle2* a, Circle2* b) {
+  return V2ApproxEq(&a->center_point, &b->center_point) && F32ApproxEq(a->radius, b->radius);
 }
 
 B32 Circle2IntersectLine2(Circle2* circle, Line2* line, V2* enter_point, V2* exit_point) {
@@ -656,6 +843,176 @@ B32 Circle2IntersectCircle2(Circle2* a, Circle2* b, IntersectManifold2* manifold
     if (V2LengthSq(&center_diff) == 0) { center_diff.y = 1.0f; }
     V2Normalize(&manifold->normal, &center_diff);
     manifold->penetration = min_distance - distance;
+  }
+  return true;
+}
+
+B32 Circle2IntersectConvexHull2(Circle2* circle, ConvexHull2* hull, IntersectManifold2* manifold) {
+  B32 result = ConvexHull2IntersectCircle2(hull, circle, manifold);
+  if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1.0f); }
+  return result;
+}
+
+static void ConvexHull2ProjectAxis(ConvexHull2* hull, V2* axis, F32* min, F32* max) {
+  F32 proj = V2DotV2(&hull->points[0], axis);
+  *min = proj;
+  *max = proj;
+  for (U32 i = 1; i < hull->points_len; i++) {
+    proj = V2DotV2(&hull->points[i], axis);
+    if (proj < *min) { *min = proj; }
+    if (proj > *max) { *max = proj; }
+  }
+}
+
+void ConvexHull2Offset(ConvexHull2* hull, V2* offset) {
+  for (U32 i = 0; i < hull->points_len; i++) {
+    V2AddV2(&hull->points[i], &hull->points[i], offset);
+  }
+}
+
+void ConvexHull2GetCenter(ConvexHull2* hull, V2* center) {
+  center->x = 0;
+  center->y = 0;
+  for (U32 i = 0; i < hull->points_len; i++) {
+    center->x += hull->points[i].x;
+    center->y += hull->points[i].y;
+  }
+  center->x /= hull->points_len;
+  center->y /= hull->points_len;
+}
+
+void ConvexHull2SetCenter(ConvexHull2* hull, V2* center) {
+  V2 curr_center, offset;
+  ConvexHull2GetCenter(hull, &curr_center);
+  V2SubV2(&offset, center, &curr_center);
+  ConvexHull2Offset(hull, &offset);
+}
+
+B32 ConvexHull2Eq(ConvexHull2* a, ConvexHull2* b) {
+  if (a->points_len != b->points_len) { return false; }
+  for (U32 i = 0; i < a->points_len; i++) {
+    if (!V2Eq(&a->points[i], &b->points[i])) { return false; }
+  }
+  return true;
+}
+
+B32 ConvexHull2ApproxEq(ConvexHull2* a, ConvexHull2* b) {
+  if (a->points_len != b->points_len) { return false; }
+  for (U32 i = 0; i < a->points_len; i++) {
+    if (!V2ApproxEq(&a->points[i], &b->points[i])) { return false; }
+  }
+  return true;
+}
+
+B32 ConvexHull2ContainsPoint(ConvexHull2* hull, V2* point) {
+  for (U32 i = 0; i < hull->points_len; i++) {
+    V2* a = &hull->points[i];
+    V2* b = &hull->points[(i + 1) % hull->points_len];
+    V2 ab, ap;
+    V2SubV2(&ab, b, a);
+    V2SubV2(&ap, point, a);
+    F32 cross = V2CrossV2(&ab, &ap);
+    if (cross < 0) { return false; }
+  }
+  return true;
+}
+
+B32 ConvexHull2IntersectLine2(ConvexHull2* hull, Line2* line, V2* enter_point, V2* exit_point) {
+  return Line2IntersectConvexHull2(line, hull, enter_point, exit_point);
+}
+
+B32 ConvexHull2IntersectRay2(ConvexHull2* hull, Ray2* ray, V2* enter_point, V2* exit_point) {
+  return Ray2IntersectConvexHull2(ray, hull, enter_point, exit_point);
+}
+
+B32 ConvexHull2IntersectTri2(ConvexHull2* hull, Tri2* tri, IntersectManifold2* manifold) {
+  B32 result = Tri2IntersectConvexHull2(tri, hull, manifold);
+  if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1.0f); }
+  return result;
+}
+
+B32 ConvexHull2IntersectAabb2(ConvexHull2* hull, Aabb2* aabb, IntersectManifold2* manifold) {
+  B32 result = Aabb2IntersectConvexHull2(aabb, hull, manifold);
+  if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1.0f); }
+  return result;
+}
+
+B32 ConvexHull2IntersectCircle2(ConvexHull2* hull, Circle2* circle, IntersectManifold2* manifold) {
+  V2 hull_center, rel_center;
+  ConvexHull2GetCenter(hull, &hull_center);
+  V2SubV2(&rel_center, &hull_center, &circle->center_point);
+
+  V2 min_axis;
+  F32 min_penetration = F32_MAX;
+  for (U32 i = 0; i < hull->points_len; i++) {
+    Line2 segment;
+    segment.start = hull->points[i];
+    segment.end = hull->points[(i + 1) % hull->points_len];
+    DEBUG_ASSERT(Line2LengthSq(&segment) > 0);
+    V2 axis;
+    Line2NormalOut(&segment, &axis);
+
+    F32 hull_min, hull_max;
+    ConvexHull2ProjectAxis(hull, &axis, &hull_min, &hull_max);
+    F32 circle_center_proj = V2DotV2(&circle->center_point, &axis);
+    F32 circle_min = circle_center_proj - circle->radius;
+    F32 circle_max = circle_center_proj + circle->radius;
+    F32 overlap = MIN(hull_max, circle_max) - MAX(hull_min, circle_min);
+    if (overlap <= 0) { return false; }
+
+    if (manifold != NULL && overlap < min_penetration) {
+      min_penetration = overlap;
+      min_axis = axis;
+      if (V2DotV2(&rel_center, &min_axis) < 0) {
+        V2MultF32(&min_axis, &min_axis, -1);
+      }
+    }
+  }
+  if (manifold != NULL) {
+    manifold->penetration = min_penetration;
+    V2Normalize(&manifold->normal, &min_axis);
+  }
+  return true;
+}
+
+B32 ConvexHull2IntersectConvexHull2(ConvexHull2* a, ConvexHull2* b, IntersectManifold2* manifold) {
+  V2 a_center, b_center, rel_center;
+  ConvexHull2GetCenter(a, &a_center);
+  ConvexHull2GetCenter(b, &b_center);
+  V2SubV2(&rel_center, &a_center, &b_center);
+
+  V2 min_axis;
+  F32 min_penetration = F32_MAX;
+  for (U32 shape_idx = 0; shape_idx < 2; shape_idx++) {
+    ConvexHull2* shape = a;
+    if (shape_idx == 1) { shape = b; }
+
+    for (U32 i = 0; i < shape->points_len; i++) {
+      Line2 segment;
+      segment.start = shape->points[i];
+      segment.end = shape->points[(i + 1) % shape->points_len];
+      DEBUG_ASSERT(Line2LengthSq(&segment) > 0);
+      V2 axis;
+      Line2NormalOut(&segment, &axis);
+
+      F32 a_min, a_max, b_min, b_max;
+      ConvexHull2ProjectAxis(a, &axis, &a_min, &a_max);
+      ConvexHull2ProjectAxis(b, &axis, &b_min, &b_max);
+      F32 overlap = MIN(a_max, b_max) - MAX(a_min, b_min);
+      if (overlap <= 0) { return false; }
+
+      if (manifold != NULL && overlap < min_penetration) {
+        min_penetration = overlap;
+        min_axis = axis;
+        if (V2DotV2(&rel_center, &min_axis) < 0) {
+          V2MultF32(&min_axis, &min_axis, -1);
+        }
+      }
+    }
+  }
+  if (manifold != NULL) {
+    manifold->penetration = min_penetration;
+    V2Normalize(&manifold->normal, &min_axis);
   }
   return true;
 }
@@ -1012,12 +1369,12 @@ B32 Aabb3IntersectAabb3(Aabb3* a, Aabb3* b, IntersectManifold3* manifold) {
         penetration = penetration_test;       \
         min_axis = (axis);                    \
       }
-    CDEFAULT_PENETRATION_TEST(b_max.x - a_min.x, V3_X_NEG);
-    CDEFAULT_PENETRATION_TEST(a_max.x - b_min.x, V3_X_POS);
-    CDEFAULT_PENETRATION_TEST(b_max.y - a_min.y, V3_Y_NEG);
-    CDEFAULT_PENETRATION_TEST(a_max.y - b_min.y, V3_Y_POS);
-    CDEFAULT_PENETRATION_TEST(b_max.z - a_min.z, V3_Z_NEG);
-    CDEFAULT_PENETRATION_TEST(a_max.z - b_min.z, V3_Z_POS);
+    CDEFAULT_PENETRATION_TEST(b_max.x - a_min.x, V3_X_POS);
+    CDEFAULT_PENETRATION_TEST(a_max.x - b_min.x, V3_X_NEG);
+    CDEFAULT_PENETRATION_TEST(b_max.y - a_min.y, V3_Y_POS);
+    CDEFAULT_PENETRATION_TEST(a_max.y - b_min.y, V3_Y_NEG);
+    CDEFAULT_PENETRATION_TEST(b_max.z - a_min.z, V3_Z_POS);
+    CDEFAULT_PENETRATION_TEST(a_max.z - b_min.z, V3_Z_NEG);
 #undef CDEFAULT_PENETRATION_TEST
     manifold->normal = min_axis;
     manifold->penetration = penetration;

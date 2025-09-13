@@ -7,16 +7,30 @@
 #define CDEFAULT_GEOMETRY_IMPLEMENTATION
 #include "../cdefault_geometry.h"
 
+static void DrawIntersectManifold(ConvexHull2 hull, IntersectManifold2 manifold, V3 color) {
+  Line2 pen;
+  ConvexHull2GetCenter(&hull, &pen.start);
+  V2MultF32(&pen.end, &manifold.normal, manifold.penetration);
+  V2AddV2(&pen.end, &pen.start, &pen.end);
+  DrawLineV(pen.start, pen.end, 5, color);
+}
+
 int main(void) {
   TimeInit();
   ASSERT(WindowInit(1280, 720, "collision"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
 
-  Ray2 ray;
-  ray.start.x = 0;
-  ray.start.y = 0;
-  ray.dir.x = 0;
-  ray.dir.y = 1;
+  V2 hull_points[6] = {
+    {0, 0},
+    {50, 0},
+    {100, 50},
+    {50, 100},
+    {0, 100},
+    {-50, 50},
+  };
+  ConvexHull2 hull;
+  hull.points = (V2*) &hull_points;
+  hull.points_len = 6;
 
   Circle2 circle;
   circle.center_point.x = 200;
@@ -40,13 +54,13 @@ int main(void) {
   line.end.x = 950;
   line.end.y = 400;
 
-  Ray2 other_ray;
-  other_ray.start.x = 1000;
-  other_ray.start.y = 200;
-  other_ray.dir.x = 0;
-  other_ray.dir.y = 1;
+  Ray2 ray;
+  ray.start.x = 1000;
+  ray.start.y = 200;
+  ray.dir.x = 0;
+  ray.dir.y = 1;
 
-  V2 hull_points[6] = {
+  V2 other_hull_points[6] = {
     {1100, 250},
     {1150, 250},
     {1200, 300},
@@ -54,9 +68,9 @@ int main(void) {
     {1100, 350},
     {1050, 300},
   };
-  ConvexHull2 hull;
-  hull.points = (V2*) hull_points;
-  hull.points_len = 6;
+  ConvexHull2 other_hull;
+  other_hull.points = (V2*) other_hull_points;
+  other_hull.points_len = 6;
 
   while (!WindowShouldClose()) {
     if (WindowIsKeyPressed(Key_Control) && WindowIsKeyJustPressed(Key_C)) {
@@ -67,56 +81,43 @@ int main(void) {
     V2 mouse_pos;
     WindowGetMousePositionV(&mouse_pos);
     RendererCastRayV(mouse_pos, &mouse_pos);
-
-    if (WindowIsMouseButtonJustPressed(MouseButton_Left)) {
-      ray.start = mouse_pos;
-    }
-    V2SubV2(&ray.dir, &mouse_pos, &ray.start);
-    if (V2LengthSq(&ray.dir) == 0) {
-      ray.dir.x = 0;
-      ray.dir.y = 1;
-    }
-    V2Normalize(&ray.dir, &ray.dir);
+    ConvexHull2SetCenter(&hull, &mouse_pos);
 
     DrawCircleV(circle.center_point, circle.radius, V3_BLUE);
     DrawRectangleV(aabb.center_point, aabb.size, V3_BLUE);
     DrawTriangleV(tri.points[0], tri.points[1], tri.points[2], V3_BLUE);
     DrawLineV(line.start, line.end, 5, V3_BLUE);
 
-    V2 other_ray_end;
-    V2MultF32(&other_ray_end, &other_ray.dir, 5000);
-    V2AddV2(&other_ray_end, &other_ray.start, &other_ray_end);
-    DrawLineV(other_ray.start, other_ray_end, 5, V3_BLUE);
-
-    DrawConvexHullV(hull.points, hull.points_len, V3_BLUE);
-
     V2 ray_end;
     V2MultF32(&ray_end, &ray.dir, 5000);
     V2AddV2(&ray_end, &ray.start, &ray_end);
-    DrawLineV(ray.start, ray_end, 5, V3_WHITE);
+    DrawLineV(ray.start, ray_end, 5, V3_BLUE);
+
+    DrawConvexHullV(other_hull.points, other_hull.points_len, V3_BLUE);
+
+    DrawConvexHullV(hull.points, hull.points_len, V3_WHITE);
 
     V2 enter, exit;
-    if (Ray2IntersectCircle2(&ray, &circle, &enter, &exit)) {
+    IntersectManifold2 manifold;
+    if (ConvexHull2IntersectCircle2(&hull, &circle, &manifold)) {
+      DrawIntersectManifold(hull, manifold, V3_GREEN);
+    }
+    if (ConvexHull2IntersectAabb2(&hull, &aabb, &manifold)) {
+      DrawIntersectManifold(hull, manifold, V3_GREEN);
+    }
+    if (ConvexHull2IntersectTri2(&hull, &tri, &manifold)) {
+      DrawIntersectManifold(hull, manifold, V3_GREEN);
+    }
+    if (ConvexHull2IntersectLine2(&hull, &line, &enter, &exit)) {
       DrawCircleV(enter, 10, V3_GREEN);
       DrawRingV(exit, 10, 5, V3_RED);
     }
-    if (Ray2IntersectAabb2(&ray, &aabb, &enter, &exit)) {
+    if (ConvexHull2IntersectRay2(&hull, &ray, &enter, &exit)) {
       DrawCircleV(enter, 10, V3_GREEN);
       DrawRingV(exit, 10, 5, V3_RED);
     }
-    if (Ray2IntersectTri2(&ray, &tri, &enter, &exit)) {
-      DrawCircleV(enter, 10, V3_GREEN);
-      DrawRingV(exit, 10, 5, V3_RED);
-    }
-    if (Ray2IntersectLine2(&ray, &line, &enter)) {
-      DrawCircleV(enter, 10, V3_GREEN);
-    }
-    if (Ray2IntersectRay2(&ray, &other_ray, &enter)) {
-      DrawCircleV(enter, 10, V3_GREEN);
-    }
-    if (Ray2IntersectConvexHull2(&ray, &hull, &enter, &exit)) {
-      DrawCircleV(enter, 10, V3_GREEN);
-      DrawRingV(exit, 10, 5, V3_RED);
+    if (ConvexHull2IntersectConvexHull2(&hull, &other_hull, &manifold)) {
+      DrawIntersectManifold(hull, manifold, V3_GREEN);
     }
 
     WindowSwapBuffers();

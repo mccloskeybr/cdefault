@@ -78,6 +78,7 @@ void DrawRing(F32 center_x, F32 center_y, F32 radius, F32 border, F32 red, F32 g
 void DrawRingV(V2 center, F32 radius, F32 border, V3 color);
 void DrawTriangle(F32 x1, F32 y1, F32 x2, F32 y2, F32 x3, F32 y3, F32 red, F32 green, F32 blue); // NOTE: must respect CCW winding order.
 void DrawTriangleV(V2 p1, V2 p2, V2 p3, V3 color);
+void DrawConvexHullV(V2* points, U32 points_len, V3 color);
 void DrawImage(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height);
 void DrawImageV(U32 image_handle, V2 pos, V2 size);
 void DrawImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 angle_rad);
@@ -794,6 +795,16 @@ void DrawTriangle(F32 x1, F32 y1, F32 x2, F32 y2, F32 x3, F32 y3, F32 red, F32 g
 
 void DrawTriangleV(V2 p1, V2 p2, V2 p3, V3 color) {
   DrawTriangle(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, color.r, color.g, color.b);
+}
+
+// SPEEDUP: this is slow because drawing triangles is slow.
+void DrawConvexHullV(V2* points, U32 points_len, V3 color) {
+  V2 p0 = points[0];
+  for (U32 i = 1; i < points_len; i++) {
+    V2 p1 = points[i];
+    V2 p2 = points[(i + 1) % points_len];
+    DrawTriangleV(p0, p1, p2, color);
+  }
 }
 
 void DrawImage(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height) {

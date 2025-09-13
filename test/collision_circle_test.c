@@ -53,6 +53,18 @@ int main(void) {
   ray.dir.x = 0;
   ray.dir.y = 1;
 
+  V2 hull_points[6] = {
+    {1100, 250},
+    {1150, 250},
+    {1200, 300},
+    {1150, 350},
+    {1100, 350},
+    {1050, 300},
+  };
+  ConvexHull2 hull;
+  hull.points = (V2*) hull_points;
+  hull.points_len = 6;
+
   while (!WindowShouldClose()) {
     if (WindowIsKeyPressed(Key_Control) && WindowIsKeyJustPressed(Key_C)) {
       LOG_INFO("SIGINT received");
@@ -74,6 +86,8 @@ int main(void) {
     V2AddV2(&ray_end, &ray.start, &ray_end);
     DrawLineV(ray.start, ray_end, 5, V3_BLUE);
 
+    DrawConvexHullV(hull.points, hull.points_len, V3_BLUE);
+
     DrawCircleV(circle.center_point, circle.radius, V3_WHITE);
 
     V2 enter, exit;
@@ -82,7 +96,6 @@ int main(void) {
       DrawIntersectManifold(circle, manifold, V3_GREEN);
     }
     if (Circle2IntersectAabb2(&circle, &aabb, &manifold)) {
-      DrawCircleV(circle.center_point, circle.radius, V3_RED);
       DrawIntersectManifold(circle, manifold, V3_GREEN);
     }
     if (Circle2IntersectTri2(&circle, &tri, &manifold)) {
@@ -95,6 +108,9 @@ int main(void) {
     if (Circle2IntersectRay2(&circle, &ray, &enter, &exit)) {
       DrawCircleV(enter, 10, V3_GREEN);
       DrawRingV(exit, 10, 5, V3_RED);
+    }
+    if (Circle2IntersectConvexHull2(&circle, &hull, &manifold)) {
+      DrawIntersectManifold(circle, manifold, V3_GREEN);
     }
 
     WindowSwapBuffers();
