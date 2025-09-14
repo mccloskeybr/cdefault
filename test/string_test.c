@@ -34,6 +34,89 @@ B32 CharTest(void) {
   return true;
 }
 
+B32 CStringCopyTest(void) {
+  Arena* arena = ArenaAllocate();
+  U8 base[6] = "apple";
+  U8* copy = CStringCopy(arena, base);
+  TEST_EXPECT(CStringEquals(base, copy));
+  TEST_EXPECT(CStringSize(copy) == 5);
+  return true;
+}
+
+B32 CStringSubstringTest(void) {
+  Arena* arena = ArenaAllocate();
+  U8 base[19] = "prefix test suffix";
+  U8 expected[5] = "test";
+  U8* substring = CStringSubstring(arena, base, 7, 10);
+  TEST_EXPECT(CStringEquals(substring, expected));
+  return true;
+}
+
+B32 CStringConcatTest(void) {
+  Arena* arena = ArenaAllocate();
+  U8 a[7] = "hello ";
+  U8 b[6] = "world";
+  U8 expected[12] = "hello world";
+  U8* concat = CStringConcat(arena, a, b);
+  TEST_EXPECT(CStringEquals(concat, expected));
+  return true;
+}
+
+B32 CStringTrimTest(void) {
+  Arena* arena = ArenaAllocate();
+  U8 a[9] = "  test  ";
+  U8 expected[5] = "test";
+  U8* trimmed = CStringTrim(arena, a);
+  TEST_EXPECT(CStringEquals(trimmed, expected));
+  return true;
+}
+
+B32 CStringFindTest(void) {
+  U8 haystack[24] = "hello world world hello";
+  U8 needle[6] = "world";
+  S32 pos = CStringFind(haystack, 0, needle);
+  TEST_EXPECT(pos == 6);
+  return true;
+}
+
+B32 CStringFindReverseTest(void) {
+  U8 haystack[24] = "hello world world hello";
+  U8 needle[6] = "world";
+  S32 pos = CStringFindReverse(haystack, CStringSize(haystack) - 1, needle);
+  TEST_EXPECT(pos == 12);
+  return true;
+}
+
+B32 CStringStartsWithTest(void) {
+  U8 haystack[24] = "hello world world hello";
+  TEST_EXPECT(CStringStartsWith(haystack, (U8*) "hello"));
+  TEST_EXPECT(!CStringStartsWith(haystack, (U8*) "world"));
+  return true;
+}
+
+B32 CStringEndsWithTest(void) {
+  U8 haystack[24] = "hello world world hello";
+  TEST_EXPECT(CStringEndsWith(haystack, (U8*) "hello"));
+  TEST_EXPECT(!CStringEndsWith(haystack, (U8*) "world"));
+  return true;
+}
+
+B32 CStringToUpperTest(void) {
+  U8 a[6] = "hello";
+  U8 expected[6] = "HELLO";
+  CStringToUpper(a);
+  TEST_EXPECT(CStringEquals(a, expected));
+  return true;
+}
+
+B32 CStringToLowerTest(void) {
+  U8 a[6] = "HELLO";
+  U8 expected[6] = "hello";
+  CStringToLower(a);
+  TEST_EXPECT(CStringEquals(a, expected));
+  return true;
+}
+
 B32 String8CreateTest(void) {
   String8 literal = String8CreateStatic("hello");
   TEST_EXPECT(literal.size == 5);
@@ -176,6 +259,16 @@ B32 String8SplitTest(void) {
 
 int main(void) {
   TEST(CharTest());
+  TEST(CStringCopyTest());
+  TEST(CStringSubstringTest());
+  TEST(CStringConcatTest());
+  TEST(CStringTrimTest());
+  TEST(CStringFindTest());
+  TEST(CStringFindReverseTest());
+  TEST(CStringStartsWithTest());
+  TEST(CStringEndsWithTest());
+  TEST(CStringToUpperTest());
+  TEST(CStringToLowerTest());
   TEST(String8CreateTest());
   TEST(String8TrimTest());
   TEST(String8StartsWithTest());

@@ -88,21 +88,6 @@ B32 ArenaPushArrayTest(void) {
   return true;
 }
 
-B32 TempArenaTest(void) {
-  Arena* arena = ArenaAllocate();
-
-  ARENA_PUSH_ARRAY(arena, U8, 32);
-  ArenaTemp temp = ArenaTempBegin(arena);
-  U8* temp_buffer = ARENA_PUSH_ARRAY(temp.arena, U8, 32);
-  TEST_EXPECT(temp_buffer == ((U8*) arena) + sizeof(Arena) + 32);
-  TEST_EXPECT(arena->pos == sizeof(Arena) + 64);
-  ArenaTempEnd(&temp);
-  TEST_EXPECT(arena->pos == sizeof(Arena) + 32);
-
-  ArenaRelease(arena);
-  return true;
-}
-
 int main(void) {
   TEST(ArenaAllocateTest());
   TEST(ArenaAllocateOverflowTest());
@@ -110,6 +95,5 @@ int main(void) {
   TEST(ArenaAlignTest());
   TEST(ArenaPushStructTest());
   TEST(ArenaPushArrayTest());
-  TEST(TempArenaTest());
   return 0;
 }

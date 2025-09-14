@@ -7,11 +7,8 @@
 
 // TODO: color translation funcs?
 // TODO: optimize matrix operations
-// TODO: in cases where dest cannot equal src, stack allocate a temporary variable instead to allow it.
+// TODO: in cases where dest cannot equal src, stack allocate a temporary variable instead to allow it?
 // TODO: SIMD for matmuls?
-
-typedef struct RandomSeries RandomSeries;
-struct RandomSeries { U64 state; };
 
 typedef union V2 V2;
 union V2 {
@@ -50,44 +47,6 @@ union M4 {
 // NOTE: Num
 ///////////////////////////////////////////////////////////////////////////////
 
-#define U8_MIN  0
-#define U8_MAX  255
-#define U16_MIN 0
-#define U16_MAX 65535
-#define U32_MIN 0
-#define U32_MAX 4294967295
-#define U64_MIN 0
-#define U64_MAX 18446744073709551615
-#define S8_MIN  -128
-#define S8_MAX  127
-#define S16_MIN -32768
-#define S16_MAX 32767
-#define S32_MIN -2147483648
-#define S32_MAX 2147483647
-#define S64_MIN -9223372036854775808
-#define S64_MAX 9223372036854775807
-#define F32_MIN -3.402823466e+38f
-#define F32_MAX 3.402823466e+38f
-#define F32_NAN (((F32)0.0f)/((F32)0.0f));
-#define F32_MIN_POSITIVE 1.175494351e-38f
-#define F32_POS_INFINITY (((F32)+1.0f)/((F32)0.0f));
-#define F32_NEG_INFINITY (((F32)-1.0f)/((F32)0.0f));
-#define F64_MIN -1.7976931348623157e+308f
-#define F64_MAX 1.7976931348623157e+308f
-#define F64_NAN (((F64)0.0f)/((F64)0.0f));
-#define F64_MIN_POSITIVE 2.2250738585072014e-308f
-#define F64_POS_INFINITY (((F64)+1.0f)/((F64)0.0f));
-#define F64_NEG_INFINITY (((F64)-1.0f)/((F64)0.0f));
-
-#define F32_PI    3.14159265358979323846264338327950288f
-#define F32_TAU   6.28318530717958647692528676655900576f
-#define F32_E     2.71828182845904523536028747135266249f
-#define F32_SQRT2 1.41421356237309504880168872420969808f
-#define F64_PI    F32_PI
-#define F64_TAU   F32_TAU
-#define F64_E     F32_E
-#define F64_SQRT2 F32_SQRT2
-
 B32 F32ApproxEq(F32 x, F32 y);
 F32 F32Abs(F32 x);
 F32 F32Pow(F32 x, F32 y);
@@ -121,27 +80,6 @@ F64 F64ToDeg(F64 rad);
 F64 F64Ceil(F64 x);
 F64 F64Floor(F64 x);
 F64 F64Round(F64 x);
-
-///////////////////////////////////////////////////////////////////////////////
-// NOTE: Random
-///////////////////////////////////////////////////////////////////////////////
-
-// NOTE: Can pass NULL as rand to use a static global default.
-void RandSeed(RandomSeries* rand, U64 seed);
-B8   RandB8(RandomSeries* rand);
-B16  RandB16(RandomSeries* rand);
-B32  RandB32(RandomSeries* rand);
-B64  RandB64(RandomSeries* rand);
-U32  RandU8(RandomSeries* rand, U8 min, U8 max);
-U32  RandU16(RandomSeries* rand, U16 min, U16 max);
-U32  RandU32(RandomSeries* rand, U16 min, U32 max);
-U64  RandU64(RandomSeries* rand, U64 min, U64 max);
-S8   RandS8(RandomSeries* rand, S8 min, S8 max);
-S16  RandS16(RandomSeries* rand, S16 min, S16 max);
-S32  RandS32(RandomSeries* rand, S32 min, S32 max);
-S64  RandS64(RandomSeries* rand, S64 min, S64 max);
-F32  RandF32(RandomSeries* rand, F32 min, F32 max);
-F64  RandF64(RandomSeries* rand, F64 min, F64 max);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: V2
@@ -369,122 +307,6 @@ F64 F64Floor(F64 x) { return floor(x); }
 F64 F64Round(F64 x) { return F64Floor(x + 0.5); }
 
 ///////////////////////////////////////////////////////////////////////////////
-// NOTE: Random implementation
-///////////////////////////////////////////////////////////////////////////////
-
-static RandomSeries _cdef_rand;
-
-// NOTE: xor shift
-static void RandomSeriesShuffle(RandomSeries* rand) {
-  rand->state ^= rand->state << 13;
-  rand->state ^= rand->state >> 17;
-  rand->state ^= rand->state << 5;
-}
-
-void RandSeed(RandomSeries* rand, U64 seed) {
-  if (rand == NULL) { rand = &_cdef_rand; }
-  rand->state = seed;
-}
-
-B8 RandB8(RandomSeries* rand) {
-  if (rand == NULL) { rand = &_cdef_rand; }
-  RandomSeriesShuffle(rand);
-  return rand->state % 2 == 0;
-}
-
-B16 RandB16(RandomSeries* rand) {
-  return (B16) RandB8(rand);
-}
-
-B32 RandB32(RandomSeries* rand) {
-  return (B32) RandB8(rand);
-}
-
-B64 RandB64(RandomSeries* rand) {
-  return (B64) RandB8(rand);
-}
-
-U32 RandU8(RandomSeries* rand, U8 min, U8 max) {
-  DEBUG_ASSERT(min < max);
-  if (rand == NULL) { rand = &_cdef_rand; }
-  RandomSeriesShuffle(rand);
-  U8 r = *(U8*) &rand->state;
-  return min + (U8) (r % (max - min));
-}
-
-U32 RandU16(RandomSeries* rand, U16 min, U16 max) {
-  DEBUG_ASSERT(min < max);
-  if (rand == NULL) { rand = &_cdef_rand; }
-  RandomSeriesShuffle(rand);
-  U16 r = *(U16*) &rand->state;
-  return min + (U16) (r % (max - min));
-}
-
-U32 RandU32(RandomSeries* rand, U16 min, U32 max) {
-  DEBUG_ASSERT(min < max);
-  if (rand == NULL) { rand = &_cdef_rand; }
-  RandomSeriesShuffle(rand);
-  U32 r = *(U32*) &rand->state;
-  return min + (U32) (r % (max - min));
-}
-
-U64 RandU64(RandomSeries* rand, U64 min, U64 max) {
-  DEBUG_ASSERT(min < max);
-  if (rand == NULL) { rand = &_cdef_rand; }
-  RandomSeriesShuffle(rand);
-  U64 r = rand->state;
-  return min + (r % (max - min));
-}
-
-S8 RandS8(RandomSeries* rand, S8 min, S8 max) {
-  DEBUG_ASSERT(min < max);
-  if (rand == NULL) { rand = &_cdef_rand; }
-  RandomSeriesShuffle(rand);
-  U8 r = *(U8*) &rand->state;
-  return min + (U8) (r % (max - min));
-}
-
-S16 RandS16(RandomSeries* rand, S16 min, S16 max) {
-  DEBUG_ASSERT(min < max);
-  if (rand == NULL) { rand = &_cdef_rand; }
-  RandomSeriesShuffle(rand);
-  U16 r = *(U16*) &rand->state;
-  return min + (U16) (r % (max - min));
-}
-
-S32 RandS32(RandomSeries* rand, S32 min, S32 max) {
-  DEBUG_ASSERT(min < max);
-  if (rand == NULL) { rand = &_cdef_rand; }
-  RandomSeriesShuffle(rand);
-  U32 r = *(U32*) &rand->state;
-  return min + (U32) (r % (max - min));
-}
-
-S64 RandS64(RandomSeries* rand, S64 min, S64 max) {
-  DEBUG_ASSERT(min < max);
-  if (rand == NULL) { rand = &_cdef_rand; }
-  RandomSeriesShuffle(rand);
-  U64 r = rand->state;
-  return min + (r % (max - min));
-}
-
-F32 RandF32(RandomSeries* rand, F32 min, F32 max) {
-  DEBUG_ASSERT(min < max);
-  if (rand == NULL) { rand = &_cdef_rand; }
-  RandomSeriesShuffle(rand);
-  F32 r = (F32) rand->state / U32_MAX;
-  return min + (r * (max - min));
-}
-
-F64 RandF64(RandomSeries* rand, F64 min, F64 max) {
-  DEBUG_ASSERT(min < max);
-  if (rand == NULL) { rand = &_cdef_rand; }
-  RandomSeriesShuffle(rand);
-  F64 r = (F64) rand->state / U64_MAX;
-  return min + (r * (max - min));
-}
-
-///////////////////////////////////////////////////////////////////////////////
 // NOTE: V2 implementation
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -583,8 +405,10 @@ void V2Project(V2* dest, V2* x, V2* y) {
  
 void V2Rotate(V2* dest, V2* src, F32 angle_rad) {
   DEBUG_ASSERT(dest != src);
-  dest->x = src->x * F32Cos(angle_rad) - src->y * F32Sin(angle_rad);
-  dest->y = src->x * F32Cos(angle_rad) + src->y * F32Sin(angle_rad);
+  F32 s = F32Sin(angle_rad);
+  F32 c = F32Cos(angle_rad);
+  dest->x = src->x * c - src->y * s;
+  dest->y = src->x * c + src->y * s;
 }
 
 void V2Lerp(V2* dest, V2* x, V2* y, F32 t) {

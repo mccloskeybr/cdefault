@@ -1,7 +1,8 @@
 #ifndef CDEFAULT_STD_H_
 #define CDEFAULT_STD_H_
 
-// TODO: cstrings, wide strings (String16)
+// TODO: wide strings (String16)
+// TODO: file OS funcs, no FILE* (separate IO lib?)
 
 #if defined(_WIN32)
 #  define OS_WINDOWS 1
@@ -75,6 +76,44 @@ typedef float    F32;
 typedef double   F64;
 #define true     1
 #define false    0
+
+#define U8_MIN  0
+#define U8_MAX  255
+#define U16_MIN 0
+#define U16_MAX 65535
+#define U32_MIN 0
+#define U32_MAX 4294967295
+#define U64_MIN 0
+#define U64_MAX 18446744073709551615
+#define S8_MIN  -128
+#define S8_MAX  127
+#define S16_MIN -32768
+#define S16_MAX 32767
+#define S32_MIN -2147483648
+#define S32_MAX 2147483647
+#define S64_MIN -9223372036854775808
+#define S64_MAX 9223372036854775807
+#define F32_MIN -3.402823466e+38f
+#define F32_MAX 3.402823466e+38f
+#define F32_NAN (((F32)0.0f)/((F32)0.0f));
+#define F32_MIN_POSITIVE 1.175494351e-38f
+#define F32_POS_INFINITY (((F32)+1.0f)/((F32)0.0f));
+#define F32_NEG_INFINITY (((F32)-1.0f)/((F32)0.0f));
+#define F64_MIN -1.7976931348623157e+308f
+#define F64_MAX 1.7976931348623157e+308f
+#define F64_NAN (((F64)0.0f)/((F64)0.0f));
+#define F64_MIN_POSITIVE 2.2250738585072014e-308f
+#define F64_POS_INFINITY (((F64)+1.0f)/((F64)0.0f));
+#define F64_NEG_INFINITY (((F64)-1.0f)/((F64)0.0f));
+
+#define F32_PI    3.14159265358979323846264338327950288f
+#define F32_TAU   6.28318530717958647692528676655900576f
+#define F32_E     2.71828182845904523536028747135266249f
+#define F32_SQRT2 1.41421356237309504880168872420969808f
+#define F64_PI    F32_PI
+#define F64_TAU   F32_TAU
+#define F64_E     F32_E
+#define F64_SQRT2 F32_SQRT2
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Gen purpose macros
@@ -535,6 +574,30 @@ void StopwatchReset(Stopwatch* stopwatch);
 F32  StopwatchReadSeconds(Stopwatch* stopwatch);
 
 ///////////////////////////////////////////////////////////////////////////////
+// NOTE: Random
+///////////////////////////////////////////////////////////////////////////////
+
+typedef struct RandomSeries RandomSeries;
+struct RandomSeries { U64 state; };
+
+// NOTE: Can pass NULL as rand to use a static global default.
+void RandSeed(RandomSeries* rand, U64 seed);
+B8   RandB8(RandomSeries* rand);
+B16  RandB16(RandomSeries* rand);
+B32  RandB32(RandomSeries* rand);
+B64  RandB64(RandomSeries* rand);
+U32  RandU8(RandomSeries* rand, U8 min, U8 max);
+U32  RandU16(RandomSeries* rand, U16 min, U16 max);
+U32  RandU32(RandomSeries* rand, U16 min, U32 max);
+U64  RandU64(RandomSeries* rand, U64 min, U64 max);
+S8   RandS8(RandomSeries* rand, S8 min, S8 max);
+S16  RandS16(RandomSeries* rand, S16 min, S16 max);
+S32  RandS32(RandomSeries* rand, S32 min, S32 max);
+S64  RandS64(RandomSeries* rand, S64 min, S64 max);
+F32  RandF32(RandomSeries* rand, F32 min, F32 max);
+F64  RandF64(RandomSeries* rand, F64 min, F64 max);
+
+///////////////////////////////////////////////////////////////////////////////
 // NOTE: String
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -566,26 +629,36 @@ U8   CharToLower(U8 c);
 U8   CharToUpper(U8 c);
 
 U32  CStringSize(U8* str);
-void CStringCopy(Arena* arena, U8** dest, U8* src);
+U8*  CStringCopy(Arena* arena, U8* src);
+U8*  CStringSubstring(Arena* arena, U8* s, U64 start, U64 end);
+U8*  CStringConcat(Arena* arena, U8* a, U8* b);
+U8*  CStringTrim(Arena* arena, U8* s);
+B32  CStringEquals(U8* a, U8* b);
+S32  CStringFind(U8* str, U64 start_pos, U8* needle); // NOTE: Returns -1 on failure.
+S32  CStringFindReverse(U8* str, U64 start_pos, U8* needle); // NOTE: Returns -1 on failure.
+B32  CStringStartsWith(U8* a, U8* b);
+B32  CStringEndsWith(U8* a, U8* b);
+void CStringToUpper(U8* s);
+void CStringToLower(U8* s);
+U8*  CStringFormatV(Arena* arena, U8* fmt, va_list args);
+U8*  _CStringFormat(Arena* arena, U8* fmt, ...);
+#define CStringFormat(a, fmt, ...) _CStringFormat(a, (U8) fmt, ##__VA_ARGS__)
 
 String8 String8Create(U8* str, U64 size);
 String8 String8CreateRange(U8* str, U8* one_past_last);
 String8 _String8CreateCString(U8* c_str);
 #define String8CreateCString(s) _String8CreateCString((U8*) s)
-#define String8CreateStatic(s) String8Create((U8*)s, sizeof(s) - 1)
+#define String8CreateStatic(s) String8Create((U8*) s, sizeof(s) - 1)
 String8 String8Copy(Arena* arena, String8* string);
-
 String8 String8Substring(String8* s, U64 start, U64 end);
 String8 String8Trim(String8* s);
-String8 String8ToUpper(Arena* arena, String8* s);
-String8 String8ToLower(Arena* arena, String8* s);
-
-B32 String8StartsWith(String8* a, String8* b); // NOTE: True iff a starts with b.
-B32 String8EndsWith(String8* a, String8* b); // NOTE: True iff a ens with b.
-B32 String8Equals(String8* a, String8* b);
-S64 String8Find(String8* string, U64 start_pos, String8* needle); // NOTE: Returns -1 on failure.
-S64 String8FindReverse(String8* string, U64 reverse_start_pos, String8* needle); // NOTE: Returns -1 on failure.
-
+void String8ToUpper(String8* s);
+void String8ToLower(String8* s);
+B32  String8StartsWith(String8* a, String8* b); // NOTE: True iff a starts with b.
+B32  String8EndsWith(String8* a, String8* b); // NOTE: True iff a ends with b.
+B32  String8Equals(String8* a, String8* b);
+S64  String8Find(String8* string, U64 start_pos, String8* needle); // NOTE: Returns -1 on failure.
+S64  String8FindReverse(String8* string, U64 reverse_start_pos, String8* needle); // NOTE: Returns -1 on failure.
 String8 String8Concat(Arena* arena, String8* a, String8* b);
 String8 String8FormatV(Arena* arena, U8* fmt, va_list args);
 String8 _String8Format(Arena* arena, U8* fmt, ...);
@@ -615,18 +688,19 @@ S32 String8Hash(String8* s);
 // U8 my_bytes[3] = { 3, 1, 2 };
 // SORT(U8, my_bytes, 3, MyComparison); --> { 1, 2, 3 }
 //
-// SORT_ASC and SORT_DESC work with cdefault types out of the box.
+// SORT_ASC and SORT_DESC work with cdefault types out of the box, other types
+// will require custom comparison fn implementations.
 
 
-#define SORT_DESC(type, items, items_len)                                     \
+#define SORT_DESC(type, items, items_len)                                    \
   SORT(type, items, items_len, SortCompare##type##Desc)
-#define SORT_ASC(type, items, items_len)                                      \
+#define SORT_ASC(type, items, items_len)                                     \
   SORT(type, items, items_len, SortCompare##type##Asc)
-#define SORT(type, items, items_len, compare_fn)                              \
-  STATIC_ASSERT(sizeof(type) == sizeof(*items), "SORT type size mismatch!");  \
-  do {                                                                        \
-    type temp;                                                                \
-    _Sort((void*) items, items_len, sizeof(type), compare_fn, (void*) &temp); \
+#define SORT(type, items, items_len, compare_fn)                             \
+  STATIC_ASSERT(sizeof(type) == sizeof(*items), "SORT type size mismatch!"); \
+  do {                                                                       \
+    type _t;                                                                 \
+    _Sort((void*) items, items_len, sizeof(type), compare_fn, (void*) &_t);  \
   } while (0)
 
 // NOTE: Result is negative if a < b, positive if a > b, and 0 if a == b. Ideally, return a - b.
@@ -1164,6 +1238,122 @@ F32 StopwatchReadSeconds(Stopwatch* stopwatch) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// NOTE: Random implementation
+///////////////////////////////////////////////////////////////////////////////
+
+static RandomSeries _cdef_rand;
+
+// NOTE: xor shift
+static void RandomSeriesShuffle(RandomSeries* rand) {
+  rand->state ^= rand->state << 13;
+  rand->state ^= rand->state >> 17;
+  rand->state ^= rand->state << 5;
+}
+
+void RandSeed(RandomSeries* rand, U64 seed) {
+  if (rand == NULL) { rand = &_cdef_rand; }
+  rand->state = seed;
+}
+
+B8 RandB8(RandomSeries* rand) {
+  if (rand == NULL) { rand = &_cdef_rand; }
+  RandomSeriesShuffle(rand);
+  return rand->state % 2 == 0;
+}
+
+B16 RandB16(RandomSeries* rand) {
+  return (B16) RandB8(rand);
+}
+
+B32 RandB32(RandomSeries* rand) {
+  return (B32) RandB8(rand);
+}
+
+B64 RandB64(RandomSeries* rand) {
+  return (B64) RandB8(rand);
+}
+
+U32 RandU8(RandomSeries* rand, U8 min, U8 max) {
+  DEBUG_ASSERT(min < max);
+  if (rand == NULL) { rand = &_cdef_rand; }
+  RandomSeriesShuffle(rand);
+  U8 r = *(U8*) &rand->state;
+  return min + (U8) (r % (max - min));
+}
+
+U32 RandU16(RandomSeries* rand, U16 min, U16 max) {
+  DEBUG_ASSERT(min < max);
+  if (rand == NULL) { rand = &_cdef_rand; }
+  RandomSeriesShuffle(rand);
+  U16 r = *(U16*) &rand->state;
+  return min + (U16) (r % (max - min));
+}
+
+U32 RandU32(RandomSeries* rand, U16 min, U32 max) {
+  DEBUG_ASSERT(min < max);
+  if (rand == NULL) { rand = &_cdef_rand; }
+  RandomSeriesShuffle(rand);
+  U32 r = *(U32*) &rand->state;
+  return min + (U32) (r % (max - min));
+}
+
+U64 RandU64(RandomSeries* rand, U64 min, U64 max) {
+  DEBUG_ASSERT(min < max);
+  if (rand == NULL) { rand = &_cdef_rand; }
+  RandomSeriesShuffle(rand);
+  U64 r = rand->state;
+  return min + (r % (max - min));
+}
+
+S8 RandS8(RandomSeries* rand, S8 min, S8 max) {
+  DEBUG_ASSERT(min < max);
+  if (rand == NULL) { rand = &_cdef_rand; }
+  RandomSeriesShuffle(rand);
+  U8 r = *(U8*) &rand->state;
+  return min + (U8) (r % (max - min));
+}
+
+S16 RandS16(RandomSeries* rand, S16 min, S16 max) {
+  DEBUG_ASSERT(min < max);
+  if (rand == NULL) { rand = &_cdef_rand; }
+  RandomSeriesShuffle(rand);
+  U16 r = *(U16*) &rand->state;
+  return min + (U16) (r % (max - min));
+}
+
+S32 RandS32(RandomSeries* rand, S32 min, S32 max) {
+  DEBUG_ASSERT(min < max);
+  if (rand == NULL) { rand = &_cdef_rand; }
+  RandomSeriesShuffle(rand);
+  U32 r = *(U32*) &rand->state;
+  return min + (U32) (r % (max - min));
+}
+
+S64 RandS64(RandomSeries* rand, S64 min, S64 max) {
+  DEBUG_ASSERT(min < max);
+  if (rand == NULL) { rand = &_cdef_rand; }
+  RandomSeriesShuffle(rand);
+  U64 r = rand->state;
+  return min + (r % (max - min));
+}
+
+F32 RandF32(RandomSeries* rand, F32 min, F32 max) {
+  DEBUG_ASSERT(min < max);
+  if (rand == NULL) { rand = &_cdef_rand; }
+  RandomSeriesShuffle(rand);
+  F32 r = (F32) rand->state / U32_MAX;
+  return min + (r * (max - min));
+}
+
+F64 RandF64(RandomSeries* rand, F64 min, F64 max) {
+  DEBUG_ASSERT(min < max);
+  if (rand == NULL) { rand = &_cdef_rand; }
+  RandomSeriesShuffle(rand);
+  F64 r = (F64) rand->state / U64_MAX;
+  return min + (r * (max - min));
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // NOTE: String Implementation
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -1209,10 +1399,127 @@ U32 CStringSize(U8* str) {
   return (U32) (end - str);
 }
 
-void CStringCopy(Arena* arena, U8** dest, U8* src) {
+U8* CStringCopy(Arena* arena, U8* src) {
   U32 size_with_null_terminator = CStringSize(src) + 1;
-  *dest = ARENA_PUSH_ARRAY(arena, U8, size_with_null_terminator);
-  MEMORY_COPY(*dest, src, size_with_null_terminator * sizeof(U8));
+  U8* result = ARENA_PUSH_ARRAY(arena, U8, size_with_null_terminator);
+  MEMORY_COPY(result, src, size_with_null_terminator * sizeof(U8));
+  return result;
+}
+
+U8* CStringSubstring(Arena* arena, U8* s, U64 start, U64 end) {
+  U64 size = end - start + 1;
+  U8* result = ARENA_PUSH_ARRAY(arena, U8, size + 1);
+  MEMORY_COPY(result, (s + start), size * sizeof(U8));
+  result[size] = '\0';
+  return result;
+}
+
+U8* CStringConcat(Arena* arena, U8* a, U8* b) {
+  U32 a_size = CStringSize(a);
+  U32 b_size = CStringSize(b);
+  U32 size = a_size + b_size + 1;
+  U8* result = ARENA_PUSH_ARRAY(arena, U8, size * sizeof(U8));
+  MEMORY_COPY(result, a, a_size * sizeof(U8));
+  MEMORY_COPY(result + a_size, b, b_size * sizeof(U8));
+  result[a_size + b_size] = '\0';
+  return result;
+}
+
+U8* CStringTrim(Arena* arena, U8* s) {
+  U64 start = 0;
+  U64 end = CStringSize(s) - 1;
+  while (CharIsWhitespace(s[start])) { start++; }
+  while (CharIsWhitespace(s[end]))   { end--;   }
+  return CStringSubstring(arena, s, start, end);
+}
+
+B32 CStringEquals(U8* a, U8* b) {
+  return CStringStartsWith(a, b);
+}
+
+S32 CStringFind(U8* str, U64 start_pos, U8* needle) {
+  U32 i = start_pos;
+  while (true) {
+    U32 i_copy = i;
+    U32 j = 0;
+    while (true) {
+      if (needle[j] == '\0') { return i; }
+      if (str[i_copy] == '\0') { return -1; }
+      if (str[i_copy] != needle[j]) { break; }
+      j++;
+      i_copy++;
+    }
+    i++;
+  }
+  return -1;
+}
+
+S32 CStringFindReverse(U8* str, U64 start_pos, U8* needle) {
+  U32 i = start_pos;
+  while (true) {
+    U32 i_copy = i;
+    U32 j = 0;
+    while (true) {
+      if (needle[j] == '\0') { return i; }
+      if (str[i_copy] == '\0') { return -1; }
+      if (str[i_copy] != needle[j]) { break; }
+      j++;
+      i_copy++;
+    }
+    i--;
+  }
+  return -1;
+}
+
+B32 CStringStartsWith(U8* a, U8* b) {
+  U32 i = 0;
+  while (true) {
+    if (b[i] == '\0') { return true;  }
+    if (a[i] == '\0') { return false; }
+    if (a[i] != b[i]) { return false; }
+    i++;
+  }
+}
+
+B32 CStringEndsWith(U8* a, U8* b) {
+  U32 a_idx = CStringSize(a) - 1;
+  U32 b_idx = CStringSize(b) - 1;
+  U32 i = 0;
+  while (true) {
+    if (i > b_idx) { return true;  }
+    if (i > a_idx) { return false; }
+    if (a[a_idx - i] != b[b_idx - i]) { return false; }
+    i++;
+  }
+}
+void CStringToUpper(U8* s) {
+  U32 i = 0;
+  while (s[i] != '\0') { s[i] = CharToUpper(s[i]); i++; }
+}
+
+void CStringToLower(U8* s) {
+  U32 i = 0;
+  while (s[i] != '\0') { s[i] = CharToLower(s[i]); i++; }
+}
+
+U8* CStringFormatV(Arena* arena, U8* fmt, va_list args) {
+  va_list args_copy;
+  va_copy(args_copy, args);
+  U32 size = vsnprintf(NULL, 0, (const char* const) fmt, args_copy) + 1;
+  va_end(args_copy);
+  U8* result = ARENA_PUSH_ARRAY(arena, U8, size);
+  va_copy(args_copy, args);
+  vsnprintf((char* const) result, size, (char* const) fmt, args_copy);
+  va_end(args_copy);
+  return result;
+}
+
+U8* _CStringFormat(Arena* arena, U8* fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  U8* result = CStringFormatV(arena, fmt, args);
+  va_end(args);
+  return result;
 }
 
 String8 String8Create(U8* str, U64 size) {
@@ -1306,20 +1613,16 @@ S64 String8FindReverse(String8* string, U64 reverse_start_pos, String8* needle) 
   return -1;
 }
 
-String8 String8ToUpper(Arena* arena, String8* s) {
-  String8 result = String8Copy(arena, s);
-  for (U64 i = 0; i < result.size; ++i) {
-    result.str[i] = CharToUpper(result.str[i]);
+void String8ToUpper(String8* s) {
+  for (U64 i = 0; i < s->size; ++i) {
+    s->str[i] = CharToUpper(s->str[i]);
   }
-  return result;
 }
 
-String8 String8ToLower(Arena* arena, String8* s) {
-  String8 result = String8Copy(arena, s);
-  for (U64 i = 0; i < result.size; ++i) {
-    result.str[i] = CharToLower(result.str[i]);
+void String8ToLower(String8* s) {
+  for (U64 i = 0; i < s->size; ++i) {
+    s->str[i] = CharToLower(s->str[i]);
   }
-  return result;
 }
 
 String8 String8Concat(Arena* arena, String8* a, String8* b) {
@@ -1509,6 +1812,5 @@ S32 SortCompareString8Desc(void* a, void* b) {
   UNREACHABLE();
   return 0;
 }
-
 
 #endif // CDEFAULT_STD_IMPLEMENTATION
