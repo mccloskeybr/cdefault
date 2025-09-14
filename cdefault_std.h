@@ -1,6 +1,8 @@
 #ifndef CDEFAULT_STD_H_
 #define CDEFAULT_STD_H_
 
+// TODO: cstrings, wide strings (String16)
+
 #if defined(_WIN32)
 #  define OS_WINDOWS 1
 #elif defined(__gnu_linux__) || defined(__linux__)
@@ -182,7 +184,7 @@ typedef double   F64;
 // NOTE: Memory
 ///////////////////////////////////////////////////////////////////////////////
 
-#define MEMORY_COPY(dst, src, size) memmove((dst), (src), (size))
+#define MEMORY_COPY(dst, src, size) memcpy((dst), (src), (size))
 #define MEMORY_SET(dst, byte, size) memset((dst), (byte), (size))
 #define MEMORY_COMPARE(a, b, size)  memcmp((a), (b), (size))
 
@@ -408,27 +410,19 @@ struct Arena {
   U64 pos;
 };
 
-typedef struct ArenaTemp ArenaTemp;
-struct ArenaTemp {
-  Arena* arena;
-  U64 pos;
-};
-
-Arena* _ArenaAllocate(U64 reserve_size, U64 commit_size);
-#define ArenaAllocate() _ArenaAllocate(CDEFAULT_ARENA_RESERVE_SIZE, CDEFAULT_ARENA_COMMIT_SIZE)
-void  ArenaRelease(Arena* arena);
-void* ArenaPush(Arena* arena, U64 size, U64 align);
-void  ArenaPopTo(Arena* arena, U64 pos);
-void  ArenaPop(Arena* arena, U64 size);
-void  ArenaClear(Arena* arena);
-
-ArenaTemp ArenaTempBegin(Arena* arena);
-void ArenaTempEnd(ArenaTemp* temp);
-
-#define ARENA_PUSH_ARRAY(arena, type, count) (type*) ArenaPush(arena, sizeof(type) * count, MAX(8, ALIGN_OF(type)))
+#define ARENA_PUSH_ARRAY(arena, type, count) (type*) _ArenaPush(arena, sizeof(type) * count, MAX(8, ALIGN_OF(type)))
 #define ARENA_PUSH_STRUCT(arena, type) ARENA_PUSH_ARRAY(arena, type, 1)
 #define ARENA_POP_ARRAY(arena, type, count) ArenaPop(arena, sizeof(type) * count)
 #define ARENA_POP_STRUCT(arena, type) ARENA_POP_ARRAY(arena, type, 1)
+
+#define ArenaAllocate() _ArenaAllocate(CDEFAULT_ARENA_RESERVE_SIZE, CDEFAULT_ARENA_COMMIT_SIZE)
+Arena* _ArenaAllocate(U64 reserve_size, U64 commit_size);
+void  ArenaRelease(Arena* arena);
+void* _ArenaPush(Arena* arena, U64 size, U64 align);
+U64   ArenaPos(Arena* arena);
+void  ArenaPopTo(Arena* arena, U64 pos);
+void  ArenaPop(Arena* arena, U64 size);
+void  ArenaClear(Arena* arena);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Thread
@@ -444,10 +438,10 @@ typedef thrd_t Thread;
 typedef mtx_t Mutex;
 typedef cnd_t CV;
 #endif
-typedef S32 ThreadStartFunc(void*);
+typedef S32 ThreadStart_Fn(void*);
 typedef S32 LockWitness;
 
-void ThreadCreate(Thread* thread, ThreadStartFunc* entry, void* arg);
+void ThreadCreate(Thread* thread, ThreadStart_Fn* entry, void* arg);
 void ThreadDetach(Thread* thread);
 S32  ThreadJoin(Thread* thread);
 
@@ -496,34 +490,34 @@ typedef _Atomic(B32) AtomicB32;
 
 void AtomicS64Init(AtomicS64* a, S64 desired);
 void AtomicS64Store(AtomicS64* a, S64 desired);
-S64 AtomicS64Load(AtomicS64* a);
-S64 AtomicS64Exchange(AtomicS64* a, S64 desired);
-B8 AtomicS64CompareExchange(AtomicS64* a, S64* expected, S64 desired);
-S64 AtomicS64FetchAdd(AtomicS64* a, S64 b);
-S64 AtomicS64FetchSub(AtomicS64* a, S64 b);
-S64 AtomicS64FetchOr(AtomicS64* a, S64 b);
-S64 AtomicS64FetchXor(AtomicS64* a, S64 b);
-S64 AtomicS64FetchAnd(AtomicS64* a, S64 b);
+S64  AtomicS64Load(AtomicS64* a);
+S64  AtomicS64Exchange(AtomicS64* a, S64 desired);
+B8   AtomicS64CompareExchange(AtomicS64* a, S64* expected, S64 desired);
+S64  AtomicS64FetchAdd(AtomicS64* a, S64 b);
+S64  AtomicS64FetchSub(AtomicS64* a, S64 b);
+S64  AtomicS64FetchOr(AtomicS64* a, S64 b);
+S64  AtomicS64FetchXor(AtomicS64* a, S64 b);
+S64  AtomicS64FetchAnd(AtomicS64* a, S64 b);
 
 void AtomicS32Init(AtomicS32* a, S32 desired);
 void AtomicS32Store(AtomicS32* a, S32 desired);
-S32 AtomicS32Load(AtomicS32* a);
-S32 AtomicS32Exchange(AtomicS32* a, S32 desired);
-B8 AtomicS32CompareExchange(AtomicS32* a, S32* expected, S32 desired);
-S32 AtomicS32FetchAdd(AtomicS32* a, S32 b);
-S32 AtomicS32FetchSub(AtomicS32* a, S32 b);
-S32 AtomicS32FetchOr(AtomicS32* a, S32 b);
-S32 AtomicS32FetchXor(AtomicS32* a, S32 b);
-S32 AtomicS32FetchAnd(AtomicS32* a, S32 b);
+S32  AtomicS32Load(AtomicS32* a);
+S32  AtomicS32Exchange(AtomicS32* a, S32 desired);
+B8   AtomicS32CompareExchange(AtomicS32* a, S32* expected, S32 desired);
+S32  AtomicS32FetchAdd(AtomicS32* a, S32 b);
+S32  AtomicS32FetchSub(AtomicS32* a, S32 b);
+S32  AtomicS32FetchOr(AtomicS32* a, S32 b);
+S32  AtomicS32FetchXor(AtomicS32* a, S32 b);
+S32  AtomicS32FetchAnd(AtomicS32* a, S32 b);
 
 void AtomicB32Init(AtomicB32* a, B32 desired);
 void AtomicB32Store(AtomicB32* a, B32 desired);
-B32 AtomicB32Load(AtomicB32* a);
-B32 AtomicB32Exchange(AtomicB32* a, B32 desired);
-B8 AtomicB32CompareExchange(AtomicB32* a, B32* expected, B32 desired);
-B32 AtomicB32FetchOr(AtomicB32* a, B32 b);
-B32 AtomicB32FetchXor(AtomicB32* a, B32 b);
-B32 AtomicB32FetchAnd(AtomicB32* a, B32 b);
+B32  AtomicB32Load(AtomicB32* a);
+B32  AtomicB32Exchange(AtomicB32* a, B32 desired);
+B8   AtomicB32CompareExchange(AtomicB32* a, B32* expected, B32 desired);
+B32  AtomicB32FetchOr(AtomicB32* a, B32 b);
+B32  AtomicB32FetchXor(AtomicB32* a, B32 b);
+B32  AtomicB32FetchAnd(AtomicB32* a, B32 b);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Time
@@ -544,6 +538,7 @@ F32  StopwatchReadSeconds(Stopwatch* stopwatch);
 // NOTE: String
 ///////////////////////////////////////////////////////////////////////////////
 
+// TODO: refactor for in-place modifications?
 typedef struct String8 String8;
 struct String8 {
   U8* str;
@@ -562,15 +557,15 @@ struct String8List {
   String8ListNode* tail;
 };
 
-B32 CharIsWhitespace(U8 c);
-B32 CharIsLower(U8 c);
-B32 CharIsUpper(U8 c);
-B32 CharIsAlpha(U8 c);
-B32 CharIsDigit(U8 c, U32 base);
-U8 CharToLower(U8 c);
-U8 CharToUpper(U8 c);
+B32  CharIsWhitespace(U8 c);
+B32  CharIsLower(U8 c);
+B32  CharIsUpper(U8 c);
+B32  CharIsAlpha(U8 c);
+B32  CharIsDigit(U8 c, U32 base);
+U8   CharToLower(U8 c);
+U8   CharToUpper(U8 c);
 
-U32 CStringSize(U8* str);
+U32  CStringSize(U8* str);
 void CStringCopy(Arena* arena, U8** dest, U8* src);
 
 String8 String8Create(U8* str, U64 size);
@@ -602,6 +597,74 @@ String8 String8ListJoin(Arena* arena, String8List* list);
 String8List String8Split(Arena* arena, String8* string, U8 c);
 
 S32 String8Hash(String8* s);
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Sort
+///////////////////////////////////////////////////////////////////////////////
+
+// Single-threaded quicksort implementation
+// E.g.
+//
+// U8 my_bytes[3] = { 3, 1, 2 };
+// SORT_ASC(U8, my_bytes, 3);  --> { 1, 2, 3 }
+// SORT_DESC(U8, my_bytes, 3); --> { 3, 2, 1 }
+//
+// Or:
+//
+// S32 MyComparison(void* a, void* b) { return *(U8*) a - *(U8*) b; }
+// U8 my_bytes[3] = { 3, 1, 2 };
+// SORT(U8, my_bytes, 3, MyComparison); --> { 1, 2, 3 }
+//
+// SORT_ASC and SORT_DESC work with cdefault types out of the box.
+
+
+#define SORT_DESC(type, items, items_len)                                     \
+  SORT(type, items, items_len, SortCompare##type##Desc)
+#define SORT_ASC(type, items, items_len)                                      \
+  SORT(type, items, items_len, SortCompare##type##Asc)
+#define SORT(type, items, items_len, compare_fn)                              \
+  STATIC_ASSERT(sizeof(type) == sizeof(*items), "SORT type size mismatch!");  \
+  do {                                                                        \
+    type temp;                                                                \
+    _Sort((void*) items, items_len, sizeof(type), compare_fn, (void*) &temp); \
+  } while (0)
+
+// NOTE: Result is negative if a < b, positive if a > b, and 0 if a == b. Ideally, return a - b.
+typedef S32 SortCompare_Fn(void* a, void* b);
+void _Sort(void* items, U32 items_len, U32 item_size, SortCompare_Fn* compare_fn, void* temp_buffer);
+
+// NOTE: Comparison functions
+S32 SortCompareS8Asc(void* a, void* b);
+S32 SortCompareS16Asc(void* a, void* b);
+S32 SortCompareS32Asc(void* a, void* b);
+S32 SortCompareS64Asc(void* a, void* b);
+S32 SortCompareU8Asc(void* a, void* b);
+S32 SortCompareU16Asc(void* a, void* b);
+S32 SortCompareU32Asc(void* a, void* b);
+S32 SortCompareU64Asc(void* a, void* b);
+S32 SortCompareF32Asc(void* a, void* b);
+S32 SortCompareF64Asc(void* a, void* b);
+S32 SortCompareB8Asc(void* a, void* b);
+S32 SortCompareB16Asc(void* a, void* b);
+S32 SortCompareB32Asc(void* a, void* b);
+S32 SortCompareB64Asc(void* a, void* b);
+S32 SortCompareString8Asc(void* a, void* b); // NOTE: Lexicographic ordering
+
+S32 SortCompareS8Desc(void* a, void* b);
+S32 SortCompareS16Desc(void* a, void* b);
+S32 SortCompareS32Desc(void* a, void* b);
+S32 SortCompareS64Desc(void* a, void* b);
+S32 SortCompareU8Desc(void* a, void* b);
+S32 SortCompareU16Desc(void* a, void* b);
+S32 SortCompareU32Desc(void* a, void* b);
+S32 SortCompareU64Desc(void* a, void* b);
+S32 SortCompareF32Desc(void* a, void* b);
+S32 SortCompareF64Desc(void* a, void* b);
+S32 SortCompareB8Desc(void* a, void* b);
+S32 SortCompareB16Desc(void* a, void* b);
+S32 SortCompareB32Desc(void* a, void* b);
+S32 SortCompareB64Desc(void* a, void* b);
+S32 SortCompareString8Desc(void* a, void* b); // NOTE: Lexicographic ordering
 
 #endif // CDEFAULT_H_
 
@@ -721,7 +784,7 @@ void ArenaRelease(Arena* arena) {
   MemoryRelease(arena, CDEFAULT_ARENA_RESERVE_SIZE);
 }
 
-void* ArenaPush(Arena* arena, U64 size, U64 align) {
+void* _ArenaPush(Arena* arena, U64 size, U64 align) {
   U64 pos = ALIGN_POW_2(arena->pos, align);
   U64 pos_after = pos + size;
 
@@ -741,6 +804,10 @@ void* ArenaPush(Arena* arena, U64 size, U64 align) {
   return result;
 }
 
+U64 ArenaPos(Arena* arena) {
+  return arena->pos;
+}
+
 void ArenaPopTo(Arena* arena, U64 pos) {
   DEBUG_ASSERT(pos <= arena->pos);
   DEBUG_ASSERT(pos >= sizeof(Arena));
@@ -756,23 +823,11 @@ void ArenaClear(Arena* arena) {
   ArenaPopTo(arena, sizeof(Arena));
 }
 
-ArenaTemp ArenaTempBegin(Arena* arena) {
-  ArenaTemp temp;
-  MEMORY_ZERO_STRUCT(&temp);
-  temp.arena = arena;
-  temp.pos = arena->pos;
-  return temp;
-}
-
-void ArenaTempEnd(ArenaTemp* temp) {
-  ArenaPopTo(temp->arena, temp->pos);
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Thread Implementation
 ///////////////////////////////////////////////////////////////////////////////
 
-void ThreadCreate(Thread* thread, ThreadStartFunc* entry, void* arg) {
+void ThreadCreate(Thread* thread, ThreadStart_Fn* entry, void* arg) {
 #if defined(OS_WINDOWS)
   *thread = CreateThread(0, 0, (LPTHREAD_START_ROUTINE) entry, arg, 0, 0);
   ASSERT(*thread != NULL);
@@ -1358,5 +1413,102 @@ S32 String8Hash(String8* s) {
   hash += hash << 15;
   return hash;
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Sort Implementation
+///////////////////////////////////////////////////////////////////////////////
+
+static inline void SortSwap(void* a, void* b, void* temp_buffer, U32 item_size) {
+  MEMORY_COPY(temp_buffer, a, item_size);
+  MEMORY_COPY(a, b, item_size);
+  MEMORY_COPY(b, temp_buffer, item_size);
+}
+
+static inline U32 SortPartition(void* items, U32 item_size, S32 low_idx, S32 high_idx, SortCompare_Fn* compare_fn, void* temp_buffer) {
+  void* pivot = ((U8*) items) + (item_size * high_idx);
+  S32 i = low_idx;
+  for (S32 j = low_idx; j < high_idx; j++) {
+    void* at_j = ((U8*) items) + (item_size * j);
+    S32 compare = compare_fn(at_j, pivot);
+    if (compare <= 0) {
+      void* at_i = ((U8*) items) + (item_size * i);
+      SortSwap(at_i, at_j, temp_buffer, item_size);
+      i++;
+    }
+  }
+  void* at_i = ((U8*) items) + (item_size * i);
+  SortSwap(at_i, pivot, temp_buffer, item_size);
+  return i;
+}
+
+static void SortHelper(void* items, U32 item_size, S32 low_idx, S32 high_idx, SortCompare_Fn* compare_fn, void* temp_buffer) {
+  if (low_idx >= high_idx) { return; }
+  S32 pivot = SortPartition(items, item_size, low_idx, high_idx, compare_fn, temp_buffer);
+  SortHelper(items, item_size, low_idx, pivot - 1, compare_fn, temp_buffer);
+  SortHelper(items, item_size, pivot + 1, high_idx, compare_fn, temp_buffer);
+}
+
+void _Sort(void* items, U32 items_len, U32 item_size, SortCompare_Fn* compare_fn, void* temp_buffer) {
+  SortHelper(items, item_size, 0, items_len - 1, compare_fn, temp_buffer);
+}
+
+S32 SortCompareS8Asc(void* a, void* b)  { return *(S8*)  a - *(S8*)  b; }
+S32 SortCompareS16Asc(void* a, void* b) { return *(S16*) a - *(S16*) b; }
+S32 SortCompareS32Asc(void* a, void* b) { return *(S32*) a - *(S32*) b; }
+S32 SortCompareS64Asc(void* a, void* b) { return *(S64*) a - *(S64*) b; }
+S32 SortCompareU8Asc(void* a, void* b)  { return *(U8*)  a - *(U8*)  b; }
+S32 SortCompareU16Asc(void* a, void* b) { return *(U16*) a - *(U16*) b; }
+S32 SortCompareU32Asc(void* a, void* b) { return *(U32*) a - *(U32*) b; }
+S32 SortCompareU64Asc(void* a, void* b) { return *(U64*) a - *(U64*) b; }
+S32 SortCompareF32Asc(void* a, void* b) { return *(F32*) a - *(F32*) b; }
+S32 SortCompareF64Asc(void* a, void* b) { return *(F64*) a - *(F64*) b; }
+S32 SortCompareB8Asc(void* a, void* b)  { return *(B8*)  a - *(B8*)  b; }
+S32 SortCompareB16Asc(void* a, void* b) { return *(B16*) a - *(B16*) b; }
+S32 SortCompareB32Asc(void* a, void* b) { return *(B32*) a - *(B32*) b; }
+S32 SortCompareB64Asc(void* a, void* b) { return *(B64*) a - *(B64*) b; }
+S32 SortCompareString8Asc(void* a, void* b) {
+  String8* a_cast = (String8*) a;
+  String8* b_cast = (String8*) b;
+  U32 i = 0;
+  while (true) {
+    if (i >= a_cast->size) { return -1 * (a_cast->size != b_cast->size); }
+    if (i >= b_cast->size) { return +1; } // NOTE: contextually, a size != b size.
+    if (a_cast->str[i] < b_cast->str[i]) { return -1; }
+    if (a_cast->str[i] > b_cast->str[i]) { return +1; }
+    i++;
+  }
+  UNREACHABLE();
+  return 0;
+}
+
+S32 SortCompareS8Desc(void* a, void* b)  { return *(S8*)  b - *(S8*)  a; }
+S32 SortCompareS16Desc(void* a, void* b) { return *(S16*) b - *(S16*) a; }
+S32 SortCompareS32Desc(void* a, void* b) { return *(S32*) b - *(S32*) a; }
+S32 SortCompareS64Desc(void* a, void* b) { return *(S64*) b - *(S64*) a; }
+S32 SortCompareU8Desc(void* a, void* b)  { return *(U8*)  b - *(U8*)  a; }
+S32 SortCompareU16Desc(void* a, void* b) { return *(U16*) b - *(U16*) a; }
+S32 SortCompareU32Desc(void* a, void* b) { return *(U32*) b - *(U32*) a; }
+S32 SortCompareU64Desc(void* a, void* b) { return *(U64*) b - *(U64*) a; }
+S32 SortCompareF32Desc(void* a, void* b) { return *(F32*) b - *(F32*) a; }
+S32 SortCompareF64Desc(void* a, void* b) { return *(F64*) b - *(F64*) a; }
+S32 SortCompareB8Desc(void* a, void* b)  { return *(B8*)  b - *(B8*)  a; }
+S32 SortCompareB16Desc(void* a, void* b) { return *(B16*) b - *(B16*) a; }
+S32 SortCompareB32Desc(void* a, void* b) { return *(B32*) b - *(B32*) a; }
+S32 SortCompareB64Desc(void* a, void* b) { return *(B64*) b - *(B64*) a; }
+S32 SortCompareString8Desc(void* a, void* b) {
+  String8* a_cast = (String8*) a;
+  String8* b_cast = (String8*) b;
+  U32 i = 0;
+  while (true) {
+    if (i >= a_cast->size) { return +1 * (a_cast->size != b_cast->size); }
+    if (i >= b_cast->size) { return -1; } // NOTE: contextually, a size != b size.
+    if (a_cast->str[i] < b_cast->str[i]) { return +1; }
+    if (a_cast->str[i] > b_cast->str[i]) { return -1; }
+    i++;
+  }
+  UNREACHABLE();
+  return 0;
+}
+
 
 #endif // CDEFAULT_STD_IMPLEMENTATION
