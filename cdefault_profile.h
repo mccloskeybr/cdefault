@@ -63,12 +63,7 @@ struct ProfileContext {
 static ProfileContext _profile_context;
 
 static U64 ReadCpuTimer() {
-#ifdef WIN32
   return __rdtsc();
-#else
-  // TODO: support other architectures?
-  return 0;
-#endif
 }
 
 ProfileAnchor* ProfileGetAnchor(ProfileMetricType metric) {

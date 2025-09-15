@@ -139,14 +139,24 @@ struct WASAPI_AudioContext {
   WASAPI_AudioStream* streams_free_list;
 };
 
-#define WASAPI_LOG_ERROR(hresult, fmt, ...)                 \
-  do {                                                      \
-    char _err_buffer[1024];                                 \
-    _err_buffer[0] = '\0';                                  \
-    FormatMessageA(                                         \
-        FORMAT_MESSAGE_FROM_SYSTEM, NULL, hresult, 0,       \
-        _err_buffer, STATIC_ARRAY_SIZE(_err_buffer), NULL); \
-    LOG_ERROR("%s - " fmt, _err_buffer, ##__VA_ARGS__);      \
+// TODO: msvc c99 (?) doesn't work properly with ##__VA_ARGS__?
+#define WASAPI_LOG_ERROR(hresult, err)                                        \
+  do {                                                                        \
+    char _err_buffer[1024];                                                   \
+    _err_buffer[0] = '\0';                                                    \
+    FormatMessageA(                                                           \
+        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_MAX_WIDTH_MASK,           \
+        NULL, hresult, 0, _err_buffer, STATIC_ARRAY_SIZE(_err_buffer), NULL); \
+    LOG_ERROR(err "- %s", _err_buffer);                                       \
+  } while (0)
+#define WASAPI_LOG_ERROR_EX(hresult, fmt, ...)                                \
+  do {                                                                        \
+    char _err_buffer[1024];                                                   \
+    _err_buffer[0] = '\0';                                                    \
+    FormatMessageA(                                                           \
+        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_MAX_WIDTH_MASK,           \
+        NULL, hresult, 0, _err_buffer, STATIC_ARRAY_SIZE(_err_buffer), NULL); \
+    LOG_ERROR(fmt "- %s", ##__VA_ARGS__, _err_buffer);                        \
   } while (0)
 
 // NOTE: UUIDs required for WASAPI. Newer API gives a function to derive them
@@ -320,13 +330,13 @@ static B32 WASAPI_ContextAddStream(WASAPI_AudioContext* ctx, LockWitness witness
 
   result = IMMDeviceEnumerator_GetDevice(_wasapi_enum, device->imm_device_id, &imm_device);
   if (FAILED(result)) {
-    WASAPI_LOG_ERROR(result, "[AUDIO] Failed to get imm_device for device: %.*s", device->base.name.size, device->base.name.str);
+    WASAPI_LOG_ERROR_EX(result, "[AUDIO] Failed to get imm_device for device: %.*s", device->base.name.size, device->base.name.str);
     goto audio_stream_open_end;
   }
 
   result = IMMDevice_Activate(imm_device, &_wasapi_IID_IAudioClient, CLSCTX_ALL, NULL, (void**)& stream->client);
   if (FAILED(result)) {
-    WASAPI_LOG_ERROR(result, "[AUDIO] Failed to activate device: %.*s", device->base.name.size, device->base.name.str);
+    WASAPI_LOG_ERROR_EX(result, "[AUDIO] Failed to activate device: %.*s", device->base.name.size, device->base.name.str);
     goto audio_stream_open_end;
   }
 
@@ -375,27 +385,27 @@ static B32 WASAPI_ContextAddStream(WASAPI_AudioContext* ctx, LockWitness witness
 
   result = IAudioClient_Initialize(stream->client, AUDCLNT_SHAREMODE_SHARED, stream_flags, 0, 0, (WAVEFORMATEX*) &custom_format, NULL);
   if (FAILED(result)) {
-    WASAPI_LOG_ERROR(result, "[AUDIO] Failed to initialize the audio client for device: %.*s", device->base.name.size, device->base.name.str);
+    WASAPI_LOG_ERROR_EX(result, "[AUDIO] Failed to initialize the audio client for device: %.*s", device->base.name.size, device->base.name.str);
     goto audio_stream_open_end;
   }
 
   result = IAudioClient_SetEventHandle(stream->client, stream->event);
   if (FAILED(result)) {
-    WASAPI_LOG_ERROR(result, "[AUDIO] Failed to set audio event handle for device: %.*s", device->base.name.size, device->base.name.str);
+    WASAPI_LOG_ERROR_EX(result, "[AUDIO] Failed to set audio event handle for device: %.*s", device->base.name.size, device->base.name.str);
     goto audio_stream_open_end;
   }
 
   REFERENCE_TIME default_period;
   result = IAudioClient_GetDevicePeriod(stream->client, &default_period, NULL);
   if (FAILED(result)) {
-    WASAPI_LOG_ERROR(result, "[AUDIO] Failed to get default period for device: %.*s", device->base.name.size, device->base.name.str);
+    WASAPI_LOG_ERROR_EX(result, "[AUDIO] Failed to get default period for device: %.*s", device->base.name.size, device->base.name.str);
     goto audio_stream_open_end;
   }
 
   U32 device_sample_frames;
   result = IAudioClient_GetBufferSize(stream->client, &device_sample_frames);
   if (FAILED(result)) {
-    WASAPI_LOG_ERROR(result, "[AUDIO] Failed to determine sample frames for device: %.*s", device->base.name.size, device->base.name.str);
+    WASAPI_LOG_ERROR_EX(result, "[AUDIO] Failed to determine sample frames for device: %.*s", device->base.name.size, device->base.name.str);
     goto audio_stream_open_end;
   }
 
@@ -415,13 +425,13 @@ static B32 WASAPI_ContextAddStream(WASAPI_AudioContext* ctx, LockWitness witness
 
   result = IAudioClient_GetService(stream->client, &_wasapi_IID_IAudioRenderClient, (void**)&stream->render);
   if (FAILED(result)) {
-    WASAPI_LOG_ERROR(result, "[AUDIO] Failed to get render client for device: %.*s", device->base.name.size, device->base.name.str);
+    WASAPI_LOG_ERROR_EX(result, "[AUDIO] Failed to get render client for device: %.*s", device->base.name.size, device->base.name.str);
     goto audio_stream_open_end;
   }
 
   result = IAudioClient_Start(stream->client);
   if (FAILED(result)) {
-    WASAPI_LOG_ERROR(result, "[AUDIO] Failed to start client for device: %.*s", device->base.name.size, device->base.name.str);
+    WASAPI_LOG_ERROR_EX(result, "[AUDIO] Failed to start client for device: %.*s", device->base.name.size, device->base.name.str);
     goto audio_stream_open_end;
   }
 
