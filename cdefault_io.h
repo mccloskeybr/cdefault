@@ -4,8 +4,9 @@
 #include "cdefault_std.h"
 
 // TODO:
-// - file search
 // - standard file separators
+// - file search
+// - more extensive testing
 
 typedef struct FileHandle FileHandle;
 
@@ -27,7 +28,6 @@ enum FileSeekPos {
 typedef struct FileStats FileStats;
 struct FileStats {
   U32 size;
-  U64 create_time;
   U64 last_write_time;
   U64 last_access_time;
 };
@@ -38,6 +38,9 @@ B32 FileDump(U8* file_path, U8* buffer, U32 buffer_size);                    // 
 B32 FileAppend(U8* file_path, U8* buffer, U32 buffer_size);                  // NOTE: Appends the data with buffer (removes any \0 suffix);
 B32 FileCopy(U8* src_path, U8* dest_path);
 
+// NOTE: This API simplifies file access semantics. If opening a file to write, it places an exclusive
+// (read & write) lock on that file. If opening a file in read-only mode, it places a shared (read)
+// lock on that file. Any written data is flushed when the file handle is closed.
 B32 FileHandleOpen(FileHandle* file, U8* file_path, FileMode mode);
 B32 FileHandleClose(FileHandle* file);
 B32 FileHandleStat(FileHandle* file, FileStats* stats);
@@ -59,6 +62,7 @@ struct FileHandle {
   Arena* arena;
   HANDLE handle;
   U8* file_path;
+  B8 is_writing;
 };
 
 #define WIN_IO_LOG_ERROR(result, err)                                        \
@@ -93,7 +97,6 @@ B32 WIN_FileStat(U8* file_path, FileStats* stats) {
     return false;
   }
   stats->size = (((U32) attributes.nFileSizeHigh) << 16) | attributes.nFileSizeLow;
-  stats->create_time = WIN_FileTimeToEpochSeconds(&attributes.ftCreationTime);
   stats->last_write_time = WIN_FileTimeToEpochSeconds(&attributes.ftLastWriteTime);
   stats->last_access_time = WIN_FileTimeToEpochSeconds(&attributes.ftLastAccessTime);
   return true;
@@ -106,7 +109,6 @@ B32 WIN_FileHandleStat(FileHandle* file, FileStats* stats) {
     return false;
   }
   stats->size = (((U32) attributes.nFileSizeHigh) << 16) | attributes.nFileSizeLow;
-  stats->create_time = WIN_FileTimeToEpochSeconds(&attributes.ftCreationTime);
   stats->last_write_time = WIN_FileTimeToEpochSeconds(&attributes.ftLastWriteTime);
   stats->last_access_time = WIN_FileTimeToEpochSeconds(&attributes.ftLastAccessTime);
   return true;
@@ -114,9 +116,11 @@ B32 WIN_FileHandleStat(FileHandle* file, FileStats* stats) {
 
 B32 WIN_FileHandleOpen(FileHandle* file, U8* file_path, FileMode mode) {
   DWORD desired_access = 0;
-  if (mode & FileMode_Read)  { desired_access |= GENERIC_READ;  }
-  if (mode & FileMode_Write) { desired_access |= GENERIC_WRITE; }
-  DEBUG_ASSERT(desired_access != 0);
+  B32 read  = mode & FileMode_Read;
+  B32 write = mode & FileMode_Write;
+  DEBUG_ASSERT(read || write);
+  if (read)  { desired_access |= GENERIC_READ;  }
+  if (write) { desired_access |= GENERIC_WRITE; }
 
   DWORD disposition = 0;
   B32 truncate = mode & FileMode_Truncate;
@@ -126,8 +130,11 @@ B32 WIN_FileHandleOpen(FileHandle* file, U8* file_path, FileMode mode) {
   else if (truncate)      { disposition = TRUNCATE_EXISTING; }
   else                    { disposition = OPEN_EXISTING;     }
 
-  // NOTE: allow shared reads, e.g. multiple sfx playing at the same time.
-  // TODO: allow shared writes? e.g. for hotloading?
+  // NOTE: exclusive access, unless in read-only mode, in which case allow shared reads.
+  // TODO: consider allowing shared writes? e.g. for hotloading?
+  DWORD share_mode = 0;
+  if (!write && read) { share_mode |= FILE_SHARE_READ; }
+
   file->handle = CreateFileA((const char*) file_path, desired_access, FILE_SHARE_READ, NULL, disposition, FILE_ATTRIBUTE_NORMAL, NULL);
   if (file->handle == INVALID_HANDLE_VALUE) {
     WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to open file: %s", file_path);
@@ -135,24 +142,32 @@ B32 WIN_FileHandleOpen(FileHandle* file, U8* file_path, FileMode mode) {
   }
   file->arena = ArenaAllocate();
   file->file_path = CStringCopy(file->arena, file_path);
+  file->is_writing = write;
   return true;
 }
 
 B32 WIN_FileHandleClose(FileHandle* file) {
+  if (file->is_writing && !FlushFileBuffers(file->handle)) {
+    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to flush file: %s", file->file_path);
+    return false;
+  }
+  if (!CloseHandle(file->handle)) {
+    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to close file: %s", file->file_path);
+    return false;
+  }
   ArenaRelease(file->arena);
-  return CloseHandle(file->handle);
+  return true;
 }
 
 B32 WIN_FileHandleSeek(FileHandle* file, S32 distance, FileSeekPos pos) {
-  DWORD move_method;
+  DWORD move_method = 0;
   switch (pos) {
     case FileSeekPos_Begin:   { move_method = FILE_BEGIN;   } break;
     case FileSeekPos_Current: { move_method = FILE_CURRENT; } break;
     case FileSeekPos_End:     { move_method = FILE_END;     } break;
+    default: UNIMPLEMENTED(); break;
   }
-  DWORD result = SetFilePointer(file->handle, distance, NULL, move_method);
-
-  if (result == INVALID_SET_FILE_POINTER) {
+  if (SetFilePointer(file->handle, distance, NULL, move_method) == INVALID_SET_FILE_POINTER) {
     WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to seek: %s", file->file_path);
     return false;
   }
@@ -181,9 +196,143 @@ B32 WIN_FileHandleWrite(FileHandle* file, U8* buffer, U32 buffer_size, U32* byte
   return true;
 }
 
+#elif defined(OS_LINUX)
+#define CDEFAULT_IO_BACKEND_NAMESPACE LINUX_
+
+#include <errno.h>
+#include <fcntl.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+struct FileHandle {
+  Arena* arena;
+  S32 fd;
+  U8* file_path;
+  B8 is_writing;
+};
+
+#define LINUX_IO_LOG_ERROR(result, err) \
+  LOG_ERROR(err " - %s: %s", strerror(result));
+#define LINUX_IO_LOG_ERROR_EX(result, fmt, ...) \
+  LOG_ERROR(fmt " - %s: %s", ##__VA_ARGS__, strerror(result));
+
+B32 LINUX_FileStat(U8* file_path, FileStats* stats) {
+  struct stat st;
+  if (stat(file_path, &st) == -1) {
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to stat file: %s", file_path);
+    return false;
+  }
+  stats->size = st.st_size;
+  stats->last_write_time = st.st_mtime;
+  stats->last_access_time = st.st_atime;
+  return true;
+}
+
+B32 LINUX_FileHandleStat(FileHandle* file, FileStats* stats) {
+  struct stat st;
+  if (fstat(file->fd, &st) == -1) {
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to stat file: %s", file->file_path);
+    return false;
+  }
+  stats->size = st.st_size;
+  stats->last_write_time = st.st_mtime;
+  stats->last_access_time = st.st_atime;
+  return true;
+}
+
+B32 LINUX_FileHandleOpen(FileHandle* file, U8* file_path, FileMode mode) {
+  S32 flags = 0;
+
+  B32 read  = mode & FileMode_Read;
+  B32 write = mode & FileMode_Write;
+  DEBUG_ASSERT(read || write);
+  if      (read && write) { flags |= O_RDWR;   }
+  else if (read)          { flags |= O_RDONLY; }
+  else if (write)         { flags |= O_WRONLY; }
+
+  if (mode & FileMode_Truncate) { flags |= O_TRUNC; }
+  if (mode & FileMode_Create)   { flags |= O_CREAT; }
+  file->fd = open(file_path, flags, 0770);
+  if (file->fd == -1) {
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to open file: %s", file_path);
+    return false;
+  }
+
+  // NOTE: exclusive access, unless in read-only mode, in which case allow shared reads.
+  // TODO: consider allowing shared writes? e.g. for hotloading?
+  S16 lock_type = 0;
+  if (write)      { lock_type |= F_WRLCK; }
+  else if (read)  { lock_type |= F_RDLCK; }
+
+  struct flock lock;
+  lock.l_type = lock_type;
+  lock.l_whence = SEEK_SET;
+  lock.l_start = 0;
+  lock.l_len = 0;
+  if (fcntl(file->fd, F_SETLK, &lock) == -1) {
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to set read lock on file: %s", file_path);
+    DEBUG_ASSERT(close(file->fd) == 0);
+    return false;
+  }
+
+  file->arena = ArenaAllocate();
+  file->file_path = CStringCopy(file->arena, file_path);
+  file->is_writing = write;
+  return true;
+}
+
+B32 LINUX_FileHandleClose(FileHandle* file) {
+  if (file->is_writing && (fsync(file->fd) == -1)) {
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to flush file: %s", file->file_path);
+    return false;
+  }
+  if (close(file->fd) == -1) {
+    // NOTE: linux docs warn against retrying close(), so log but don't report this error.
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to close file, ignoring: %s", file->file_path);
+  }
+  ArenaRelease(file->arena);
+  return true;
+}
+
+B32 LINUX_FileHandleSeek(FileHandle* file, S32 distance, FileSeekPos pos) {
+  S32 whence;
+  switch (pos) {
+    case FileSeekPos_Begin:   { whence = SEEK_SET; } break;
+    case FileSeekPos_Current: { whence = SEEK_CUR; } break;
+    case FileSeekPos_End:     { whence = SEEK_END; } break;
+    default: UNIMPLEMENTED(); break;
+  }
+  if (lseek(file->fd, distance, whence) == -1) {
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to seek for file: %s", file->file_path);
+    return false;
+  }
+  return true;
+}
+
+B32 LINUX_FileHandleRead(FileHandle* file, U8* buffer, U32 buffer_size, U32* bytes_read) {
+  U32 r = read(file->fd, buffer, buffer_size);
+  if (r == -1) {
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to read file: %s", file->file_path);
+    return false;
+  }
+  if (bytes_read != NULL) { *bytes_read = r; }
+  return true;
+}
+
+B32 LINUX_FileHandleWrite(FileHandle* file, U8* buffer, U32 buffer_size, U32* bytes_written) {
+  U32 w = write(file->fd, buffer, buffer_size);
+  if (w == -1) {
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to write file: %s", file->file_path);
+    return false;
+  }
+  if (bytes_written != NULL) { *bytes_written = w; }
+  return true;
+}
+
 #else
 
-// TODO: linux support.
+// TODO: mac support.
 #error cdefault IO not supported on this OS.
 
 #endif
@@ -207,7 +356,7 @@ B32 FileReadAll(Arena* arena, U8* file_path, U8** buffer, U32* buffer_size) {
     ARENA_POP_ARRAY(arena, U8, stats.size);
     goto file_read_all_exit;
   }
-  buffer[stats.size] = '\0';
+  (*buffer)[stats.size] = '\0';
   if (buffer_size != NULL) { *buffer_size = bytes_read + 1; }
   success = true;
 file_read_all_exit:

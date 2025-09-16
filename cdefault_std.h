@@ -77,14 +77,14 @@ typedef double   F64;
 #define true     1
 #define false    0
 
-#define U8_MIN  0
-#define U8_MAX  255
-#define U16_MIN 0
-#define U16_MAX 65535
-#define U32_MIN 0
-#define U32_MAX 4294967295
-#define U64_MIN 0
-#define U64_MAX 18446744073709551615
+#define U8_MIN  0u
+#define U8_MAX  255u
+#define U16_MIN 0u
+#define U16_MAX 65535u
+#define U32_MIN 0u
+#define U32_MAX 4294967295u
+#define U64_MIN 0u
+#define U64_MAX 18446744073709551615u
 #define S8_MIN  -128
 #define S8_MAX  127
 #define S16_MIN -32768
@@ -629,7 +629,7 @@ U8   CharToLower(U8 c);
 U8   CharToUpper(U8 c);
 
 U32  CStringSize(U8* str);
-U8*  CStringCopy(Arena* arena, U8* src);
+U8*  CStringCopy(Arena* arena, U8* src); // TODO: Copy with sized buffer
 U8*  CStringSubstring(Arena* arena, U8* s, U64 start, U64 end);
 U8*  CStringConcat(Arena* arena, U8* a, U8* b);
 U8*  CStringTrim(Arena* arena, U8* s);
@@ -1349,7 +1349,7 @@ F64 RandF64(RandomSeries* rand, F64 min, F64 max) {
   DEBUG_ASSERT(min < max);
   if (rand == NULL) { rand = &_cdef_rand; }
   RandomSeriesShuffle(rand);
-  F64 r = (F64) rand->state / U64_MAX;
+  F64 r = (F64) (rand->state / U64_MAX);
   return min + (r * (max - min));
 }
 
