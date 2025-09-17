@@ -71,6 +71,18 @@ B32 CStringTrimTest(void) {
   return true;
 }
 
+B32 CStringReplaceAllTest(void) {
+  Arena* arena = ArenaAllocate();
+  U8* src = (U8*) "hello hi hello";
+  U8* a = (U8*) "hi";
+  U8* b = (U8*) "world";
+  U8* dest = NULL;
+  U8* expected = (U8*) "hello world hello";
+  TEST_EXPECT(CStringReplaceAll(arena, &dest, src, a, b));
+  TEST_EXPECT(CStringEquals(dest, expected));
+  return true;
+}
+
 B32 CStringFindTest(void) {
   U8 haystack[24] = "hello world world hello";
   U8 needle[6] = "world";
@@ -132,6 +144,18 @@ B32 String8TrimTest(void) {
   String8 trimmed = String8Trim(&literal);
   String8 expected = String8CreateStatic("test");
   TEST_EXPECT(String8Equals(&trimmed, &expected));
+  return true;
+}
+
+B32 String8ReplaceAllTest(void) {
+  Arena* arena = ArenaAllocate();
+  String8 src = String8CreateStatic("hello hi hello");
+  String8 a = String8CreateStatic("hi");
+  String8 b = String8CreateStatic("world");
+  String8 dest;
+  String8 expected = String8CreateStatic("hello world hello");
+  TEST_EXPECT(String8ReplaceAll(arena, &dest, &src, &a, &b));
+  TEST_EXPECT(String8Equals(&dest, &expected));
   return true;
 }
 
@@ -263,6 +287,7 @@ int main(void) {
   TEST(CStringSubstringTest());
   TEST(CStringConcatTest());
   TEST(CStringTrimTest());
+  TEST(CStringReplaceAllTest());
   TEST(CStringFindTest());
   TEST(CStringFindReverseTest());
   TEST(CStringStartsWithTest());
@@ -271,6 +296,7 @@ int main(void) {
   TEST(CStringToLowerTest());
   TEST(String8CreateTest());
   TEST(String8TrimTest());
+  TEST(String8ReplaceAllTest());
   TEST(String8StartsWithTest());
   TEST(String8EndsWithTest());
   TEST(String8EqualsTest());

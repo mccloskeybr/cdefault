@@ -633,9 +633,11 @@ U8*  CStringCopy(Arena* arena, U8* src); // TODO: Copy with sized buffer
 U8*  CStringSubstring(Arena* arena, U8* s, U64 start, U64 end);
 U8*  CStringConcat(Arena* arena, U8* a, U8* b);
 U8*  CStringTrim(Arena* arena, U8* s);
+B32  CStringReplaceAll(Arena* arena, U8** dest, U8* src, U8* a, U8* b); // NOTE: Replaces occurrences of a with b in src, and places the result in dest.
+B32  CStringReplaceAllChar(U8* str, U8 a, U8 b); // NOTE: Replaces occurrences of a with b inplace in str.
 B32  CStringEquals(U8* a, U8* b);
-S32  CStringFind(U8* str, U64 start_pos, U8* needle); // NOTE: Returns -1 on failure.
-S32  CStringFindReverse(U8* str, U64 start_pos, U8* needle); // NOTE: Returns -1 on failure.
+S32  CStringFind(U8* str, S32 start_pos, U8* needle); // NOTE: Returns -1 on failure.
+S32  CStringFindReverse(U8* str, S32 start_pos, U8* needle); // NOTE: Returns -1 on failure.
 B32  CStringStartsWith(U8* a, U8* b);
 B32  CStringEndsWith(U8* a, U8* b);
 void CStringToUpper(U8* s);
@@ -652,13 +654,15 @@ String8 _String8CreateCString(U8* c_str);
 String8 String8Copy(Arena* arena, String8* string);
 String8 String8Substring(String8* s, U64 start, U64 end);
 String8 String8Trim(String8* s);
+B32     String8ReplaceAll(Arena* arena, String8* dest, String8* src, String8* a, String8* b);
+B32     String8ReplaceAllChar(String8* str, U8 a, U8 b);
 void String8ToUpper(String8* s);
 void String8ToLower(String8* s);
 B32  String8StartsWith(String8* a, String8* b); // NOTE: True iff a starts with b.
 B32  String8EndsWith(String8* a, String8* b); // NOTE: True iff a ends with b.
 B32  String8Equals(String8* a, String8* b);
-S64  String8Find(String8* string, U64 start_pos, String8* needle); // NOTE: Returns -1 on failure.
-S64  String8FindReverse(String8* string, U64 reverse_start_pos, String8* needle); // NOTE: Returns -1 on failure.
+S64  String8Find(String8* string, S32 start_pos, String8* needle); // NOTE: Returns -1 on failure.
+S64  String8FindReverse(String8* string, S32 reverse_start_pos, String8* needle); // NOTE: Returns -1 on failure.
 String8 String8Concat(Arena* arena, String8* a, String8* b);
 String8 String8FormatV(Arena* arena, U8* fmt, va_list args);
 String8 _String8Format(Arena* arena, U8* fmt, ...);
@@ -889,7 +893,7 @@ void ArenaPopTo(Arena* arena, U64 pos) {
 }
 
 void ArenaPop(Arena* arena, U64 size) {
-  DEBUG_ASSERT(arena->pos - size > sizeof(Arena));
+  DEBUG_ASSERT(arena->pos - size >= sizeof(Arena));
   ArenaPopTo(arena, arena->pos - size);
 }
 
@@ -1437,7 +1441,8 @@ B32 CStringEquals(U8* a, U8* b) {
   return CStringStartsWith(a, b);
 }
 
-S32 CStringFind(U8* str, U64 start_pos, U8* needle) {
+S32 CStringFind(U8* str, S32 start_pos, U8* needle) {
+  if (start_pos < 0) { return -1; }
   U32 i = start_pos;
   while (true) {
     U32 i_copy = i;
@@ -1454,7 +1459,8 @@ S32 CStringFind(U8* str, U64 start_pos, U8* needle) {
   return -1;
 }
 
-S32 CStringFindReverse(U8* str, U64 start_pos, U8* needle) {
+S32 CStringFindReverse(U8* str, S32 start_pos, U8* needle) {
+  if (start_pos < 0) { return -1; }
   U32 i = start_pos;
   while (true) {
     U32 i_copy = i;
@@ -1469,6 +1475,55 @@ S32 CStringFindReverse(U8* str, U64 start_pos, U8* needle) {
     i--;
   }
   return -1;
+}
+
+B32 CStringReplaceAll(Arena* arena, U8** dest, U8* src, U8* a, U8* b) {
+  B32 found = false;
+  U32 i = 0;
+  U32 a_size = CStringSize(a);
+  U32 b_size = CStringSize(b);
+  U32 dest_size = 0;
+  while (src[i] != '\0') {
+    if (CStringStartsWith(&src[i], a)) {
+      found = true;
+      i += a_size;
+      dest_size += b_size;
+      continue;
+    }
+    dest_size++;
+    i++;
+  }
+  if (found) {
+    *dest = ARENA_PUSH_ARRAY(arena, U8, dest_size + 1);
+    i = 0;
+    U32 k = 0;
+    while (src[i] != '\0') {
+      // SPEEDUP: don't really need to calculate this again.
+      if (CStringStartsWith(&src[i], a)) {
+        for (U32 j = 0; j < b_size; j++) {
+          (*dest)[k++] = b[j];
+        }
+        i += a_size;
+        continue;
+      }
+      (*dest)[k++] = src[i++];
+    }
+    (*dest)[k] = '\0';
+  }
+  return found;
+}
+
+B32 CStringReplaceAllChar(U8* str, U8 a, U8 b) {
+  B32 result = false;
+  U32 i = 0;
+  while (str[i] != '\0'){
+    if (str[i] == a) {
+      result = true;
+      str[i] = b;
+    }
+    i++;
+  }
+  return result;
 }
 
 B32 CStringStartsWith(U8* a, U8* b) {
@@ -1554,7 +1609,7 @@ String8 String8Copy(Arena* arena, String8* string) {
 }
 
 String8 String8Substring(String8* s, U64 start, U64 end) {
-  DEBUG_ASSERT(end > start);
+  DEBUG_ASSERT(end >= start);
   start = MIN(start, s->size - 1);
   end = MIN(end, s->size - 1);
   String8 result;
@@ -1570,6 +1625,56 @@ String8 String8Trim(String8* s) {
   U64 end = s->size - 1;
   while (CharIsWhitespace(s->str[end])) { --end; }
   return String8Substring(s, start, end);
+}
+
+B32 String8ReplaceAll(Arena* arena, String8* dest, String8* src, String8* a, String8* b) {
+  B32 found = false;
+  U32 i = 0;
+  U32 dest_size = 0;
+  while (src->str[i] != '\0') {
+    String8 src_sub = String8Substring(src, i, src->size - 1);
+    if (String8StartsWith(&src_sub, a)) {
+      found = true;
+      i += a->size;
+      dest_size += b->size;
+      continue;
+    }
+    dest_size++;
+    i++;
+  }
+  if (found) {
+    dest->str = ARENA_PUSH_ARRAY(arena, U8, dest_size + 1);
+    dest->size = dest_size;
+    i = 0;
+    U32 k = 0;
+    while (src->str[i] != '\0') {
+      // SPEEDUP: don't really need to calculate this again.
+      String8 src_sub = String8Substring(src, i, src->size - 1);
+      if (String8StartsWith(&src_sub, a)) {
+        for (U32 j = 0; j < b->size; j++) {
+          dest->str[k++] = b->str[j];
+        }
+        i += a->size;
+        continue;
+      }
+      dest->str[k++] = src->str[i++];
+    }
+    dest->str[k] = '\0';
+  }
+  return found;
+}
+
+B32 String8ReplaceAllChar(String8* str, U8 a, U8 b) {
+  B32 result = false;
+  U32 i = 0;
+  while (str->str[i] != '\0'){
+    if (str->str[i] == a) {
+      result = true;
+      str->str[i] = b;
+    }
+    i++;
+  }
+  return result;
 }
 
 B32 String8StartsWith(String8* a, String8* b) {
@@ -1594,7 +1699,8 @@ B32 String8Equals(String8* a, String8* b) {
   return String8StartsWith(a, b);
 }
 
-S64 String8Find(String8* string, U64 start_pos, String8* needle) {
+S64 String8Find(String8* string, S32 start_pos, String8* needle) {
+  if (start_pos < 0) { return -1; }
   if (string->size < start_pos + needle->size) { return -1; }
   for (U64 i = 0; i < string->size - start_pos; ++i) {
     U64 offset = start_pos + i;
@@ -1604,7 +1710,8 @@ S64 String8Find(String8* string, U64 start_pos, String8* needle) {
   return -1;
 }
 
-S64 String8FindReverse(String8* string, U64 reverse_start_pos, String8* needle) {
+S64 String8FindReverse(String8* string, S32 reverse_start_pos, String8* needle) {
+  if (reverse_start_pos < 0) { return -1; }
   if (string->size < reverse_start_pos + needle->size) { return -1; }
   for (U64 i = string->size - reverse_start_pos - needle->size; i > 0; --i) {
     String8 substr = String8Create(string->str, i + needle->size);

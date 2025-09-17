@@ -4,8 +4,7 @@
 #include "cdefault_std.h"
 
 // TODO:
-// - standard file separators
-// - file search
+// - file search / better directory navigation
 // - more extensive testing
 
 typedef struct FileHandle FileHandle;
@@ -35,8 +34,16 @@ struct FileStats {
 B32 FileStat(U8* file_path, FileStats* stats);
 B32 FileReadAll(Arena* arena, U8* file_path, U8** buffer, U32* buffer_size); // NOTE: Places the data in file_path in *buffer (adds a \0 suffix).
 B32 FileDump(U8* file_path, U8* buffer, U32 buffer_size);                    // NOTE: Replaces data in file_path with buffer (removes any \0 suffix).
-B32 FileAppend(U8* file_path, U8* buffer, U32 buffer_size);                  // NOTE: Appends the data with buffer (removes any \0 suffix);
-B32 FileCopy(U8* src_path, U8* dest_path);
+B32 FileAppend(U8* file_path, U8* buffer, U32 buffer_size);                  // NOTE: Appends the data with buffer (removes any \0 suffix). If you will append many times, prefer opening a FileHandle manually.
+B32 FileCopy(U8* src_path, U8* dest_path);                                   // NOTE: Replaces all data in dest_path with the data in src_path.
+
+B32 DirSetCurrentToExeDir(); // NOTE: Sets the current working directory to wherever the executable is.
+B32 DirSetCurrent(U8* file_path);
+B32 DirGetCurrent(Arena* arena, U8** file_path, U32* file_path_size);
+B32 DirGetExe(Arena* arena, U8** file_path, U32* file_path_size);
+B32 DirGetExeDir(Arena* arena, U8** file_path, U32* file_path_size);
+
+B32 PathPop(U8** path); // NOTE: Pops the right most part of the path off.
 
 // NOTE: This API simplifies file access semantics. If opening a file to write, it places an exclusive
 // (read & write) lock on that file. If opening a file in read-only mode, it places a shared (read)
@@ -114,6 +121,50 @@ B32 WIN_FileHandleStat(FileHandle* file, FileStats* stats) {
   return true;
 }
 
+B32 WIN_DirGetExe(Arena* arena, U8** file_path, U32* file_path_size) {
+  U16 size = 0;
+  do {
+    ARENA_POP_ARRAY(arena, U8, size);
+    if (size > KB(1)) {
+      LOG_ERROR("[IO] File name of the current EXE is greater than 1KB...?");
+      return false;
+    }
+    size += 256;
+    *file_path = ARENA_PUSH_ARRAY(arena, U8, size);
+    *file_path_size = GetModuleFileNameA(NULL, (LPSTR) *file_path, size);
+  } while (*file_path_size == size);
+  (*file_path)[*file_path_size] == '\0';
+  ARENA_POP_ARRAY(arena, U8, size - (*file_path_size + 1)); // NOTE: +1 incl. null term.
+  return true;
+}
+
+B32 WIN_DirGetCurrent(Arena* arena, U8** file_path, U32* file_path_size) {
+  U16 size = 0;
+  do {
+    ARENA_POP_ARRAY(arena, U8, size);
+    if (size > KB(1)) {
+      LOG_ERROR("[IO] File name of the current directory is greater than 1KB...?");
+      return false;
+    }
+    size += 256;
+    *file_path = ARENA_PUSH_ARRAY(arena, U8, size);
+    *file_path_size = GetCurrentDirectoryA(size, (LPSTR) *file_path);
+  } while (*file_path_size == size);
+  (*file_path)[*file_path_size] == '\0';
+  ARENA_POP_ARRAY(arena, U8, size - (*file_path_size + 1)); // NOTE: +1 incl. null term.
+  return true;
+}
+
+B32 WIN_DirSetCurrent(U8* file_path) {
+  CStringReplaceAllChar(file_path, '/', '\\');
+  BOOL result = SetCurrentDirectory((LPCSTR) file_path);
+  if (!result) {
+    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to set current directory: %s", file_path);
+    return false;
+  }
+  return true;
+}
+
 B32 WIN_FileHandleOpen(FileHandle* file, U8* file_path, FileMode mode) {
   DWORD desired_access = 0;
   B32 read  = mode & FileMode_Read;
@@ -142,6 +193,7 @@ B32 WIN_FileHandleOpen(FileHandle* file, U8* file_path, FileMode mode) {
   }
   file->arena = ArenaAllocate();
   file->file_path = CStringCopy(file->arena, file_path);
+  CStringReplaceAllChar(file->file_path, '/', '\\');
   file->is_writing = write;
   return true;
 }
@@ -241,6 +293,50 @@ B32 LINUX_FileHandleStat(FileHandle* file, FileStats* stats) {
   return true;
 }
 
+B32 LINUX_DirGetExe(Arena* arena, U8** file_path, U32* file_path_size) {
+  U16 size = 0;
+  do {
+    ARENA_POP_ARRAY(arena, U8, size);
+    if (size > KB(1)) {
+      LOG_ERROR("[IO] File name of the current EXE is greater than 1KB...?");
+      return false;
+    }
+    size += 256;
+    *file_path = ARENA_PUSH_ARRAY(arena, U8, size);
+    // TODO: this only works on linux, not other unix OSs.
+    *file_path_size = readlink("/proc/self/exe", *file_path, size);
+  } while (*file_path_size == size);
+  (*file_path)[*file_path_size] == '\0';
+  ARENA_POP_ARRAY(arena, U8, size - (*file_path_size + 1));
+  return true;
+}
+
+B32 LINUX_DirGetCurrent(Arena* arena, U8** file_path, U32* file_path_size) {
+  U16 size = 0;
+  do {
+    ARENA_POP_ARRAY(arena, U8, size);
+    if (size > KB(1)) {
+      LOG_ERROR("[IO] File name of the current directory is greater than 1KB...?");
+      return false;
+    }
+    size += 256;
+    *file_path = ARENA_PUSH_ARRAY(arena, U8, size);
+    getcwd(*file_path, size);
+  } while (*file_path == NULL);
+  *file_path_size = CStringSize(*file_path);
+  ARENA_POP_ARRAY(arena, U8, size - (*file_path_size + 1));
+  return true;
+}
+
+B32 LINUX_DirSetCurrent(U8* file_path) {
+  S32 result = chdir(file_path);
+  if (result == -1) {
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to set current directory: %s", file_path);
+    return false;
+  }
+  return true;
+}
+
 B32 LINUX_FileHandleOpen(FileHandle* file, U8* file_path, FileMode mode) {
   S32 flags = 0;
 
@@ -278,6 +374,7 @@ B32 LINUX_FileHandleOpen(FileHandle* file, U8* file_path, FileMode mode) {
 
   file->arena = ArenaAllocate();
   file->file_path = CStringCopy(file->arena, file_path);
+  CStringReplaceAllChar(file->file_path, '\\', '/');
   file->is_writing = write;
   return true;
 }
@@ -400,6 +497,45 @@ B32 FileCopy(U8* src_path, U8* dest_path) {
 file_copy_exit:
   ArenaRelease(arena);
   return success;
+}
+
+B32 DirGetExe(Arena* arena, U8** file_path, U32* file_path_size) {
+  return CDEFAULT_IO_BACKEND_FN(DirGetExe(arena, file_path, file_path_size));
+}
+
+B32 DirGetExeDir(Arena* arena, U8** file_path, U32* file_path_size) {
+  B32 result = DirGetExe(arena, file_path, file_path_size);
+  if (result) { PathPop(file_path); }
+  return result;
+}
+
+B32 DirGetCurrent(Arena* arena, U8** file_path, U32* file_path_size) {
+  return CDEFAULT_IO_BACKEND_FN(DirGetCurrent(arena, file_path, file_path_size));
+}
+
+B32 DirSetCurrent(U8* file_path) {
+  return CDEFAULT_IO_BACKEND_FN(DirSetCurrent(file_path));
+}
+
+B32 DirSetCurrentToExeDir() {
+  B32 success = false;
+  Arena* arena = ArenaAllocate();
+  U8* dir;
+  U32 dir_size;
+  if (!DirGetExeDir(arena, &dir, &dir_size)) { goto dir_set_current_to_exe_dir_exit; }
+  if (!DirSetCurrent(dir)) { goto dir_set_current_to_exe_dir_exit; }
+  success = true;
+dir_set_current_to_exe_dir_exit:
+  ArenaRelease(arena);
+  return success;
+}
+
+B32 PathPop(U8** path) {
+  CStringReplaceAllChar(*path, '\\', '/');
+  U8* needle = (U8*) "/";
+  S32 result = CStringFindReverse(*path, CStringSize(*path) - 1, needle);
+  if (result >= 0) { (*path)[result] = '\0'; }
+  return result >= 0;
 }
 
 B32 FileHandleStat(FileHandle* file, FileStats* stats) {
