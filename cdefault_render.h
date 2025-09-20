@@ -41,7 +41,7 @@ void WindowGetMouseDeltaPosition(F32* x, F32* y);
 void WindowGetMouseDeltaPositionV(V2* pos);
 
 void RendererSetProjection(M4 projection);
-void RendererRegisterImage(U32* image_handle, U8* image_bytes, U32 width, U32 height);
+void RendererRegisterImage(U32* image_handle, U8* image_bytes, U32 width, U32 height); // NOTE: Expects RGBA byte values (0 -> 255)
 void RendererReleaseImage(U32 image_handle);
 void RendererEnableScissorTest(S32 x, S32 y, S32 width, S32 height);
 void RendererDisableScissorTest(void);
@@ -1136,8 +1136,6 @@ void WIN_WindowFlushEvents() {
     } else {
       LOG_ERROR("Failed to find mouse point relative to the screen.");
     }
-  } else {
-    LOG_ERROR("Failed to get the mouse point.");
   }
 
   MSG msg;

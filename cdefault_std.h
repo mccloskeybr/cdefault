@@ -144,12 +144,6 @@ typedef double   F64;
 #define SIGN(x)         (((x) > 0) ? 1 : (((x) < 0) ? -1 : 0))
 #define SWAP(t, a, b)   do { t _s=(a); (a)=(b); (b)=_s; } while(0)
 
-#define BIT(idx) (1 << (idx))
-#define EXTRACT_BIT(word, idx) (((word) >> (idx)) & 1)
-#define EXTRACT_U8(word, pos)  (((word) >> ((pos) * 8)) & 0xff)
-#define EXTRACT_U16(word, pos) (((word) >> ((pos) * 16)) & 0xffff)
-#define EXTRACT_U32(word, pos) (((word) >> ((pos) * 32)) & 0xffffffff)
-
 #define KB(n)       (((U64)(n)) << 10)
 #define MB(n)       (((U64)(n)) << 20)
 #define GB(n)       (((U64)(n)) << 30)
@@ -165,6 +159,20 @@ typedef double   F64;
 #define ANSI_COLOR_MAGENTA "\x1b[35m"
 #define ANSI_COLOR_CYAN    "\x1b[36m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Bit manipulation
+///////////////////////////////////////////////////////////////////////////////
+
+#define BIT(idx) (1 << (idx))
+#define EXTRACT_BIT(word, idx) (((word) >> (idx)) & 1)
+#define EXTRACT_U8(word, pos)  (((word) >> ((pos) * 8)) & 0xff)
+#define EXTRACT_U16(word, pos) (((word) >> ((pos) * 16)) & 0xffff)
+#define EXTRACT_U32(word, pos) (((word) >> ((pos) * 32)) & 0xffffffff)
+
+S32 U32LsbPos(U32 x); // NOTE: Returns -1 on 0.
+S32 U32MsbPos(U32 x); // NOTE: Returns -1 on 0.
+U32 U32CountBits(U32 x);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Branch prediction
@@ -204,6 +212,14 @@ typedef double   F64;
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Alignment and offsets
 ///////////////////////////////////////////////////////////////////////////////
+
+#if defined(COMPILER_MSVC)
+#  define PACKED_STRUCT(s) __pragma(pack(push, 1)) struct s __pragma(pack(pop))
+#elif defined(COMPILER_GCC) || defined(COMPILER_CLANG)
+#  define PACKED_STRUCT(s) struct __attribute__((packed)) s
+#else
+#  error PACKED_STRUCT not defined for this compiler.
+#endif
 
 #if defined(COMPILER_MSVC) || defined(COMPILER_CLANG)
 #  define ALIGN_OF(T) __alignof(T)
@@ -752,6 +768,38 @@ S32 SortCompareString8Desc(void* a, void* b); // NOTE: Lexicographic ordering
 
 #ifdef CDEFAULT_STD_IMPLEMENTATION
 #undef CDEFAULT_STD_IMPLEMENTATION
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Bit manipulation implementation
+///////////////////////////////////////////////////////////////////////////////
+
+S32 U32LsbPos(U32 x) {
+  if (x == 0) { return -1; }
+  int result = 0;
+  if ((x & 0xFFFF) == 0) { x >>= 16; result += 16; }
+  if ((x & 0xFF) == 0)   { x >>= 8;  result += 8; }
+  if ((x & 0xF) == 0)    { x >>= 4;  result += 4; }
+  if ((x & 0x3) == 0)    { x >>= 2;  result += 2; }
+  if ((x & 0x1) == 0)    {           result += 1; }
+  return result;
+}
+
+S32 U32MsbPos(U32 x) {
+  if (x == 0) { return -1; }
+  U32 result = 0;
+  if (x >= (1U << 16)) { x >>= 16; result += 16; }
+  if (x >= (1U << 8))  { x >>= 8;  result += 8; }
+  if (x >= (1U << 4))  { x >>= 4;  result += 4; }
+  if (x >= (1U << 2))  { x >>= 2;  result += 2; }
+  if (x >= (1U << 1))  {           result += 1; }
+  return result;
+}
+
+U32 U32CountBits(U32 x) {
+  U32 result = 0;
+  while (x != 0) { x &= (x - 1); result += 1; }
+  return result;
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Memory implementation

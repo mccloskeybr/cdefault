@@ -8,6 +8,7 @@ NOTE: Windows is explicitly supported. Linux is partially supported. I'll get ar
 
 *  `cdefault_audio.h`    - Unified API for playing audio on operating systems.
 *  `cdefault_geometry.h` - Structs and functions for 2/3D geometry, including some collision detection.
+*  `cdefault_iamge.h`    - Ingest various image file formats.
 *  `cdefault_io.h`       - Filesytem API.
 *  `cdefault_math.h`     - Math library, particularly 2/3/4D vectors and 3x3 / 4x4 Matrices for graphics.
 *  `cdefault_profile.h`  - Simple profiler.
@@ -32,3 +33,4 @@ Some modules have been influenced by the following:
 *  RayLib
 *  SDL3
 *  RAD debugger
+*  STB libraries

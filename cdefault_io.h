@@ -7,6 +7,8 @@
 // - file search / better directory navigation
 // - more extensive testing
 
+// TODO: don't assume what to do with \0 for generic file funcs, add a separate function or add a param.
+
 typedef struct FileHandle FileHandle;
 
 typedef enum FileMode FileMode;
@@ -54,6 +56,26 @@ B32 FileHandleStat(FileHandle* file, FileStats* stats);
 B32 FileHandleSeek(FileHandle* file, S32 distance, FileSeekPos pos);
 B32 FileHandleRead(FileHandle* file, U8* buffer, U32 buffer_size, U32* bytes_read);
 B32 FileHandleWrite(FileHandle* file, U8* buffer, U32 buffer_size, U32* bytes_written);
+
+// NOTE: A BinReader provides a convenient way to ingest individual bytes of blobs of data.
+typedef struct BinReader BinReader;
+struct BinReader {
+  U8* bytes;
+  U32 bytes_size;
+  U32 pos;
+};
+
+void BinReaderInit(BinReader* reader, U8* bytes, U32 bytes_size);
+void BinReaderSetPos(BinReader* reader, U32 pos);
+void BinReaderReset(BinReader* reader);
+void BinReaderSkip(BinReader* reader, U32 num, U32 size);
+U8   BinReader8(BinReader* reader);
+U16  BinReader16LE(BinReader* reader);
+U16  BinReader16BE(BinReader* reader);
+U32  BinReader32LE(BinReader* reader);
+U32  BinReader32BE(BinReader* reader);
+U64  BinReader64LE(BinReader* reader);
+U64  BinReader64BE(BinReader* reader);
 
 #endif // CDEFAULT_IO_H_
 
@@ -133,7 +155,7 @@ B32 WIN_DirGetExe(Arena* arena, U8** file_path, U32* file_path_size) {
     *file_path = ARENA_PUSH_ARRAY(arena, U8, size);
     *file_path_size = GetModuleFileNameA(NULL, (LPSTR) *file_path, size);
   } while (*file_path_size == size);
-  (*file_path)[*file_path_size] == '\0';
+  (*file_path)[*file_path_size] = '\0';
   ARENA_POP_ARRAY(arena, U8, size - (*file_path_size + 1)); // NOTE: +1 incl. null term.
   return true;
 }
@@ -150,7 +172,7 @@ B32 WIN_DirGetCurrent(Arena* arena, U8** file_path, U32* file_path_size) {
     *file_path = ARENA_PUSH_ARRAY(arena, U8, size);
     *file_path_size = GetCurrentDirectoryA(size, (LPSTR) *file_path);
   } while (*file_path_size == size);
-  (*file_path)[*file_path_size] == '\0';
+  (*file_path)[*file_path_size] = '\0';
   ARENA_POP_ARRAY(arena, U8, size - (*file_path_size + 1)); // NOTE: +1 incl. null term.
   return true;
 }
@@ -560,6 +582,65 @@ B32 FileHandleRead(FileHandle* file, U8* buffer, U32 buffer_size, U32* bytes_rea
 
 B32 FileHandleWrite(FileHandle* file, U8* buffer, U32 buffer_size, U32* bytes_written) {
   return CDEFAULT_IO_BACKEND_FN(FileHandleWrite(file, buffer, buffer_size, bytes_written));
+}
+
+void BinReaderInit(BinReader* reader, U8* bytes, U32 bytes_size) {
+  reader->bytes = bytes;
+  reader->bytes_size = bytes_size;
+  reader->pos = 0;
+}
+
+void BinReaderSetPos(BinReader* reader, U32 pos) {
+  reader->pos = pos;
+}
+
+void BinReaderReset(BinReader* reader) {
+  BinReaderSetPos(reader, 0);
+}
+
+void BinReaderSkip(BinReader* reader, U32 num, U32 size) {
+  reader->pos += num * size;
+}
+
+U8 BinReader8(BinReader* reader) {
+  DEBUG_ASSERT(reader->pos < reader->bytes_size);
+  return reader->bytes[reader->pos++];
+}
+
+U16 BinReader16LE(BinReader* reader) {
+  U8 x = BinReader8(reader);
+  U8 y = BinReader8(reader);
+  return (((U16) x) + (((U16) y) << 8));
+}
+
+U16 BinReader16BE(BinReader* reader) {
+  U8 x = BinReader8(reader);
+  U8 y = BinReader8(reader);
+  return ((((U16) x) << 8) + ((U16) y));
+}
+
+U32 BinReader32LE(BinReader* reader) {
+  U16 x = BinReader16LE(reader);
+  U16 y = BinReader16LE(reader);
+  return (((U32) x) + (((U32) y) << 16));
+}
+
+U32 BinReader32BE(BinReader* reader) {
+  U16 x = BinReader16BE(reader);
+  U16 y = BinReader16BE(reader);
+  return ((((U32) x) << 16) + ((U32) y));
+}
+
+U64 BinReader64LE(BinReader* reader) {
+  U32 x = BinReader32LE(reader);
+  U32 y = BinReader32LE(reader);
+  return (((U64) x) + (((U64) y) << 32));
+}
+
+U64 BinReader64BE(BinReader* reader) {
+  U32 x = BinReader32BE(reader);
+  U32 y = BinReader32BE(reader);
+  return ((((U64) x) << 32) + ((U64) y));
 }
 
 #endif // CDEFAULT_IO_IMPLEMENTATION
