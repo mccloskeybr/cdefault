@@ -5,27 +5,45 @@
 #include "cdefault_std.h"
 
 // API for loading image files, e.g. off of disk.
+//
 // The following file formats are supported:
-// - BMP: versions v2 - v5, bpp in (1, 4, 8, 16, 24, 32), uncompressed or bitfield compression.
+// -   BMP: versions v2 - v5, bpp in (1, 4, 8, 16, 24, 32), uncompressed or bitfield compression (NOT RLE compression).
+//
+// E.g.
+// Arena arena = ArenaAllocate();
+// Image image;
+// DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, "data/my_img.bmp"));
+// RenderMyBeautifulImage(image.data, image.width, image.height);
+// ArenaRelease(arena);
 
 // TODO: support RLE BMP?
 // TODO: better error messages?
 // TODO: support other input / file formats?
 // TODO: different output formats?
 // TODO: SIMD
+// TODO: if end format is RGBA, don't require a separate copy (or, don't require format conversion altogether? depends on list of reasonable output formats)
+// TODO: write BMPs
 
-// NOTE: The format to load the image data in as.
+// NOTE: Uncompressed image data format.
 typedef enum ImageFormat ImageFormat;
 enum ImageFormat {
   ImageFormat_RGBA,
   ImageFormat_RGB,
 };
 
-B32 ImageLoadFile(Arena* arena, U8** image, U32* width, U32* height, ImageFormat format, U8* file_path);
-B32 ImageLoad(Arena* arena, U8** image, U32* width, U32* height, ImageFormat format, U8* file_data, U32 image_data_size);
-B32 ImageConvert(Arena* arena, ImageFormat out_format, ImageFormat in_format, U8** out_image, U8* image, U32 width, U32 height); // NOTE: Converts from e.g. RGB -> RGBA on a pre-loaded image.
+typedef struct Image Image;
+struct Image {
+  ImageFormat format;
+  U32 width;
+  U32 height;
+  U8* data;
+};
 
-B32 ImageLoadBmp(Arena* arena, U8** image, U32* width, U32* height, ImageFormat format, U8* file_data, U32 image_data_size);
+B32  ImageLoadFile(Arena* arena, Image* image, ImageFormat format, U8* file_path);
+B32  ImageLoad(Arena* arena, Image* image, ImageFormat format, U8* file_data, U32 image_data_size);
+void ImageConvert(Arena* arena, Image* to, Image* from, ImageFormat to_format);
+
+B32  ImageLoadBmp(Arena* arena, Image* image, ImageFormat format, U8* file_data, U32 image_data_size);
 
 #endif // CDEFAULT_IMAGE_H_
 
@@ -41,19 +59,19 @@ enum ImageBmpVersion {
   ImageBmpVersion_WinV5,
 };
 
-typedef enum ImageBmpCompression ImageBmpCompression;
-enum ImageBmpCompression {
-  ImageBmpCompression_Uncompressed,
-  ImageBmpCompression_Bitfields,
-};
-
-B32 ImageLoadBmp(Arena* arena, U8** image, U32* width, U32* height, ImageFormat format, U8* file_data, U32 file_data_size) {
+// https://en.wikipedia.org/wiki/BMP_file_format
+// https://www.fileformat.info/format/bmp/egff.htm
+B32 ImageLoadBmp(Arena* arena, Image* image, ImageFormat format, U8* file_data, U32 file_data_size) {
   // NOTE: Read shared header
   BinReader r;
   BinReaderInit(&r, file_data, file_data_size);
   if (BinReader8(&r) != 'B' || BinReader8(&r) != 'M') { return false; }
   BinReaderSkip(&r, 8, sizeof(U8));
   U32 palette_offset = 14; // NOTE: +14 for the data we just processed above.
+
+  // NOTE: Simplify loading by assuming RGBA, then converting to the desired step separately.
+  Image temp_image;
+  temp_image.format = ImageFormat_RGBA;
 
   U32 data_offset = BinReader32LE(&r);
 
@@ -74,11 +92,11 @@ B32 ImageLoadBmp(Arena* arena, U8** image, U32* width, U32* height, ImageFormat 
   }
 
   if (version == ImageBmpVersion_WinV2) {
-    *width  = BinReader16LE(&r);
-    *height = BinReader16LE(&r);
+    temp_image.width  = BinReader16LE(&r);
+    temp_image.height = BinReader16LE(&r);
   } else {
-    *width  = BinReader32LE(&r);
-    *height = BinReader32LE(&r);
+    temp_image.width  = BinReader32LE(&r);
+    temp_image.height = BinReader32LE(&r);
   }
   U16 color_plane = BinReader16LE(&r);
   if (color_plane != 1) {
@@ -86,8 +104,8 @@ B32 ImageLoadBmp(Arena* arena, U8** image, U32* width, U32* height, ImageFormat 
     return false;
   }
   B8 y_flipped = false;
-  if (*height < 0) {
-    *height *= -1;
+  if (temp_image.height < 0) {
+    temp_image.height *= -1;
     y_flipped = true;
   }
 
@@ -99,41 +117,30 @@ B32 ImageLoadBmp(Arena* arena, U8** image, U32* width, U32* height, ImageFormat 
   U32 a_mask = 0;
   if (bits_per_pixel == 16) {
     a_mask = 0;
-    r_mask = 0x1F << 10;
-    g_mask = 0x1F << 5;
-    b_mask = 0x1F << 0;
+    r_mask = 0x1f << 10;
+    g_mask = 0x1f << 5;
+    b_mask = 0x1f << 0;
   } else if (bits_per_pixel == 32) {
-    a_mask = 0xFF << 24;
-    r_mask = 0xFF << 16;
-    g_mask = 0xFF << 8;
-    b_mask = 0xFF << 0;
+    a_mask = 0xff << 24;
+    r_mask = 0xff << 16;
+    g_mask = 0xff << 8;
+    b_mask = 0xff << 0;
   }
 
   if (version != ImageBmpVersion_WinV2) {
-    ImageBmpCompression compression;
-    U32 c = BinReader32LE(&r);
-    switch (c) {
-      case 0: {
-        compression = ImageBmpCompression_Uncompressed;
-      } break;
-      case 1:
-      case 2: {
-        LOG_ERROR("[IMAGE] BMP RLE compression is not supported: %d", c);
-        return false;
-      } break;
-      case 3: {
-        compression = ImageBmpCompression_Bitfields;
-      } break;
-      default: {
-        LOG_ERROR("[IMAGE] Unrecognized BMP compression format: %d", c);
-        return false;
-      } break;
+    U32 compression = BinReader32LE(&r);
+    // 0    -> uncompressed
+    // 1, 2 -> RLE
+    // 3    -> bitfields
+    if (compression != 0 && compression != 3) {
+      LOG_ERROR("[IMAGE] BMP unknown or unsupported compression format detected: %d", compression);
+      return false;
     }
     BinReaderSkip(&r, 5, sizeof(U32));
 
     if (version == ImageBmpVersion_WinV3 || version == ImageBmpVersion_WinV3_Adobe) {
       if (version == ImageBmpVersion_WinV3_Adobe) { BinReaderSkip(&r, 4, sizeof(U32)); }
-      if ((bits_per_pixel == 16 || bits_per_pixel == 32) && compression == ImageBmpCompression_Bitfields) {
+      if ((bits_per_pixel == 16 || bits_per_pixel == 32) && compression == 3) {
         r_mask = BinReader32LE(&r);
         g_mask = BinReader32LE(&r);
         b_mask = BinReader32LE(&r);
@@ -145,7 +152,7 @@ B32 ImageLoadBmp(Arena* arena, U8** image, U32* width, U32* height, ImageFormat 
         }
       }
     } else if (version == ImageBmpVersion_WinV4 || version == ImageBmpVersion_WinV5) {
-      if (compression == ImageBmpCompression_Bitfields) {
+      if (compression == 3) {
         r_mask = BinReader32LE(&r);
         g_mask = BinReader32LE(&r);
         b_mask = BinReader32LE(&r);
@@ -180,26 +187,28 @@ B32 ImageLoadBmp(Arena* arena, U8** image, U32* width, U32* height, ImageFormat 
   // NOTE: load image into temp buffer first to simplify format logic.
   // ingest as RGBA and convert to the requested format later.
   Arena* temp_arena = ArenaAllocate();
-  U8* temp_image = ARENA_PUSH_ARRAY(arena, U8, *width * *height * 4);
+  temp_image.data = ARENA_PUSH_ARRAY(arena, U8, temp_image.width * temp_image.height * 4);
   B32 success = false;
 
   // NOTE: Read color data
+  U32 a_zero = 0;
   BinReaderSetPos(&r, data_offset);
   switch (bits_per_pixel) {
     case 1: {
-      S32 stride  = (*width + 7) >> 3;
+      S32 stride  = (temp_image.width + 7) >> 3;
       S32 pad     = (-stride) & 3;
       U32 out_idx = 0;
-      for (U32 i = 0; i < *height; i++) {
+      a_zero      = 0xff;
+      for (U32 i = 0; i < temp_image.height; i++) {
         S8 bit_offset = 7;
         U8 current_byte = BinReader8(&r);
-        for (U32 j = 0; j < *width; j++) {
+        for (U32 j = 0; j < temp_image.width; j++) {
           U8 color = (current_byte >> bit_offset) & 1;
-          temp_image[out_idx++] = palette[color][0];
-          temp_image[out_idx++] = palette[color][1];
-          temp_image[out_idx++] = palette[color][2];
-          temp_image[out_idx++] = 255;
-          if (j + 1 == *width) { break; }
+          temp_image.data[out_idx++] = palette[color][0];
+          temp_image.data[out_idx++] = palette[color][1];
+          temp_image.data[out_idx++] = palette[color][2];
+          temp_image.data[out_idx++] = 255;
+          if (j + 1 == temp_image.width) { break; }
           bit_offset -= 1;
           if (bit_offset < 0) {
             bit_offset = 7;
@@ -211,19 +220,20 @@ B32 ImageLoadBmp(Arena* arena, U8** image, U32* width, U32* height, ImageFormat 
     } break;
 
     case 4: {
-      S32 stride  = (*width + 1) >> 1;
+      S32 stride  = (temp_image.width + 1) >> 1;
       S32 pad     = (-stride) & 3;
       U32 out_idx = 0;
-      for (U32 i = 0; i < *height; i++) {
+      a_zero      = 0xff;
+      for (U32 i = 0; i < temp_image.height; i++) {
         B8 first = true;
         U8 current_byte = BinReader8(&r);;
-        for (U32 j = 0; j < *width; j++) {
-          U8 color = (current_byte >> (4 * first)) & 0xF;
-          temp_image[out_idx++] = palette[color][0];
-          temp_image[out_idx++] = palette[color][1];
-          temp_image[out_idx++] = palette[color][2];
-          temp_image[out_idx++] = 255;
-          if (j + 1 == *width) { break; }
+        for (U32 j = 0; j < temp_image.width; j++) {
+          U8 color = (current_byte >> (4 * first)) & 0xf;
+          temp_image.data[out_idx++] = palette[color][0];
+          temp_image.data[out_idx++] = palette[color][1];
+          temp_image.data[out_idx++] = palette[color][2];
+          temp_image.data[out_idx++] = 255;
+          if (j + 1 == temp_image.width) { break; }
           first = !first;
           if (first) { current_byte = BinReader8(&r); }
         }
@@ -232,78 +242,80 @@ B32 ImageLoadBmp(Arena* arena, U8** image, U32* width, U32* height, ImageFormat 
     } break;
 
     case 8: {
-      S32 pad = (-((S32)*width)) & 3;
+      S32 pad     = (-((S32)temp_image.width)) & 3;
       U32 out_idx = 0;
-      for (U32 i = 0; i < *height; i++) {
-        for (U32 j = 0; j < *width; j++) {
+      a_zero      = 0xff;
+      for (U32 i = 0; i < temp_image.height; i++) {
+        for (U32 j = 0; j < temp_image.width; j++) {
           U8 color = BinReader8(&r);
-          temp_image[out_idx++] = palette[color][0];
-          temp_image[out_idx++] = palette[color][1];
-          temp_image[out_idx++] = palette[color][2];
-          temp_image[out_idx++] = 255;
+          temp_image.data[out_idx++] = palette[color][0];
+          temp_image.data[out_idx++] = palette[color][1];
+          temp_image.data[out_idx++] = palette[color][2];
+          temp_image.data[out_idx++] = 255;
         }
         BinReaderSkip(&r, pad, sizeof(U8));
       }
     } break;
 
     case 16: {
-      S32 stride = *width * 2;
+      S32 stride = temp_image.width * 2;
       S32 pad    = -stride & 3;
       if (r_mask == 0 || g_mask == 0 || b_mask == 0) {
         LOG_ERROR("[IMAGE] Bad color masks detected for BMP image.");
         goto image_load_bmp_exit;
       }
       U32 out_idx = 0;
-      for (U32 i = 0; i < *height; i++) {
-        for (U32 j = 0; j < *width; j++) {
+      for (U32 i = 0; i < temp_image.height; i++) {
+        for (U32 j = 0; j < temp_image.width; j++) {
           U16 color = BinReader16LE(&r);
-          U8 red   = (color & r_mask) >> r_shift;
-          U8 green = (color & g_mask) >> g_shift;
-          U8 blue  = (color & b_mask) >> b_shift;
-          // NOTE: Map from e.g. 5 bits to 8 bits.
-          temp_image[out_idx++] = red   * (((F32) 0xff) / (r_mask >> r_shift));
-          temp_image[out_idx++] = green * (((F32) 0xff) / (g_mask >> g_shift));
-          temp_image[out_idx++] = blue  * (((F32) 0xff) / (b_mask >> b_shift));
-          temp_image[out_idx++] = 255;
+          // NOTE: grab color data using mask, shift into place, and remap to 8 bits by mult. by ratio of 8 bit max to mask max.
+          // TODO: is there a way to do this without divides? does it matter?
+          temp_image.data[out_idx++] = ((color & r_mask) >> r_shift) * (((F32) 0xff) / (r_mask >> r_shift));
+          temp_image.data[out_idx++] = ((color & g_mask) >> g_shift) * (((F32) 0xff) / (g_mask >> g_shift));
+          temp_image.data[out_idx++] = ((color & b_mask) >> b_shift) * (((F32) 0xff) / (b_mask >> b_shift));
+          temp_image.data[out_idx++] = ((color & a_mask) >> a_shift) * (((F32) 0xff) / (a_mask >> a_shift));
+          a_zero |= temp_image.data[out_idx - 1];
         }
         BinReaderSkip(&r, pad, sizeof(U8));
       }
     } break;
 
     case 24: {
-      S32 stride  = *width * 3;
+      S32 stride  = temp_image.width * 3;
       S32 pad     = -stride & 3;
       U32 out_idx = 0;
-      for (U32 i = 0; i < *height; i++) {
-        for (U32 j = 0; j < *width; j++) {
+      a_zero      = 0xff;
+      for (U32 i = 0; i < temp_image.height; i++) {
+        for (U32 j = 0; j < temp_image.width; j++) {
           U8 green = BinReader8(&r);
           U8 blue  = BinReader8(&r);
           U8 red   = BinReader8(&r);
-          temp_image[out_idx++] = red;
-          temp_image[out_idx++] = blue;
-          temp_image[out_idx++] = green;
-          temp_image[out_idx++] = 255;
+          temp_image.data[out_idx++] = red;
+          temp_image.data[out_idx++] = blue;
+          temp_image.data[out_idx++] = green;
+          temp_image.data[out_idx++] = 255;
         }
         BinReaderSkip(&r, pad, sizeof(U8));
       }
     } break;
 
     case 32: {
-      S32 stride  = *width * 4;
+      S32 stride  = temp_image.width * 4;
       S32 pad     = -stride & 3;
+      if (r_mask == 0 || g_mask == 0 || b_mask == 0) {
+        LOG_ERROR("[IMAGE] Bad color masks detected for BMP image.");
+        goto image_load_bmp_exit;
+      }
       U32 out_idx = 0;
-      for (U32 i = 0; i < *height; i++) {
-        for (U32 j = 0; j < *width; j++) {
+      for (U32 i = 0; i < temp_image.height; i++) {
+        for (U32 j = 0; j < temp_image.width; j++) {
           U32 color = BinReader32LE(&r);
-          U32 red   = (color & r_mask) >> r_shift;
-          U32 green = (color & g_mask) >> g_shift;
-          U32 blue  = (color & b_mask) >> b_shift;
-          U32 alpha = (color & a_mask) >> a_shift;
-          // NOTE: Map from e.g. 10 bits to 8 bits.
-          temp_image[out_idx++] = red   * (((F32) 0xff) / (r_mask >> r_shift));
-          temp_image[out_idx++] = green * (((F32) 0xff) / (g_mask >> g_shift));
-          temp_image[out_idx++] = blue  * (((F32) 0xff) / (b_mask >> b_shift));
-          temp_image[out_idx++] = alpha * (((F32) 0xff) / (a_mask >> a_shift));
+          // NOTE: grab color data using mask, shift into place, and remap to 8 bits by mult. by ratio of 8 bit max to mask max.
+          temp_image.data[out_idx++] = ((color & r_mask) >> r_shift) * (((F32) 0xff) / (r_mask >> r_shift));
+          temp_image.data[out_idx++] = ((color & g_mask) >> g_shift) * (((F32) 0xff) / (g_mask >> g_shift));
+          temp_image.data[out_idx++] = ((color & b_mask) >> b_shift) * (((F32) 0xff) / (b_mask >> b_shift));
+          temp_image.data[out_idx++] = ((color & a_mask) >> a_shift) * (((F32) 0xff) / (a_mask >> a_shift));
+          a_zero |= temp_image.data[out_idx - 1];
         }
         BinReaderSkip(&r, pad, sizeof(U8));
       }
@@ -315,86 +327,96 @@ B32 ImageLoadBmp(Arena* arena, U8** image, U32* width, U32* height, ImageFormat 
     } break;
   }
 
-  // NOTE: BMP is normally ordered from bottom to top.
-  // Flip it by default to order from top to bottom, unless it's already in that format.
-  y_flipped = !y_flipped;
-  if (y_flipped) {
-    for (U32 i = 0; i < *height / 2; i++) {
-      U8* a = temp_image + (i * *width * 4);
-      U8* b = temp_image + ((*height - 1 - i) * *width * 4);
-      for (U32 j = 0; j < *width * 4; j++) { SWAP(U8, a[j], b[j]); }
+  // NOTE: If there wasn't any alpha, go back and make everything opaque.
+  if (a_zero == 0) {
+    for (U32 i = 3; i < image->width * image->height * 4; i += 4) {
+      image->data[i] = 255;
     }
   }
 
-  DEBUG_ASSERT(ImageConvert(arena, format, ImageFormat_RGBA, image, temp_image, *width, *height));
+  // NOTE: BMP is normally ordered from bottom to top. Flip it by default to order from top to bottom.
+  y_flipped = !y_flipped;
+  if (y_flipped) {
+    for (U32 i = 0; i < temp_image.height / 2; i++) {
+      U8* a = temp_image.data + (i * temp_image.width * 4);
+      U8* b = temp_image.data + ((temp_image.height - 1 - i) * temp_image.width * 4);
+      for (U32 j = 0; j < temp_image.width * 4; j++) { SWAP(U8, a[j], b[j]); }
+    }
+  }
+  ImageConvert(arena, image, &temp_image, format);
   success = true;
 image_load_bmp_exit:
   ArenaRelease(temp_arena);
   return success;
 }
 
-B32 ImageLoadFile(Arena* arena, U8** image, U32* width, U32* height, ImageFormat format, U8* file_path) {
+B32 ImageLoadFile(Arena* arena, Image* image, ImageFormat format, U8* file_path) {
   B32 success = false;
   U8* file_data;
   U32 file_data_size;
   Arena* file_arena = ArenaAllocate();
   if (!FileReadAll(file_arena, file_path, &file_data, &file_data_size)) { goto image_load_file_exit; }
-  success = ImageLoad(arena, image, width, height, format, file_data, file_data_size);
+  success = ImageLoad(arena, image, format, file_data, file_data_size);
 image_load_file_exit:
   ArenaRelease(file_arena);
   return success;
 }
 
-B32 ImageLoad(Arena* arena, U8** image, U32* width, U32* height, ImageFormat format, U8* file_data, U32 image_data_size) {
-  if (ImageLoadBmp(arena, image, width, height, format, file_data, image_data_size)) { return true; }
+B32 ImageLoad(Arena* arena, Image* image, ImageFormat format, U8* file_data, U32 image_data_size) {
+  if (ImageLoadBmp(arena, image, format, file_data, image_data_size)) { return true; }
   return false;
 }
 
-B32 ImageConvert(Arena* arena, ImageFormat out_format, ImageFormat in_format, U8** out_image, U8* image, U32 width, U32 height) {
+void ImageConvert(Arena* arena, Image* to, Image* from, ImageFormat to_format) {
+  to->format = to_format;
+  to->width = from->width;
+  to->height = from->height;
+
   U32 bytes_per_pixel = 0;
-  switch (out_format) {
+  switch (to->format) {
     case ImageFormat_RGB:  { bytes_per_pixel = 3; } break;
     case ImageFormat_RGBA: { bytes_per_pixel = 4; } break;
-    default: {
-      LOG_ERROR("[IMAGE] Unrecognized image format provided: %d", out_format);
-      return false;
-    }
+    default: { UNREACHABLE(); }
   }
 
-  *out_image = ARENA_PUSH_ARRAY(arena, U8, width * height * bytes_per_pixel);
-  for (U32 i = 0; i < height; i++) {
-    for (U32 j = 0; j < width; j++) {
+  to->data = ARENA_PUSH_ARRAY(arena, U8, to->width * to->height * bytes_per_pixel);
+  if (to->format == from->format) {
+    MEMORY_COPY(to->data, from->data, to->width * to->height * bytes_per_pixel);
+    return;
+  }
+  for (U32 i = 0; i < to->height; i++) {
+    for (U32 j = 0; j < to->width; j++) {
       U8 r, g, b, a;
-      switch (in_format) {
+      switch (from->format) {
         case ImageFormat_RGB: {
-          r = image[(((i * width) + j) * 3) + 0];
-          g = image[(((i * width) + j) * 3) + 1];
-          b = image[(((i * width) + j) * 3) + 2];
+          r = from->data[(((i * to->width) + j) * 3) + 0];
+          g = from->data[(((i * to->width) + j) * 3) + 1];
+          b = from->data[(((i * to->width) + j) * 3) + 2];
+          a = 255;
         } break;
         case ImageFormat_RGBA: {
-          r = image[(((i * width) + j) * 4) + 0];
-          g = image[(((i * width) + j) * 4) + 1];
-          b = image[(((i * width) + j) * 4) + 2];
-          a = image[(((i * width) + j) * 4) + 3];
+          r = from->data[(((i * to->width) + j) * 4) + 0];
+          g = from->data[(((i * to->width) + j) * 4) + 1];
+          b = from->data[(((i * to->width) + j) * 4) + 2];
+          a = from->data[(((i * to->width) + j) * 4) + 3];
         } break;
       }
 
-      switch (out_format) {
+      switch (to->format) {
         case ImageFormat_RGB: {
-          (*out_image)[(((i * width) + j) * 3) + 0] = r;
-          (*out_image)[(((i * width) + j) * 3) + 1] = g;
-          (*out_image)[(((i * width) + j) * 3) + 2] = b;
+          to->data[(((i * to->width) + j) * 3) + 0] = r;
+          to->data[(((i * to->width) + j) * 3) + 1] = g;
+          to->data[(((i * to->width) + j) * 3) + 2] = b;
         } break;
         case ImageFormat_RGBA: {
-          (*out_image)[(((i * width) + j) * 4) + 0] = r;
-          (*out_image)[(((i * width) + j) * 4) + 1] = g;
-          (*out_image)[(((i * width) + j) * 4) + 2] = b;
-          (*out_image)[(((i * width) + j) * 4) + 3] = a;
+          to->data[(((i * to->width) + j) * 4) + 0] = r;
+          to->data[(((i * to->width) + j) * 4) + 1] = g;
+          to->data[(((i * to->width) + j) * 4) + 2] = b;
+          to->data[(((i * to->width) + j) * 4) + 3] = a;
         } break;
       }
     }
   }
-  return true;
 }
 
 #endif // CDEFAULT_IMAGE_IMPLEMENTATION

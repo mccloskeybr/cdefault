@@ -23,9 +23,9 @@ struct AudioDevice {
 
 typedef enum AudioStreamFormat AudioStreamFormat;
 enum AudioStreamFormat {
-  AudioStreamFormat_Unknown,
   AudioStreamFormat_F32,
   AudioStreamFormat_S16,
+  AudioStreamFormat_S24,
   AudioStreamFormat_S32,
 };
 
@@ -115,7 +115,7 @@ struct WASAPI_AudioStream {
   WASAPI_AudioDevice* device;
   AtomicS32 ref_count;
   U32 sample_frames;
-  U32 buffer_size;
+  U32 align;
   HANDLE event;
   IAudioClient* client;
   IAudioRenderClient* render;
@@ -365,6 +365,11 @@ static B32 WASAPI_ContextAddStream(WASAPI_AudioContext* ctx, LockWitness witness
       custom_format.Samples.wValidBitsPerSample = 16;
       custom_format.SubFormat = _wasapi_GUID_DataFormat_PCM;
     } break;
+    case AudioStreamFormat_S24: {
+      custom_format.Format.wBitsPerSample = 24;
+      custom_format.Samples.wValidBitsPerSample = 24;
+      custom_format.SubFormat = _wasapi_GUID_DataFormat_PCM;
+    } break;
     case AudioStreamFormat_S32: {
       custom_format.Format.wBitsPerSample = 32;
       custom_format.Samples.wValidBitsPerSample = 32;
@@ -421,7 +426,7 @@ static B32 WASAPI_ContextAddStream(WASAPI_AudioContext* ctx, LockWitness witness
   // of course this requires the system be able to feed it data at that speed reliably, so that may be
   // another source of skipping...
   stream->sample_frames = MIN(stream->sample_frames, device_sample_frames / 2);
-  stream->buffer_size = stream->sample_frames * custom_format.Format.nBlockAlign;
+  stream->align = custom_format.Format.nBlockAlign;
 
   result = IAudioClient_GetService(stream->client, &_wasapi_IID_IAudioRenderClient, (void**)&stream->render);
   if (FAILED(result)) {
@@ -759,7 +764,7 @@ B32 WASAPI_AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, U32* 
   if (stream != NULL) {
     // TODO: retries / recovery plan
     ASSERT(stream->render != NULL);
-    *buffer_size = stream->buffer_size;
+    *buffer_size = stream->sample_frames * stream->align;;
     HRESULT result = IAudioRenderClient_GetBuffer(stream->render, stream->sample_frames, buffer);
     success = SUCCEEDED(result);
   }
@@ -767,7 +772,7 @@ B32 WASAPI_AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, U32* 
   return success;
 }
 
-B32 WASAPI_AudioStreamReleaseBuffer(AudioStreamHandle handle, U8* UNUSED(buffer), U32 UNUSED(buffer_size)) {
+B32 WASAPI_AudioStreamReleaseBuffer(AudioStreamHandle handle, U8* UNUSED(buffer), U32 buffer_size) {
   WASAPI_AudioContext* ctx = &_wasapi_ctx;
   if (!ctx->initialized) { return false; }
   LockWitness witness = MutexLock(&ctx->mutex);
@@ -775,7 +780,7 @@ B32 WASAPI_AudioStreamReleaseBuffer(AudioStreamHandle handle, U8* UNUSED(buffer)
   B32 success = false;
   WASAPI_AudioStream* stream = WASAPI_FindStreamByHandle(ctx, witness, handle);
   if (stream != NULL) {
-    HRESULT result = IAudioRenderClient_ReleaseBuffer(stream->render, stream->sample_frames, 0);
+    HRESULT result = IAudioRenderClient_ReleaseBuffer(stream->render, buffer_size / stream->align, 0);
     success = SUCCEEDED(result);
   }
 
@@ -961,6 +966,7 @@ static B32 PULSEAUDIO_ContextAddStream(PULSEAUDIO_AudioContext* ctx, LockWitness
   switch (spec.format) {
     case AudioStreamFormat_F32: { sample_spec.format = PA_SAMPLE_FLOAT32LE; } break;
     case AudioStreamFormat_S16: { sample_spec.format = PA_SAMPLE_S16LE;     } break;
+    case AudioStreamFormat_S24: { sample_spec.format = PA_SAMPLE_S24LE;     } break;
     case AudioStreamFormat_S32: { sample_spec.format = PA_SAMPLE_S32LE;     } break;
     default: {
       LOG_ERROR("[AUDIO] Unrecognized audio format provided: %d", spec.format);
@@ -1263,7 +1269,6 @@ B32 PULSEAUDIO_AudioStreamOpen(AudioStreamHandle* handle, AudioStreamSpec spec) 
   B32 success = PULSEAUDIO_ContextAddStream(ctx, ctx_witness, mainloop_witness, spec, *handle);
   MutexUnlock(&ctx->mutex);
   pa_threaded_mainloop_unlock(ctx->mainloop);
-  LOG_INFO("opened stream? %d", success);
   return success;
 }
 

@@ -2,40 +2,40 @@
 #include "../cdefault_std.h"
 #define CDEFAULT_MATH_IMPLEMENTATION
 #include "../cdefault_math.h"
+#define CDEFAULT_IO_IMPLEMENTATION
+#include "../cdefault_io.h"
 #define CDEFAULT_AUDIO_IMPLEMENTATION
 #include "../cdefault_audio.h"
-#include "third_party/stb_vorbis.c"
+#define CDEFAULT_SOUND_IMPLEMENTATION
+#include "../cdefault_sound.h"
 
 int main(void) {
-  ASSERT(AudioInit());
+  DEBUG_ASSERT(DirSetCurrentToExeDir());
+  DEBUG_ASSERT(AudioInit());
 
-  S32 stb_err = 0;
-  stb_vorbis* vorbis = stb_vorbis_open_filename("Z:\\cdefault\\example\\data\\test_audio.ogg", &stb_err, NULL);
-  // stb_vorbis* vorbis = stb_vorbis_open_filename("/home/mccloskeybr/projects/cdefault/example/data/test_audio.ogg", &stb_err, NULL);
-  ASSERT(stb_err == 0);
-  stb_vorbis_info vorbis_info = stb_vorbis_get_info(vorbis);
+  Sound sound;
+  DEBUG_ASSERT(SoundOpenFile(&sound, (U8*) "../data/test.wav"));
 
   AudioStreamSpec spec;
   MEMORY_ZERO_STRUCT(&spec);
   spec.device_handle = AUDIO_DEFAULT_DEVICE;
-  spec.channels = vorbis_info.channels;
-  spec.frequency = vorbis_info.sample_rate;
-  spec.format = AudioStreamFormat_F32;
+  spec.channels  = sound.channels;
+  spec.frequency = sound.frequency;
+  spec.format    = sound.format;
   AudioStreamHandle stream;
-  ASSERT(AudioStreamOpen(&stream, spec));
+  DEBUG_ASSERT(AudioStreamOpen(&stream, spec));
 
   U8* buffer;
-  U32 buffer_size;
+  U32 buffer_size, bytes_read;
   while(true) {
-    if (!AudioStreamAcquireBuffer(stream, &buffer, &buffer_size)) { continue; }
-    uint32_t read = stb_vorbis_get_samples_float_interleaved(
-        vorbis, vorbis_info.channels, (F32*) buffer, buffer_size / sizeof(F32));
-    if (!AudioStreamReleaseBuffer(stream, buffer, buffer_size)) { continue; }
-    if (read == 0) { stb_vorbis_seek_start(vorbis); }
-    if (!AudioStreamWait(stream)) { continue; }
+    DEBUG_ASSERT(AudioStreamAcquireBuffer(stream, &buffer, &buffer_size));
+    DEBUG_ASSERT(SoundGetSamplesInterleaved(&sound, buffer, buffer_size, &bytes_read));
+    if (bytes_read < buffer_size) { DEBUG_ASSERT(SoundRestart(&sound)); }
+    DEBUG_ASSERT(AudioStreamReleaseBuffer(stream, buffer, bytes_read));
+    DEBUG_ASSERT(AudioStreamWait(stream));
   }
 
   AudioStreamClose(stream);
-  stb_vorbis_close(vorbis);
+  SoundClose(&sound);
   AudioDeinit();
 }

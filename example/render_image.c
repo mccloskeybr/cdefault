@@ -19,11 +19,10 @@ int main(void) {
 
   Arena* arena = ArenaAllocate();
 
-  U8* image;
-  U32 image_width, image_height;
-  ImageLoadFile(arena, &image, &image_width, &image_height, ImageFormat_RGBA, (U8*) "../data/32bpp.bmp");
+  Image image;
+  DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, (U8*) "../data/16bpp.bmp"));
   U32 image_handle;
-  RendererRegisterImage(&image_handle, image, image_width, image_height);
+  RendererRegisterImage(&image_handle, image.data, image.width, image.height);
 
   ArenaRelease(arena);
 
@@ -35,7 +34,7 @@ int main(void) {
       exit(0);
     }
 
-    DrawImageRot(image_handle, 750, 500, image_width * scale * 25, image_height * scale * 25, theta);
+    DrawImageRot(image_handle, 750, 500, image.width * scale * 25, image.height * scale * 25, theta);
     theta += 0.05f;
     scale = F32Sin(TimeSecondsSinceStart());
 
