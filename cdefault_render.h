@@ -1249,6 +1249,7 @@ void WIN_WindowFlushEvents() {
     }
   }
 }
+//
 
 B32 WIN_WindowShouldClose() {
   WIN_Window* window = &_win_window;

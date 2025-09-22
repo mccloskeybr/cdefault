@@ -9,36 +9,37 @@
 //
 // The following file formats are supported:
 // -   WAV: PCM 16, 32, float formats.
-//
-// E.g.
-//
-// // Load the sound.
-// Sound sound;
-// DEBUG_ASSERT(SoundOpenFile(&sound, "data/my_sound.wav"));
-//
-// // Open an audio stream.
-// AudioInit();
-// AudioStreamSpec spec;
-// spec.channels  = sound.channels;
-// spec.frequency = sound.frequency;
-// spec.format    = sound.format;
-// AudioStreamHandle stream;
-// DEBUG_ASSERT(AudioStreamOpen(&stream, spec));
-//
-// U8* buffer;
-// U32 buffer_size, bytes_read;
-// while (true) {
-//   DEBUG_ASSERT(AudioStreamAcquireBuffer(stream, &buffer, &buffer_size));
-//   DEBUG_ASSERT(SoundGetSamples(&sound, buffer, buffer_size, &bytes_read));
-//   // NOTE: sound buffer has been exhausted once we fail to read a whole buffer.
-//   if (bytes_read < buffer_size) { DEBUG_ASSERT(SoundRestart(&sound)); }
-//   DEBUG_ASSERT(AudioStreamReleaseBuffer(stream, buffer, bytes_read));
-//   DEBUG_ASSERT(AudioStreamWait(stream));
-// }
-//
-// SoundClose(&sound);
-// AudioStreamClose(stream);
-// AudioDeinit();
+
+// Example
+#if 0
+// Load the sound.
+Sound sound;
+DEBUG_ASSERT(SoundOpenFile(&sound, "data/my_sound.wav"));
+
+// Open an audio stream.
+AudioInit();
+AudioStreamSpec spec;
+spec.channels  = sound.channels;
+spec.frequency = sound.frequency;
+spec.format    = sound.format;
+AudioStreamHandle stream;
+DEBUG_ASSERT(AudioStreamOpen(&stream, spec));
+
+U8* buffer;
+U32 buffer_size, bytes_read;
+while (true) {
+  DEBUG_ASSERT(AudioStreamAcquireBuffer(stream, &buffer, &buffer_size));
+  DEBUG_ASSERT(SoundGetSamples(&sound, buffer, buffer_size, &bytes_read));
+  // NOTE: sound buffer has been exhausted once we fail to read a whole buffer.
+  if (bytes_read < buffer_size) { DEBUG_ASSERT(SoundRestart(&sound)); }
+  DEBUG_ASSERT(AudioStreamReleaseBuffer(stream, buffer, bytes_read));
+  DEBUG_ASSERT(AudioStreamWait(stream));
+}
+
+SoundClose(&sound);
+AudioStreamClose(stream);
+AudioDeinit();
+#endif
 
 // TODO: test WAV PCM24, PCM32, F32
 // TODO: audio format conversion?
@@ -95,32 +96,30 @@ B32 SoundOpenWav(Sound* sound, FileHandle file) {
     return false;
   }
 
-  B32 success = false;
-  Arena* arena = ArenaAllocate();
   // NOTE: 128 is just an arbitrarily large amount that should contain all header versions.
   // TODO: debug assertions may be thrown if the file is malformed, do we care?
-  U8* header = ARENA_PUSH_ARRAY(arena, U8, 128);
+  U8 bytes[128];
   U32 bytes_read;
-  if (!FileHandleRead(&sound->file, header, 128, &bytes_read)) { goto sound_open_wav_exit; }
+  if (!FileHandleRead(&sound->file, bytes, STATIC_ARRAY_SIZE(bytes), &bytes_read)) { return false; }
 
-  BinReader r;
-  BinReaderInit(&r, header, bytes_read);
-  if (!(BinReader8(&r) == 'R' && BinReader8(&r) == 'I' &&
-        BinReader8(&r) == 'F' && BinReader8(&r) == 'F')) { goto sound_open_wav_exit; }
-  BinReaderSkip(&r, 4, sizeof(U8));
-  if (!(BinReader8(&r) == 'W' && BinReader8(&r) == 'A' &&
-        BinReader8(&r) == 'V' && BinReader8(&r) == 'E')) { goto sound_open_wav_exit; }
-  if (!(BinReader8(&r) == 'f' && BinReader8(&r) == 'm' &&
-        BinReader8(&r) == 't' && BinReader8(&r) == ' ')) { goto sound_open_wav_exit; }
+  BinHead r;
+  BinHeadInit(&r, bytes, bytes_read);
+  if (!(BinHeadR8(&r) == 'R' && BinHeadR8(&r) == 'I' &&
+        BinHeadR8(&r) == 'F' && BinHeadR8(&r) == 'F')) { return false; }
+  BinHeadSkip(&r, 4, sizeof(U8));
+  if (!(BinHeadR8(&r) == 'W' && BinHeadR8(&r) == 'A' &&
+        BinHeadR8(&r) == 'V' && BinHeadR8(&r) == 'E')) { return false; }
+  if (!(BinHeadR8(&r) == 'f' && BinHeadR8(&r) == 'm' &&
+        BinHeadR8(&r) == 't' && BinHeadR8(&r) == ' ')) { return false; }
 
   // NOTE: chunk_size can be variable depending on the WAV version.
-  U32 chunk_size      = BinReader32LE(&r);
-  U16 bin_fmt         = BinReader16LE(&r);
-  sound->channels     = BinReader16LE(&r);
-  sound->frequency    = BinReader32LE(&r);
-  BinReader32LE(&r); // avg_byte_per_sec
-  BinReader16LE(&r); // block_align
-  U16 bits_per_sample = BinReader16LE(&r);
+  U32 chunk_size      = BinHeadR32LE(&r);
+  U16 bin_fmt         = BinHeadR16LE(&r);
+  sound->channels     = BinHeadR16LE(&r);
+  sound->frequency    = BinHeadR32LE(&r);
+  BinHeadR32LE(&r); // avg_byte_per_sec
+  BinHeadR16LE(&r); // block_align
+  U16 bits_per_sample = BinHeadR16LE(&r);
 
   // TODO: handle WAVE_FORMAT_EXTENSIBLE
   switch (bin_fmt) {
@@ -138,33 +137,31 @@ B32 SoundOpenWav(Sound* sound, FileHandle file) {
     case 3:  { sound->format = SoundFormat_F32; } break;
     default: {
       LOG_ERROR("[SOUND] Invalid or unsupported WAV format detected: %d", bin_fmt);
-      goto sound_open_wav_exit;
+      return false;
     } break;
   }
 
-  BinReaderSetPos(&r, 20 + chunk_size);
-  // NOTE: extra chunk may be here for non-PCM (float, WAVE_FORMAT_EXTENSIBLE) formats.
-  U8 c0 = BinReader8(&r), c1 = BinReader8(&r), c2 = BinReader8(&r), c3 = BinReader8(&r);
+  BinHeadSetPos(&r, 20 + chunk_size);
+  // NOTE: extra chunk may be here for non-PCM formats.
+  U8 c0 = BinHeadR8(&r), c1 = BinHeadR8(&r), c2 = BinHeadR8(&r), c3 = BinHeadR8(&r);
   if (c0 == 'f' && c1 == 'a' && c2 == 'c' && c3 == 't') {
-    BinReaderSkip(&r, 8, sizeof(U8));
-    c0 = BinReader8(&r); c1 = BinReader8(&r); c2 = BinReader8(&r); c3 = BinReader8(&r);
+    BinHeadSkip(&r, 8, sizeof(U8));
+    c0 = BinHeadR8(&r); c1 = BinHeadR8(&r); c2 = BinHeadR8(&r); c3 = BinHeadR8(&r);
   }
 
-  if (!(c0 == 'd' && c1 == 'a' && c2 == 't' && c3 == 'a')) { goto sound_open_wav_exit; }
-  sound->samples_byte_size = BinReader32LE(&r);
+  if (!(c0 == 'd' && c1 == 'a' && c2 == 't' && c3 == 'a')) { return false; }
+  sound->samples_byte_size = BinHeadR32LE(&r);
   sound->sound_offset = r.pos;
   sound->samples_pos = 0;
   if (!FileHandleSeek(&sound->file, sound->sound_offset, FileSeekPos_Begin)) {
     LOG_ERROR("[SOUND] Unexpectedly unable to seek to sound start for WAV file.");
-    goto sound_open_wav_exit;
+    return false;
   }
-  success = true;
-sound_open_wav_exit:
-  ArenaRelease(arena);
-  return success;
+  return true;
 }
 
 B32 SoundGetSamplesInterleavedWav(Sound* sound, U8* sample_bytes, U32 sample_bytes_size, U32* sample_bytes_read) {
+  DEBUG_ASSERT(sound->type == SoundFileType_WAV);
   if (sound->samples_pos >= sound->samples_byte_size) {
     *sample_bytes_read = 0;
     return true;

@@ -2,7 +2,8 @@
 #define CDEFAULT_STD_H_
 
 // TODO: wide strings (String16)
-// TODO: file OS funcs, no FILE* (separate IO lib?)
+// TODO: more test functions? light framework?
+// TODO: assert --> message box w/ error
 
 #if defined(_WIN32)
 #  define OS_WINDOWS 1
@@ -170,9 +171,9 @@ typedef double   F64;
 #define EXTRACT_U16(word, pos) (((word) >> ((pos) * 16)) & 0xffff)
 #define EXTRACT_U32(word, pos) (((word) >> ((pos) * 32)) & 0xffffffff)
 
-S32 U32LsbPos(U32 x); // NOTE: Returns -1 on 0.
-S32 U32MsbPos(U32 x); // NOTE: Returns -1 on 0.
-U32 U32CountBits(U32 x);
+S32 U32LsbPos(U32 x);    // E.g. 0110 -> 1. NOTE: Returns -1 on 0.
+S32 U32MsbPos(U32 x);    // E.g. 0110 -> 2. NOTE: Returns -1 on 0.
+U32 U32CountBits(U32 x); // E.g. 1111 -> 4.
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Branch prediction
@@ -696,21 +697,23 @@ S32 String8Hash(String8* s);
 ///////////////////////////////////////////////////////////////////////////////
 
 // Single-threaded quicksort implementation
+
 // E.g.
-//
-// U8 my_bytes[3] = { 3, 1, 2 };
-// SORT_ASC(U8, my_bytes, 3);  --> { 1, 2, 3 }
-// SORT_DESC(U8, my_bytes, 3); --> { 3, 2, 1 }
-//
+#if 0
+U8 my_bytes[3] = { 3, 1, 2 };
+SORT_ASC(U8, my_bytes, 3);  --> { 1, 2, 3 }
+SORT_DESC(U8, my_bytes, 3); --> { 3, 2, 1 }
+#endif
+
 // Or:
-//
-// S32 MyComparison(void* a, void* b) { return *(U8*) a - *(U8*) b; }
-// U8 my_bytes[3] = { 3, 1, 2 };
-// SORT(U8, my_bytes, 3, MyComparison); --> { 1, 2, 3 }
-//
+#if 0
+S32 MyComparison(void* a, void* b) { return *(U8*) a - *(U8*) b; }
+U8 my_bytes[3] = { 3, 1, 2 };
+SORT(U8, my_bytes, 3, MyComparison); --> { 1, 2, 3 }
+#endif
+
 // SORT_ASC and SORT_DESC work with cdefault types out of the box, other types
 // will require custom comparison fn implementations.
-
 
 #define SORT_DESC(type, items, items_len)                                    \
   SORT(type, items, items_len, SortCompare##type##Desc)
@@ -760,11 +763,40 @@ S32 SortCompareB32Desc(void* a, void* b);
 S32 SortCompareB64Desc(void* a, void* b);
 S32 SortCompareString8Desc(void* a, void* b); // NOTE: Lexicographic ordering
 
-#endif // CDEFAULT_H_
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Bin read / write
+///////////////////////////////////////////////////////////////////////////////
 
-///////////////////////////////////////////////////////////////////////////////
-// NOTE: Implementation
-///////////////////////////////////////////////////////////////////////////////
+// Convenience struct for traversing binary blobs, e.g. file data.
+// E.g. read or write by bytes at a time, automatically updating a running position count.
+
+typedef struct BinHead BinHead;
+struct BinHead {
+  U8* bytes;
+  U32 bytes_size;
+  U32 pos;
+};
+
+void BinHeadInit(BinHead* head, U8* bytes, U32 bytes_size);
+void BinHeadSetPos(BinHead* head, U32 pos);
+void BinHeadReset(BinHead* head);
+void BinHeadSkip(BinHead* head, U32 num, U32 size);
+U8   BinHeadR8(BinHead* head);
+U16  BinHeadR16LE(BinHead* head);
+U16  BinHeadR16BE(BinHead* head);
+U32  BinHeadR32LE(BinHead* head);
+U32  BinHeadR32BE(BinHead* head);
+U64  BinHeadR64LE(BinHead* head);
+U64  BinHeadR64BE(BinHead* head);
+void BinHeadW8(BinHead* head, U8 x);
+void BinHeadW16LE(BinHead* head, U16 x);
+void BinHeadW16BE(BinHead* head, U16 x);
+void BinHeadW32LE(BinHead* head, U32 x);
+void BinHeadW32BE(BinHead* head, U32 x);
+void BinHeadW64LE(BinHead* head, U64 x);
+void BinHeadW64BE(BinHead* head, U64 x);
+
+#endif // CDEFAULT_H_
 
 #ifdef CDEFAULT_STD_IMPLEMENTATION
 #undef CDEFAULT_STD_IMPLEMENTATION
@@ -777,10 +809,10 @@ S32 U32LsbPos(U32 x) {
   if (x == 0) { return -1; }
   int result = 0;
   if ((x & 0xFFFF) == 0) { x >>= 16; result += 16; }
-  if ((x & 0xFF) == 0)   { x >>= 8;  result += 8; }
-  if ((x & 0xF) == 0)    { x >>= 4;  result += 4; }
-  if ((x & 0x3) == 0)    { x >>= 2;  result += 2; }
-  if ((x & 0x1) == 0)    {           result += 1; }
+  if ((x & 0xFF) == 0)   { x >>= 8;  result += 8;  }
+  if ((x & 0xF) == 0)    { x >>= 4;  result += 4;  }
+  if ((x & 0x3) == 0)    { x >>= 2;  result += 2;  }
+  if ((x & 0x1) == 0)    {           result += 1;  }
   return result;
 }
 
@@ -788,10 +820,10 @@ S32 U32MsbPos(U32 x) {
   if (x == 0) { return -1; }
   U32 result = 0;
   if (x >= (1U << 16)) { x >>= 16; result += 16; }
-  if (x >= (1U << 8))  { x >>= 8;  result += 8; }
-  if (x >= (1U << 4))  { x >>= 4;  result += 4; }
-  if (x >= (1U << 2))  { x >>= 2;  result += 2; }
-  if (x >= (1U << 1))  {           result += 1; }
+  if (x >= (1U << 8))  { x >>= 8;  result += 8;  }
+  if (x >= (1U << 4))  { x >>= 4;  result += 4;  }
+  if (x >= (1U << 2))  { x >>= 2;  result += 2;  }
+  if (x >= (1U << 1))  {           result += 1;  }
   return result;
 }
 
@@ -846,6 +878,7 @@ void MemoryDecommit(void* ptr, U64 size) {
 // NOTE: Log implementation
 ///////////////////////////////////////////////////////////////////////////////
 
+// TODO: use the in-house file api. need to handle stdout / stderr first.
 typedef struct LogConfig LogConfig;
 struct LogConfig {
   FILE* fd;
@@ -893,7 +926,7 @@ Arena* _ArenaAllocate(U64 reserve_size, U64 commit_size) {
   commit_size = ALIGN_POW_2(commit_size, PAGE_SIZE);
 
   void* base = MemoryReserve(CDEFAULT_ARENA_RESERVE_SIZE);
-  DEBUG_ASSERT(base != NULL);
+  DEBUG_ASSERT(base != NULL); // TODO: should probably be a real assert.
   MemoryCommit(base, CDEFAULT_ARENA_COMMIT_SIZE);
 
   Arena* arena = (Arena*) base;
@@ -1050,7 +1083,6 @@ void CVSignal(CV* cv) {
   ASSERT(result == thrd_success);
 #endif
 }
-
 
 void CVBroadcast(CV* cv) {
 #if defined(OS_WINDOWS)
@@ -1393,7 +1425,7 @@ F32 RandF32(RandomSeries* rand, F32 min, F32 max) {
   DEBUG_ASSERT(min < max);
   if (rand == NULL) { rand = &_cdef_rand; }
   RandomSeriesShuffle(rand);
-  F32 r = (F32) rand->state / U32_MAX;
+  F32 r = (F32) rand->state / U64_MAX;
   return min + (r * (max - min));
 }
 
@@ -1966,6 +1998,116 @@ S32 SortCompareString8Desc(void* a, void* b) {
   }
   UNREACHABLE();
   return 0;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: Bin read / write Implementation
+///////////////////////////////////////////////////////////////////////////////
+
+void BinHeadInit(BinHead* head, U8* bytes, U32 bytes_size) {
+  head->bytes = bytes;
+  head->bytes_size = bytes_size;
+  head->pos = 0;
+}
+
+void BinHeadSetPos(BinHead* head, U32 pos) {
+  head->pos = pos;
+}
+
+void BinHeadReset(BinHead* head) {
+  BinHeadSetPos(head, 0);
+}
+
+void BinHeadSkip(BinHead* head, U32 num, U32 size) {
+  head->pos += num * size;
+}
+
+U8 BinHeadR8(BinHead* head) {
+  DEBUG_ASSERT(head->pos < head->bytes_size);
+  return head->bytes[head->pos++];
+}
+
+U16 BinHeadR16LE(BinHead* head) {
+  U8 x = BinHeadR8(head);
+  U8 y = BinHeadR8(head);
+  return (((U16) x) + (((U16) y) << 8));
+}
+
+U16 BinHeadR16BE(BinHead* head) {
+  U8 x = BinHeadR8(head);
+  U8 y = BinHeadR8(head);
+  return ((((U16) x) << 8) + ((U16) y));
+}
+
+U32 BinHeadR32LE(BinHead* head) {
+  U16 x = BinHeadR16LE(head);
+  U16 y = BinHeadR16LE(head);
+  return (((U32) x) + (((U32) y) << 16));
+}
+
+U32 BinHeadR32BE(BinHead* head) {
+  U16 x = BinHeadR16BE(head);
+  U16 y = BinHeadR16BE(head);
+  return ((((U32) x) << 16) + ((U32) y));
+}
+
+U64 BinHeadR64LE(BinHead* head) {
+  U32 x = BinHeadR32LE(head);
+  U32 y = BinHeadR32LE(head);
+  return (((U64) x) + (((U64) y) << 32));
+}
+
+U64 BinHeadR64BE(BinHead* head) {
+  U32 x = BinHeadR32BE(head);
+  U32 y = BinHeadR32BE(head);
+  return ((((U64) x) << 32) + ((U64) y));
+}
+
+void BinHeadW8(BinHead* head, U8 x) {
+  DEBUG_ASSERT(head->pos < head->bytes_size);
+  head->bytes[head->pos++] = x;
+}
+
+void BinHeadW16LE(BinHead* head, U16 x) {
+  U8 a = x & 0xff;
+  U8 b = (x >> 8) & 0xff;
+  BinHeadW8(head, a);
+  BinHeadW8(head, b);
+}
+
+void BinHeadW16BE(BinHead* head, U16 x) {
+  U8 a = (x >> 8) & 0xff;
+  U8 b = x & 0xff;
+  BinHeadW8(head, a);
+  BinHeadW8(head, b);
+}
+
+void BinHeadW32LE(BinHead* head, U32 x) {
+  U16 a = x & 0xffff;
+  U16 b = (x >> 16) & 0xffff;
+  BinHeadW16LE(head, a);
+  BinHeadW16LE(head, b);
+}
+
+void BinHeadW32BE(BinHead* head, U32 x) {
+  U16 a = (x >> 16) & 0xffff;
+  U16 b = x & 0xffff;
+  BinHeadW16BE(head, a);
+  BinHeadW16BE(head, b);
+}
+
+void BinHeadW64LE(BinHead* head, U64 x) {
+  U32 a = x & 0xffffffff;
+  U32 b = (x >> 32) & 0xffffffff;
+  BinHeadW32LE(head, a);
+  BinHeadW32LE(head, b);
+}
+
+void BinHeadW64BE(BinHead* head, U64 x) {
+  U32 a = (x >> 32) & 0xffffffff;
+  U32 b = x & 0xffffffff;
+  BinHeadW32BE(head, a);
+  BinHeadW32BE(head, b);
 }
 
 #endif // CDEFAULT_STD_IMPLEMENTATION
