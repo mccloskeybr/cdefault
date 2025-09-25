@@ -17,7 +17,8 @@ REM cl %FLAGS% vector_test.c /Fobuild/vector_test.obj /Febin/vector_test.exe /li
 REM cl %FLAGS% matrix_test.c /Fobuild/matrix_test.obj /Febin/matrix_test.exe /link %LIBS%
 REM cl %FLAGS% time_test.c /Fobuild/time_test.obj /Febin/time_test.exe /link %LIBS%
 REM cl %FLAGS% sort_test.c /Fobuild/sort_test.obj /Febin/sort_test.exe /link %LIBS%
-cl %FLAGS% bin_head_test.c /Fobuild/bin_head_test.obj /Febin/bin_head_test.exe /link %LIBS%
+REM cl %FLAGS% bin_head_test.c /Fobuild/bin_head_test.obj /Febin/bin_head_test.exe /link %LIBS%
+cl %FLAGS% dynamic_array_test.c /Fobuild/dynamic_array_test.obj /Febin/dynamic_array_test.exe /link %LIBS%
 
 echo Running unit tests:
 REM bin\dll_test.exe
@@ -29,7 +30,8 @@ REM bin\vector_test.exe
 REM bin\matrix_test.exe
 REM bin\time_test.exe
 REM bin\sort_test.exe
-bin\bin_head_test.exe
+REM bin\bin_head_test.exe
+bin\dynamic_array_test.exe
 
 :skip_unit_tests
 
