@@ -5,7 +5,7 @@ set WARN=/W4 /wd4127 /wd4244 /wd4456 /wd4355 /wd4457 /wd4245 /wd4701 /wd4201
 set FLAGS=/Zo /Z7 /nologo %WARN%
 set LIBS=ole32.lib user32.lib opengl32.lib gdi32.lib
 
-REM goto skip_unit_tests
+goto skip_unit_tests
 
 echo Compiling unit tests:
 REM cl %FLAGS% dll_test.c /Fobuild/dll_test.obj /Febin/dll_test.exe /link %LIBS%
@@ -18,7 +18,7 @@ REM cl %FLAGS% matrix_test.c /Fobuild/matrix_test.obj /Febin/matrix_test.exe /li
 REM cl %FLAGS% time_test.c /Fobuild/time_test.obj /Febin/time_test.exe /link %LIBS%
 REM cl %FLAGS% sort_test.c /Fobuild/sort_test.obj /Febin/sort_test.exe /link %LIBS%
 REM cl %FLAGS% bin_head_test.c /Fobuild/bin_head_test.obj /Febin/bin_head_test.exe /link %LIBS%
-cl %FLAGS% dynamic_array_test.c /Fobuild/dynamic_array_test.obj /Febin/dynamic_array_test.exe /link %LIBS%
+REM cl %FLAGS% dynamic_array_test.c /Fobuild/dynamic_array_test.obj /Febin/dynamic_array_test.exe /link %LIBS%
 
 echo Running unit tests:
 REM bin\dll_test.exe
@@ -31,11 +31,11 @@ REM bin\matrix_test.exe
 REM bin\time_test.exe
 REM bin\sort_test.exe
 REM bin\bin_head_test.exe
-bin\dynamic_array_test.exe
+REM bin\dynamic_array_test.exe
 
 :skip_unit_tests
 
-goto skip_visual_tests
+REM goto skip_visual_tests
 
 cl %FLAGS% collision_ray_test.c /Fobuild/collision_line_test.obj /Febin/collision_ray_test.exe /link %LIBS%
 REM cl %FLAGS% collision_line_test.c /Fobuild/collision_line_test.obj /Febin/collision_line_test.exe /link %LIBS%
