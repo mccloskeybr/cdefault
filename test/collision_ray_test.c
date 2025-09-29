@@ -93,7 +93,7 @@ int main(void) {
 
     obb_angle_rad += 0.005f;
     V2 obb_hull[4];
-    ConvexHull2FromObb2(obb_hull, obb_center, obb_size, obb_angle_rad);
+    ConvexHull2FromObb2(obb_hull, &obb_center, &obb_size, obb_angle_rad);
     DrawConvexHullV(obb_hull, STATIC_ARRAY_SIZE(obb_hull), V3_BLUE);
 
     V2 other_ray_end;
@@ -107,29 +107,29 @@ int main(void) {
     DrawLineV(ray_start, ray_end, 5, V3_WHITE);
 
     V2 enter, exit;
-    if (Ray2IntersectCircle2(ray_start, ray_dir, circle_center, circle_radius, &enter, &exit)) {
+    if (Ray2IntersectCircle2(&ray_start, &ray_dir, &circle_center, circle_radius, &enter, &exit)) {
       DrawCircleV(enter, 10, V3_GREEN);
       DrawRingV(exit, 10, 5, V3_RED);
     }
-    if (Ray2IntersectAabb2(ray_start, ray_dir, aabb_center, aabb_size, &enter, &exit)) {
+    if (Ray2IntersectAabb2(&ray_start, &ray_dir, &aabb_center, &aabb_size, &enter, &exit)) {
       DrawCircleV(enter, 10, V3_GREEN);
       DrawRingV(exit, 10, 5, V3_RED);
     }
-    if (Ray2IntersectObb2(ray_start, ray_dir, obb_center, obb_size, obb_angle_rad, &enter, &exit)) {
+    if (Ray2IntersectObb2(&ray_start, &ray_dir, &obb_center, &obb_size, obb_angle_rad, &enter, &exit)) {
       DrawCircleV(enter, 10, V3_GREEN);
       DrawRingV(exit, 10, 5, V3_RED);
     }
-    if (Ray2IntersectTri2(ray_start, ray_dir, tri_points, &enter, &exit)) {
+    if (Ray2IntersectTri2(&ray_start, &ray_dir, tri_points, &enter, &exit)) {
       DrawCircleV(enter, 10, V3_GREEN);
       DrawRingV(exit, 10, 5, V3_RED);
     }
-    if (Ray2IntersectLine2(ray_start, ray_dir, line_start, line_end, &enter)) {
+    if (Ray2IntersectLine2(&ray_start, &ray_dir, &line_start, &line_end, &enter)) {
       DrawCircleV(enter, 10, V3_GREEN);
     }
-    if (Ray2IntersectRay2(ray_start, ray_dir, other_ray_start, other_ray_dir, &enter)) {
+    if (Ray2IntersectRay2(&ray_start, &ray_dir, &other_ray_start, &other_ray_dir, &enter)) {
       DrawCircleV(enter, 10, V3_GREEN);
     }
-    if (Ray2IntersectConvexHull2(ray_start, ray_dir, hull_points, STATIC_ARRAY_SIZE(hull_points), &enter, &exit)) {
+    if (Ray2IntersectConvexHull2(&ray_start, &ray_dir, hull_points, STATIC_ARRAY_SIZE(hull_points), &enter, &exit)) {
       DrawCircleV(enter, 10, V3_GREEN);
       DrawRingV(exit, 10, 5, V3_RED);
     }

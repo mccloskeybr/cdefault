@@ -6,7 +6,7 @@
 
 // TODO: capsule?
 // TODO: 3d match 2d api
-// TODO: 3d api largely untested
+// TODO: 3d api largely untested, likely doesn't work
 // TODO: break concave hull into convex hull
 
 // NOTE: Collections of points (e.g. Tri2, ConvexHull2) must follow CCW winding order.
@@ -17,115 +17,114 @@
 // 2D shapes
 ////////////////////////////////////////////////////////////////////////////////
 
-// TODO: get rid of this?
 typedef struct IntersectManifold2 IntersectManifold2;
 struct IntersectManifold2 { V2 normal; F32 penetration; };
 
-B32  Line2Eq(V2 a_start, V2 a_end, V2 b_start, V2 b_end);
-B32  Line2ApproxEq(V2 a_start, V2 a_end, V2 b_start, V2 b_end);
-void Line2Offset(V2* start, V2* end, V2 offset);
-void Line2RotateAboutPoint(V2* start, V2* end, V2 point, F32 angle_rad);
-F32  Line2GetLength(V2 start, V2 end);
-F32  Line2GetLengthSq(V2 start, V2 end);
-void Line2GetMidpoint(V2 line_start, V2 line_end, V2* midpoint);
-void Line2GetClosestPoint(V2 start, V2 end, V2 point, V2* closest);
-void Line2GetNormalIn(V2 start, V2 end, V2* normal);  // NOTE: points into CCW center. TODO: V2 fn instead?
-void Line2GetNormalOut(V2 start, V2 end, V2* normal); // NOTE: points away from CCW center. TODO: V2 fn instead?
-B32  Line2IntersectLine2(V2 a_start, V2 a_end, V2 b_start, V2 b_end, V2* intersect_point);
-B32  Line2IntersectRay2(V2 line_start, V2 line_end, V2 ray_start, V2 ray_dir, V2* intersect_point);
-B32  Line2IntersectTri2(V2 line_start, V2 line_end, V2 tri_points[3], V2* enter_point, V2* exit_point);
-B32  Line2IntersectAabb2(V2 line_start, V2 line_end, V2 aabb_center, V2 aabb_size, V2* enter_point, V2* exit_point);
-B32  Line2IntersectObb2(V2 line_start, V2 line_end, V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2* enter_point, V2* exit_point);
-B32  Line2IntersectCircle2(V2 line_start, V2 line_end, V2 circle_center, F32 circle_radius, V2* enter_point, V2* exit_point);
-B32  Line2IntersectConvexHull2(V2 line_start, V2 line_end, V2* hull_points, U32 hull_points_size, V2* enter_point, V2* exit_point);
+B32  Line2Eq(V2* a_start, V2* a_end, V2* b_start, V2* b_end);
+B32  Line2ApproxEq(V2* a_start, V2* a_end, V2* b_start, V2* b_end);
+void Line2Offset(V2* start, V2* end, V2* offset);
+void Line2RotateAboutPoint(V2* start, V2* end, V2* point, F32 angle_rad);
+F32  Line2GetLength(V2* start, V2* end);
+F32  Line2GetLengthSq(V2* start, V2* end);
+void Line2GetMidpoint(V2* line_start, V2* line_end, V2* midpoint);
+void Line2GetClosestPoint(V2* start, V2* end, V2* point, V2* closest);
+void Line2GetNormalIn(V2* start, V2* end, V2* normal);  // NOTE: points into CCW center. TODO: V2 fn instead?
+void Line2GetNormalOut(V2* start, V2* end, V2* normal); // NOTE: points away from CCW center. TODO: V2 fn instead?
+B32  Line2IntersectLine2(V2* a_start, V2* a_end, V2* b_start, V2* b_end, V2* intersect_point);
+B32  Line2IntersectRay2(V2* line_start, V2* line_end, V2* ray_start, V2* ray_dir, V2* intersect_point);
+B32  Line2IntersectTri2(V2* line_start, V2* line_end, V2 tri_points[3], V2* enter_point, V2* exit_point);
+B32  Line2IntersectAabb2(V2* line_start, V2* line_end, V2* aabb_center, V2* aabb_size, V2* enter_point, V2* exit_point);
+B32  Line2IntersectObb2(V2* line_start, V2* line_end, V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* enter_point, V2* exit_point);
+B32  Line2IntersectCircle2(V2* line_start, V2* line_end, V2* circle_center, F32 circle_radius, V2* enter_point, V2* exit_point);
+B32  Line2IntersectConvexHull2(V2* line_start, V2* line_end, V2* hull_points, U32 hull_points_size, V2* enter_point, V2* exit_point);
 
-B32  Ray2Eq(V2 a_start, V2 a_dir, V2 b_start, V2 b_dir);
-B32  Ray2ApproxEq(V2 a_start, V2 a_dir, V2 b_start, V2 b_dir);
-void Ray2RotateAboutPoint(V2* ray_start, V2* ray_dir, V2 point, F32 angle_rad);
-void Ray2GetDirInv(V2 ray_dir, V2* dir_inv);
-B32  Ray2IntersectLine2(V2 ray_start, V2 ray_dir, V2 line_start, V2 line_end, V2* intersect_point);
-B32  Ray2IntersectRay2(V2 a_start, V2 a_dir, V2 b_start, V2 b_dir, V2* intersect_point);
-B32  Ray2IntersectTri2(V2 ray_start, V2 ray_dir, V2 tri_points[3], V2* enter_point, V2* exit_point);
-B32  Ray2IntersectAabb2(V2 ray_start, V2 ray_dir, V2 aabb_center, V2 aabb_size, V2* enter_point, V2* exit_point);
-B32  Ray2IntersectObb2(V2 ray_start, V2 ray_dir, V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2* enter_point, V2* exit_point);
-B32  Ray2IntersectCircle2(V2 ray_start, V2 ray_dir, V2 circle_center, F32 circle_radius, V2* enter_point, V2* exit_point);
-B32  Ray2IntersectConvexHull2(V2 ray_start, V2 ray_dir, V2* hull_points, U32 hull_points_size, V2* enter_point, V2* exit_point);
+B32  Ray2Eq(V2* a_start, V2* a_dir, V2* b_start, V2* b_dir);
+B32  Ray2ApproxEq(V2* a_start, V2* a_dir, V2* b_start, V2* b_dir);
+void Ray2RotateAboutPoint(V2* ray_start, V2* ray_dir, V2* point, F32 angle_rad);
+void Ray2GetDirInv(V2* ray_dir, V2* dir_inv);
+B32  Ray2IntersectLine2(V2* ray_start, V2* ray_dir, V2* line_start, V2* line_end, V2* intersect_point);
+B32  Ray2IntersectRay2(V2* a_start, V2* a_dir, V2* b_start, V2* b_dir, V2* intersect_point);
+B32  Ray2IntersectTri2(V2* ray_start, V2* ray_dir, V2 tri_points[3], V2* enter_point, V2* exit_point);
+B32  Ray2IntersectAabb2(V2* ray_start, V2* ray_dir, V2* aabb_center, V2* aabb_size, V2* enter_point, V2* exit_point);
+B32  Ray2IntersectObb2(V2* ray_start, V2* ray_dir, V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* enter_point, V2* exit_point);
+B32  Ray2IntersectCircle2(V2* ray_start, V2* ray_dir, V2* circle_center, F32 circle_radius, V2* enter_point, V2* exit_point);
+B32  Ray2IntersectConvexHull2(V2* ray_start, V2* ray_dir, V2* hull_points, U32 hull_points_size, V2* enter_point, V2* exit_point);
 
 B32  Tri2Eq(V2 a_points[3], V2 b_points[3]);
 B32  Tri2ApproxEq(V2 a_points[3], V2 b_points[3]);
-void Tri2Offset(V2 tri_points[3], V2 offset);
-void Tri2RotateAboutPoint(V2 tri_points[3], V2 point, F32 angle_rad);
-void Tri2SetCenter(V2 tri_points[3], V2 center);
+void Tri2Offset(V2 tri_points[3], V2* offset);
+void Tri2RotateAboutPoint(V2 tri_points[3], V2* point, F32 angle_rad);
+void Tri2SetCenter(V2 tri_points[3], V2* center);
 void Tri2GetCenter(V2 tri_points[3], V2* center);
 void Tri2GetEnclosingCircle2(V2 tri_points[3], V2* circle_center, F32* circle_radius);
 void Tri2GetEnclosingAabb2(V2 tri_points[3], V2* aabb_center, V2* aabb_size);
-B32  Tri2ContainsPoint(V2 tri_points[3], V2 point);
-B32  Tri2IntersectLine2(V2 tri_points[3], V2 line_start, V2 line_end, V2* enter_point, V2* exit_point);
-B32  Tri2IntersectRay2(V2 tri_points[3], V2 ray_start, V2 ray_dir, V2* enter_point, V2* exit_point);
+B32  Tri2ContainsPoint(V2 tri_points[3], V2* point);
+B32  Tri2IntersectLine2(V2 tri_points[3], V2* line_start, V2* line_end, V2* enter_point, V2* exit_point);
+B32  Tri2IntersectRay2(V2 tri_points[3], V2* ray_start, V2* ray_dir, V2* enter_point, V2* exit_point);
 B32  Tri2IntersectTri2(V2 a_points[3], V2 b_points[3], IntersectManifold2* manifold);
-B32  Tri2IntersectAabb2(V2 tri_points[3], V2 aabb_center, V2 aabb_size, IntersectManifold2* manifold);
-B32  Tri2IntersectObb2(V2 tri_points[3], V2 obb_center, V2 obb_size, F32 obb_angle_rad, IntersectManifold2* manifold);
-B32  Tri2IntersectCircle2(V2 tri_points[3], V2 circle_center, F32 circle_radius, IntersectManifold2* manifold);
+B32  Tri2IntersectAabb2(V2 tri_points[3], V2* aabb_center, V2* aabb_size, IntersectManifold2* manifold);
+B32  Tri2IntersectObb2(V2 tri_points[3], V2* obb_center, V2* obb_size, F32 obb_angle_rad, IntersectManifold2* manifold);
+B32  Tri2IntersectCircle2(V2 tri_points[3], V2* circle_center, F32 circle_radius, IntersectManifold2* manifold);
 B32  Tri2IntersectConvexHull2(V2 tri_points[3], V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold);
 
-B32  Aabb2Eq(V2 a_center, V2 a_size, V2 b_center, V2 b_size);
-B32  Aabb2ApproxEq(V2 a_center, V2 a_size, V2 b_center, V2 b_size);
-void Aabb2FromMinMax(V2* aabb_center, V2* aabb_size, V2 min, V2 max);
-void Aabb2FromTopLeft(V2* aabb_center, V2 top_left_point, V2 size);
-void Aabb2GetMinMax(V2 aabb_center, V2 aabb_size, V2* min, V2* max);
-void Aabb2GetEnclosingCircle2(V2 aabb_center, V2 aabb_size, F32* circle_radius);
-void Aabb2RotateAboutPoint(V2* aabb_center, V2* aabb_size, V2 point, F32 angle_rad); // TODO can be removed with point rotate about point
-B32  Aabb2ContainsPoint(V2 aabb_center, V2 aabb_size, V2 point);
-B32  Aabb2IntersectLine2(V2 aabb_center, V2 aabb_size, V2 line_start, V2 line_end, V2* enter_point, V2* exit_point);
-B32  Aabb2IntersectRay2(V2 aabb_center, V2 aabb_size, V2 ray_start, V2 ray_dir, V2* enter_point, V2* exit_point);
-B32  Aabb2IntersectTri2(V2 aabb_center, V2 aabb_size, V2 tri_points[3], IntersectManifold2* manifold);
-B32  Aabb2IntersectAabb2(V2 a_center, V2 a_size, V2 b_center, V2 b_size, IntersectManifold2* manifold);
-B32  Aabb2IntersectObb2(V2 aabb_center, V2 aabb_size, V2 obb_center, V2 obb_size, F32 obb_angle_rad, IntersectManifold2* manifold);
-B32  Aabb2IntersectCircle2(V2 aabb_center, V2 aabb_size, V2 circle_center, F32 circle_radius, IntersectManifold2* manifold);
-B32  Aabb2IntersectConvexHull2(V2 aabb_center, V2 aabb_size, V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold);
+B32  Aabb2Eq(V2* a_center, V2* a_size, V2* b_center, V2* b_size);
+B32  Aabb2ApproxEq(V2* a_center, V2* a_size, V2* b_center, V2* b_size);
+void Aabb2FromMinMax(V2* aabb_center, V2* aabb_size, V2* min, V2* max);
+void Aabb2FromTopLeft(V2* aabb_center, V2* top_left_point, V2* size);
+void Aabb2GetMinMax(V2* aabb_center, V2* aabb_size, V2* min, V2* max);
+void Aabb2GetEnclosingCircle2(V2* aabb_center, V2* aabb_size, F32* circle_radius);
+void Aabb2RotateAboutPoint(V2* aabb_center, V2* aabb_size, V2* point, F32 angle_rad); // TODO can be removed with point rotate about point
+B32  Aabb2ContainsPoint(V2* aabb_center, V2* aabb_size, V2* point);
+B32  Aabb2IntersectLine2(V2* aabb_center, V2* aabb_size, V2* line_start, V2* line_end, V2* enter_point, V2* exit_point);
+B32  Aabb2IntersectRay2(V2* aabb_center, V2* aabb_size, V2* ray_start, V2* ray_dir, V2* enter_point, V2* exit_point);
+B32  Aabb2IntersectTri2(V2* aabb_center, V2* aabb_size, V2 tri_points[3], IntersectManifold2* manifold);
+B32  Aabb2IntersectAabb2(V2* a_center, V2* a_size, V2* b_center, V2* b_size, IntersectManifold2* manifold);
+B32  Aabb2IntersectObb2(V2* aabb_center, V2* aabb_size, V2* obb_center, V2* obb_size, F32 obb_angle_rad, IntersectManifold2* manifold);
+B32  Aabb2IntersectCircle2(V2* aabb_center, V2* aabb_size, V2* circle_center, F32 circle_radius, IntersectManifold2* manifold);
+B32  Aabb2IntersectConvexHull2(V2* aabb_center, V2* aabb_size, V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold);
 
-B32  Obb2Eq(V2 a_center, V2 a_size, F32 a_angle_rad, V2 b_center, V2 b_size, F32 b_angle_rad);
-B32  Obb2ApproxEq(V2 a_center, V2 a_size, F32 a_angle_rad, V2 b_center, V2 b_size, F32 b_angle_rad);
-void Obb2RotateAboutPoint(V2* obb_center, F32* obb_angle_rad, V2 point, F32 angle_rad);
-void Obb2GetEnclosingAabb2(V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2* abb_size);
-B32  Obb2ContainsPoint(V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2 point);
-B32  Obb2IntersectLine2(V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2 line_start, V2 line_end, V2* enter_point, V2* exit_point);
-B32  Obb2IntersectRay2(V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2 ray_start, V2 ray_dir, V2* enter_point, V2* exit_point);
-B32  Obb2IntersectTri2(V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2 tri_points[3], IntersectManifold2* manifold);
-B32  Obb2IntersectAabb2(V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2 aabb_center, V2 aabb_size, IntersectManifold2* manifold);
-B32  Obb2IntersectObb2(V2 a_center, V2 a_size, F32 a_angle_rad, V2 b_center, V2 b_size, F32 b_angle_rad, IntersectManifold2* manifold);
-B32  Obb2IntersectCircle2(V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2 circle_center, F32 circle_radius, IntersectManifold2* manifold);
-B32  Obb2IntersectConvexHull2(V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold);
+B32  Obb2Eq(V2* a_center, V2* a_size, F32 a_angle_rad, V2* b_center, V2* b_size, F32 b_angle_rad);
+B32  Obb2ApproxEq(V2* a_center, V2* a_size, F32 a_angle_rad, V2* b_center, V2* b_size, F32 b_angle_rad);
+void Obb2RotateAboutPoint(V2* obb_center, F32* obb_angle_rad, V2* point, F32 angle_rad);
+void Obb2GetEnclosingAabb2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* abb_size);
+B32  Obb2ContainsPoint(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* point);
+B32  Obb2IntersectLine2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* line_start, V2* line_end, V2* enter_point, V2* exit_point);
+B32  Obb2IntersectRay2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* ray_start, V2* ray_dir, V2* enter_point, V2* exit_point);
+B32  Obb2IntersectTri2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2 tri_points[3], IntersectManifold2* manifold);
+B32  Obb2IntersectAabb2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* aabb_center, V2* aabb_size, IntersectManifold2* manifold);
+B32  Obb2IntersectObb2(V2* a_center, V2* a_size, F32 a_angle_rad, V2* b_center, V2* b_size, F32 b_angle_rad, IntersectManifold2* manifold);
+B32  Obb2IntersectCircle2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* circle_center, F32 circle_radius, IntersectManifold2* manifold);
+B32  Obb2IntersectConvexHull2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold);
 
-B32  Circle2Eq(V2 a_center, F32 a_radius, V2 b_center, F32 b_radius);
-B32  Circle2ApproxEq(V2 a_center, F32 a_radius, V2 b_center, F32 b_radius);
+B32  Circle2Eq(V2* a_center, F32 a_radius, V2* b_center, F32 b_radius);
+B32  Circle2ApproxEq(V2* a_center, F32 a_radius, V2* b_center, F32 b_radius);
 void Circle2GetEnclosingAabb2(F32 circle_radius, V2* aabb_size);
-B32  Circle2ContainsPoint(V2 circle_center, F32 circle_radius, V2 point);
-B32  Circle2IntersectLine2(V2 circle_center, F32 circle_radius, V2 line_start, V2 line_end, V2* enter_point, V2* exit_point);
-B32  Circle2IntersectRay2(V2 circle_center, F32 circle_radius, V2 ray_start, V2 ray_dir, V2* enter_point, V2* exit_point);
-B32  Circle2IntersectTri2(V2 circle_center, F32 circle_radius, V2 tri_points[3], IntersectManifold2* manifold);
-B32  Circle2IntersectAabb2(V2 circle_center, F32 circle_radius, V2 aabb_center, V2 aabb_size, IntersectManifold2* manifold);
-B32  Circle2IntersectObb2(V2 circle_center, F32 circle_radius, V2 obb_center, V2 obb_size, F32 obb_angle_rad, IntersectManifold2* manifold);
-B32  Circle2IntersectCircle2(V2 a_center, F32 a_radius, V2 b_center, F32 b_radius, IntersectManifold2* manifold);
-B32  Circle2IntersectConvexHull2(V2 circle_center, F32 circle_radius, V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold);
+B32  Circle2ContainsPoint(V2* circle_center, F32 circle_radius, V2* point);
+B32  Circle2IntersectLine2(V2* circle_center, F32 circle_radius, V2* line_start, V2* line_end, V2* enter_point, V2* exit_point);
+B32  Circle2IntersectRay2(V2* circle_center, F32 circle_radius, V2* ray_start, V2* ray_dir, V2* enter_point, V2* exit_point);
+B32  Circle2IntersectTri2(V2* circle_center, F32 circle_radius, V2 tri_points[3], IntersectManifold2* manifold);
+B32  Circle2IntersectAabb2(V2* circle_center, F32 circle_radius, V2* aabb_center, V2* aabb_size, IntersectManifold2* manifold);
+B32  Circle2IntersectObb2(V2* circle_center, F32 circle_radius, V2* obb_center, V2* obb_size, F32 obb_angle_rad, IntersectManifold2* manifold);
+B32  Circle2IntersectCircle2(V2* a_center, F32 a_radius, V2* b_center, F32 b_radius, IntersectManifold2* manifold);
+B32  Circle2IntersectConvexHull2(V2* circle_center, F32 circle_radius, V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold);
 
 B32  ConvexHull2Eq(V2* a_points, U32 a_points_size, V2* b_points, U32 b_points_size);
 B32  ConvexHull2ApproxEq(V2* a_points, U32 a_points_size, V2* b_points, U32 b_points_size);
-void ConvexHull2FromAabb2(V2 aabb_points[4], V2 aabb_center, V2 aabb_size);
-void ConvexHull2FromObb2(V2 hull_points[4], V2 obb_center, V2 obb_size, F32 obb_angle_rad);
-void ConvexHull2Offset(V2* hull_points, U32 hull_points_size, V2 offset);
-void ConvexHull2RotateAboutPoint(V2* hull_points, U32 hull_points_size, V2 point, F32 angle_rad);
+void ConvexHull2FromAabb2(V2 aabb_points[4], V2* aabb_center, V2* aabb_size);
+void ConvexHull2FromObb2(V2 hull_points[4], V2* obb_center, V2* obb_size, F32 obb_angle_rad);
+void ConvexHull2Offset(V2* hull_points, U32 hull_points_size, V2* offset);
+void ConvexHull2RotateAboutPoint(V2* hull_points, U32 hull_points_size, V2* point, F32 angle_rad);
 void ConvexHull2GetCenter(V2* hull_points, U32 hull_points_size, V2* center);
 void ConvexHull2GetCenter(V2* hull_points, U32 hull_points_size, V2* center);
 void ConvexHull2GetEnclosingCircle2(V2* hull_points, U32 hull_points_size, V2* circle_center, F32* circle_radius);
 void ConvexHull2GetEnclosingAabb2(V2* hull_points, U32 hull_points_size, V2* aabb_center, V2* aabb_size);
-B32  ConvexHull2ContainsPoint(V2* hull_points, U32 hull_points_size, V2 point);
-B32  ConvexHull2IntersectLine2(V2* hull_points, U32 hull_points_size, V2 line_start, V2 line_end, V2* enter_point, V2* exit_point);
-B32  ConvexHull2IntersectRay2(V2* hull_points, U32 hull_points_size, V2 ray_start, V2 ray_dir, V2* enter_point, V2* exit_point);
+B32  ConvexHull2ContainsPoint(V2* hull_points, U32 hull_points_size, V2* point);
+B32  ConvexHull2IntersectLine2(V2* hull_points, U32 hull_points_size, V2* line_start, V2* line_end, V2* enter_point, V2* exit_point);
+B32  ConvexHull2IntersectRay2(V2* hull_points, U32 hull_points_size, V2* ray_start, V2* ray_dir, V2* enter_point, V2* exit_point);
 B32  ConvexHull2IntersectTri2(V2* hull_points, U32 hull_points_size, V2 tri_points[3], IntersectManifold2* manifold);
-B32  ConvexHull2IntersectAabb2(V2* hull_points, U32 hull_points_size, V2 aabb_center, V2 aabb_size, IntersectManifold2* manifold);
-B32  ConvexHull2IntersectObb2(V2* hull_points, U32 hull_points_size, V2 obb_center, V2 obb_size, F32 obb_angle_rad, IntersectManifold2* manifold);
-B32  ConvexHull2IntersectCircle2(V2* hull_points, U32 hull_points_size, V2 circle_center, F32 circle_radius, IntersectManifold2* manifold);
+B32  ConvexHull2IntersectAabb2(V2* hull_points, U32 hull_points_size, V2* aabb_center, V2* aabb_size, IntersectManifold2* manifold);
+B32  ConvexHull2IntersectObb2(V2* hull_points, U32 hull_points_size, V2* obb_center, V2* obb_size, F32 obb_angle_rad, IntersectManifold2* manifold);
+B32  ConvexHull2IntersectCircle2(V2* hull_points, U32 hull_points_size, V2* circle_center, F32 circle_radius, IntersectManifold2* manifold);
 B32  ConvexHull2IntersectConvexHull2(V2* a_points, U32 a_points_size, V2* b_points, U32 b_points_size, IntersectManifold2* manifold);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -184,56 +183,56 @@ B32  Sphere3IntersectAabb3(Sphere3* a, Aabb3* b, IntersectManifold3* manifold);
 #undef CDEFAULT_GEOMETRY_IMPLEMENTATION
 
 // TODO make public, in V2?
-static void PointRotateAboutPoint(V2* a, V2 p, F32 s, F32 c) {
+static void PointRotateAboutPoint(V2* a, V2* p, F32 s, F32 c) {
   V2 rel_a, new_a;
-  V2SubV2(&rel_a, a, &p);
+  V2SubV2(&rel_a, a, p);
   new_a.x = rel_a.x * c - rel_a.y * s;
   new_a.y = rel_a.x * s + rel_a.y * c;
-  V2AddV2(&new_a, &new_a, &p);
+  V2AddV2(&new_a, &new_a, p);
   *a = new_a;
 }
 
-B32 Line2Eq(V2 a_start, V2 a_end, V2 b_start, V2 b_end) {
-  return V2Eq(&a_start, &b_start) && V2Eq(&a_end, &b_end);
+B32 Line2Eq(V2* a_start, V2* a_end, V2* b_start, V2* b_end) {
+  return V2Eq(a_start, b_start) && V2Eq(a_end, b_end);
 }
 
-B32 Line2ApproxEq(V2 a_start, V2 a_end, V2 b_start, V2 b_end) {
-  return V2ApproxEq(&a_start, &b_start) && V2ApproxEq(&a_end, &b_end);
+B32 Line2ApproxEq(V2* a_start, V2* a_end, V2* b_start, V2* b_end) {
+  return V2ApproxEq(a_start, b_start) && V2ApproxEq(a_end, b_end);
 }
 
-void Line2Offset(V2* start, V2* end, V2 offset) {
-  V2AddV2(start, start, &offset);
-  V2AddV2(end, end, &offset);
+void Line2Offset(V2* start, V2* end, V2* offset) {
+  V2AddV2(start, start, offset);
+  V2AddV2(end, end, offset);
 }
 
-void Line2RotateAboutPoint(V2* start, V2* end, V2 point, F32 angle_rad) {
+void Line2RotateAboutPoint(V2* start, V2* end, V2* point, F32 angle_rad) {
   F32 s = F32Sin(angle_rad);
   F32 c = F32Cos(angle_rad);
   PointRotateAboutPoint(start, point, s, c);
   PointRotateAboutPoint(end, point, s, c);
 }
 
-void Line2GetMidpoint(V2 start, V2 end, V2* midpoint) {
-  V2AddV2(midpoint, &start, &end);
+void Line2GetMidpoint(V2* start, V2* end, V2* midpoint) {
+  V2AddV2(midpoint, start, end);
   V2MultF32(midpoint, midpoint, 0.5f);
 }
 
-F32 Line2GetLength(V2 start, V2 end) {
+F32 Line2GetLength(V2* start, V2* end) {
   return F32Sqrt(Line2GetLengthSq(start, end));
 }
 
-F32 Line2GetLengthSq(V2 start, V2 end) {
+F32 Line2GetLengthSq(V2* start, V2* end) {
   V2 v;
-  V2SubV2(&v, &end, &start);
+  V2SubV2(&v, end, start);
   return V2LengthSq(&v);
 }
 
-void Line2GetClosestPoint(V2 start, V2 end, V2 point, V2* closest) {
-  V2* a = &start;
-  V2* b = &end;
+void Line2GetClosestPoint(V2* start, V2* end, V2* point, V2* closest) {
+  V2* a = start;
+  V2* b = end;
   V2 ab, ap;
   V2SubV2(&ab, b, a);
-  V2SubV2(&ap, &point, a);
+  V2SubV2(&ap, point, a);
   F32 t = V2DotV2(&ap, &ab) / V2LengthSq(&ab);
   if (t < 0) {
     *closest = *a;
@@ -245,17 +244,17 @@ void Line2GetClosestPoint(V2 start, V2 end, V2 point, V2* closest) {
   }
 }
 
-void Line2GetNormalIn(V2 start, V2 end, V2* normal) {
+void Line2GetNormalIn(V2* start, V2* end, V2* normal) {
   V2 delta;
-  V2SubV2(&delta, &end, &start);
+  V2SubV2(&delta, end, start);
   normal->x = -delta.y;
   normal->y = delta.x;
   V2Normalize(normal, normal);
 }
 
-void Line2GetNormalOut(V2 start, V2 end, V2* normal) {
+void Line2GetNormalOut(V2* start, V2* end, V2* normal) {
   V2 delta;
-  V2SubV2(&delta, &end, &start);
+  V2SubV2(&delta, end, start);
   normal->x = delta.y;
   normal->y = -delta.x;
   V2Normalize(normal, normal);
@@ -264,179 +263,179 @@ void Line2GetNormalOut(V2 start, V2 end, V2* normal) {
 // SPEEDUP: for all line intersections, we just convert to ray and then determine if the
 // intersection point is beyond the segment's end. there's probably a more elegant way to do
 // this that e.g. doesn't force collection of the ray intersection point unless asked for?
-B32 Line2IntersectLine2(V2 a_start, V2 a_end, V2 b_start, V2 b_end, V2* intersect_point) {
+B32 Line2IntersectLine2(V2* a_start, V2* a_end, V2* b_start, V2* b_end, V2* intersect_point) {
   if (UNLIKELY(Line2GetLengthSq(a_start, a_end) == 0)) { return false; }
 
   V2 b_dir;
-  V2SubV2(&b_dir, &b_end, &b_start);
+  V2SubV2(&b_dir, b_end, b_start);
   V2Normalize(&b_dir, &b_dir);
 
   V2 i;
-  if (!Line2IntersectRay2(a_start, a_end, b_start, b_dir, &i)) { return false; }
-  if (Line2GetLengthSq(b_start, b_end) < Line2GetLengthSq(b_start, i)) { return false; }
+  if (!Line2IntersectRay2(a_start, a_end, b_start, &b_dir, &i)) { return false; }
+  if (Line2GetLengthSq(b_start, b_end) < Line2GetLengthSq(b_start, &i)) { return false; }
 
   if (intersect_point != NULL) { *intersect_point = i; }
   return true;
 }
 
-B32 Line2IntersectRay2(V2 line_start, V2 line_end, V2 ray_start, V2 ray_dir, V2* intersect_point) {
+B32 Line2IntersectRay2(V2* line_start, V2* line_end, V2* ray_start, V2* ray_dir, V2* intersect_point) {
   if (UNLIKELY(Line2GetLengthSq(line_start, line_end) == 0)) { return false; }
 
   V2 line_dir;
-  V2SubV2(&line_dir, &line_end, &line_start);
+  V2SubV2(&line_dir, line_end, line_start);
   V2Normalize(&line_dir, &line_dir);
 
   V2 i;
-  if (!Ray2IntersectRay2(line_start, line_dir, ray_start, ray_dir, &i)) { return false; }
-  if (Line2GetLengthSq(line_start, line_end) < Line2GetLengthSq(line_start, i)) { return false; }
+  if (!Ray2IntersectRay2(line_start, &line_dir, ray_start, ray_dir, &i)) { return false; }
+  if (Line2GetLengthSq(line_start, line_end) < Line2GetLengthSq(line_start, &i)) { return false; }
 
   if (intersect_point != NULL) { *intersect_point = i; }
   return true;
 }
 
-B32 Line2IntersectTri2(V2 line_start, V2 line_end, V2 tri_points[3], V2* enter_point, V2* exit_point) {
+B32 Line2IntersectTri2(V2* line_start, V2* line_end, V2 tri_points[3], V2* enter_point, V2* exit_point) {
   if (UNLIKELY(Line2GetLengthSq(line_start, line_end) == 0)) { return false; }
 
   V2 line_dir;
-  V2SubV2(&line_dir, &line_end, &line_start);
+  V2SubV2(&line_dir, line_end, line_start);
   V2Normalize(&line_dir, &line_dir);
 
   V2 enter, exit;
-  if (!Ray2IntersectTri2(line_start, line_dir, tri_points, &enter, &exit)) { return false; }
+  if (!Ray2IntersectTri2(line_start, &line_dir, tri_points, &enter, &exit)) { return false; }
 
   F32 length_sq = Line2GetLengthSq(line_start, line_end);
-  if (length_sq < Line2GetLengthSq(line_start, enter)) { return false; }
-  if (length_sq < Line2GetLengthSq(line_start, exit)) { exit = enter; }
+  if (length_sq < Line2GetLengthSq(line_start, &enter)) { return false; }
+  if (length_sq < Line2GetLengthSq(line_start, &exit)) { exit = enter; }
 
   if (enter_point != NULL) { *enter_point = enter; }
   if (exit_point != NULL) { *exit_point = exit; }
   return true;
 }
 
-B32 Line2IntersectAabb2(V2 line_start, V2 line_end, V2 aabb_center, V2 aabb_size, V2* enter_point, V2* exit_point) {
+B32 Line2IntersectAabb2(V2* line_start, V2* line_end, V2* aabb_center, V2* aabb_size, V2* enter_point, V2* exit_point) {
   if (UNLIKELY(Line2GetLengthSq(line_start, line_end) == 0)) { return false; }
 
   V2 line_dir;
-  V2SubV2(&line_dir, &line_end, &line_start);
+  V2SubV2(&line_dir, line_end, line_start);
   V2Normalize(&line_dir, &line_dir);
 
   V2 enter, exit;
-  if (!Ray2IntersectAabb2(line_start, line_dir, aabb_center, aabb_size, &enter, &exit)) { return false; }
+  if (!Ray2IntersectAabb2(line_start, &line_dir, aabb_center, aabb_size, &enter, &exit)) { return false; }
 
   F32 length_sq = Line2GetLengthSq(line_start, line_end);
-  if (length_sq < Line2GetLengthSq(line_start, enter)) { return false; }
-  if (length_sq < Line2GetLengthSq(line_start, exit)) { exit = enter; }
+  if (length_sq < Line2GetLengthSq(line_start, &enter)) { return false; }
+  if (length_sq < Line2GetLengthSq(line_start, &exit)) { exit = enter; }
 
   if (enter_point != NULL) { *enter_point = enter; }
   if (exit_point != NULL) { *exit_point = exit; }
   return true;
 }
 
-B32 Line2IntersectObb2(V2 line_start, V2 line_end, V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2* enter_point, V2* exit_point) {
+B32 Line2IntersectObb2(V2* line_start, V2* line_end, V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* enter_point, V2* exit_point) {
   return Obb2IntersectLine2(obb_center, obb_size, obb_angle_rad, line_start, line_end, enter_point, exit_point);
 }
 
-B32 Line2IntersectCircle2(V2 line_start, V2 line_end, V2 circle_center, F32 circle_radius, V2* enter_point, V2* exit_point) {
+B32 Line2IntersectCircle2(V2* line_start, V2* line_end, V2* circle_center, F32 circle_radius, V2* enter_point, V2* exit_point) {
   if (UNLIKELY(Line2GetLengthSq(line_start, line_end) == 0)) { return false; }
 
   V2 line_dir;
-  V2SubV2(&line_dir, &line_end, &line_start);
+  V2SubV2(&line_dir, line_end, line_start);
   V2Normalize(&line_dir, &line_dir);
 
   V2 enter, exit;
-  if (!Ray2IntersectCircle2(line_start, line_dir, circle_center, circle_radius, &enter, &exit)) { return false; }
+  if (!Ray2IntersectCircle2(line_start, &line_dir, circle_center, circle_radius, &enter, &exit)) { return false; }
 
   F32 length_sq = Line2GetLengthSq(line_start, line_end);
-  if (length_sq < Line2GetLengthSq(line_start, enter)) { return false; }
-  if (length_sq < Line2GetLengthSq(line_start, exit)) { exit = enter; }
+  if (length_sq < Line2GetLengthSq(line_start, &enter)) { return false; }
+  if (length_sq < Line2GetLengthSq(line_start, &exit)) { exit = enter; }
 
   if (enter_point != NULL) { *enter_point = enter; }
   if (exit_point != NULL) { *exit_point = exit; }
   return true;
 }
 
-B32 Line2IntersectConvexHull2(V2 line_start, V2 line_end, V2* hull_points, U32 hull_points_size, V2* enter_point, V2* exit_point) {
+B32 Line2IntersectConvexHull2(V2* line_start, V2* line_end, V2* hull_points, U32 hull_points_size, V2* enter_point, V2* exit_point) {
   if (UNLIKELY(Line2GetLengthSq(line_start, line_end) == 0)) { return false; }
 
   V2 line_dir;
-  V2SubV2(&line_dir, &line_end, &line_start);
+  V2SubV2(&line_dir, line_end, line_start);
   V2Normalize(&line_dir, &line_dir);
 
   V2 enter, exit;
-  if (!Ray2IntersectConvexHull2(line_start, line_dir, hull_points, hull_points_size, &enter, &exit)) { return false; }
+  if (!Ray2IntersectConvexHull2(line_start, &line_dir, hull_points, hull_points_size, &enter, &exit)) { return false; }
 
   F32 length_sq = Line2GetLengthSq(line_start, line_end);
-  if (length_sq < Line2GetLengthSq(line_start, enter)) { return false; }
-  if (length_sq < Line2GetLengthSq(line_start, exit)) { exit = enter; }
+  if (length_sq < Line2GetLengthSq(line_start, &enter)) { return false; }
+  if (length_sq < Line2GetLengthSq(line_start, &exit)) { exit = enter; }
 
   if (enter_point != NULL) { *enter_point = enter; }
   if (exit_point != NULL) { *exit_point = exit; }
   return true;
 }
 
-B32 Ray2Eq(V2 a_start, V2 a_dir, V2 b_start, V2 b_dir) {
-  return V2Eq(&a_start, &b_start) && V2Eq(&a_dir, &b_dir);
+B32 Ray2Eq(V2* a_start, V2* a_dir, V2* b_start, V2* b_dir) {
+  return V2Eq(a_start, b_start) && V2Eq(a_dir, b_dir);
 }
 
-B32 Ray2ApproxEq(V2 a_start, V2 a_dir, V2 b_start, V2 b_dir) {
-  return V2ApproxEq(&a_start, &b_start) && V2ApproxEq(&a_dir, &b_dir);
+B32 Ray2ApproxEq(V2* a_start, V2* a_dir, V2* b_start, V2* b_dir) {
+  return V2ApproxEq(a_start, b_start) && V2ApproxEq(a_dir, b_dir);
 }
 
-void Ray2RotateAboutPoint(V2* ray_start, V2* ray_dir, V2 point, F32 angle_rad) {
+void Ray2RotateAboutPoint(V2* ray_start, V2* ray_dir, V2* point, F32 angle_rad) {
   F32 s = F32Sin(angle_rad);
   F32 c = F32Cos(angle_rad);
   V2 origin;
   MEMORY_ZERO_STRUCT(&origin);
   PointRotateAboutPoint(ray_start, point, s, c);
-  PointRotateAboutPoint(ray_dir, origin, s, c);
+  PointRotateAboutPoint(ray_dir, &origin, s, c);
 }
 
-void Ray2GetDirInv(V2 ray_dir, V2* dir_inv) {
-  dir_inv->x = 1.0f / ray_dir.x;
-  dir_inv->y = 1.0f / ray_dir.y;
+void Ray2GetDirInv(V2* ray_dir, V2* dir_inv) {
+  dir_inv->x = 1.0f / ray_dir->x;
+  dir_inv->y = 1.0f / ray_dir->y;
 }
 
-B32 Ray2IntersectLine2(V2 ray_start, V2 ray_dir, V2 line_start, V2 line_end, V2* intersect_point) {
+B32 Ray2IntersectLine2(V2* ray_start, V2* ray_dir, V2* line_start, V2* line_end, V2* intersect_point) {
   V2 line_dir;
-  V2SubV2(&line_dir, &line_end, &line_start);
+  V2SubV2(&line_dir, line_end, line_start);
   V2Normalize(&line_dir, &line_dir);
 
   V2 i;
-  if (!Ray2IntersectRay2(ray_start, ray_dir, line_start, line_dir, &i)) { return false; }
-  if (Line2GetLengthSq(line_start, line_end) < Line2GetLengthSq(line_start, i)) { return false; }
+  if (!Ray2IntersectRay2(ray_start, ray_dir, line_start, &line_dir, &i)) { return false; }
+  if (Line2GetLengthSq(line_start, line_end) < Line2GetLengthSq(line_start, &i)) { return false; }
 
   if (intersect_point != NULL) { *intersect_point = i; }
   return true;
 }
 
-B32 Ray2IntersectRay2(V2 a_start, V2 a_dir, V2 b_start, V2 b_dir, V2* intersect_point) {
-  F32 cross = V2CrossV2(&b_dir, &a_dir);
+B32 Ray2IntersectRay2(V2* a_start, V2* a_dir, V2* b_start, V2* b_dir, V2* intersect_point) {
+  F32 cross = V2CrossV2(b_dir, a_dir);
   if (cross == 0) { return false; }
-  F32 d_x = b_start.x - a_start.x;
-  F32 d_y = b_start.y - a_start.y;
-  F32 u = ((d_y * b_dir.x) - (d_x * b_dir.y)) / cross;
-  F32 v = ((d_y * a_dir.x) - (d_x * a_dir.y)) / cross;
+  F32 d_x = b_start->x - a_start->x;
+  F32 d_y = b_start->y - a_start->y;
+  F32 u = ((d_y * b_dir->x) - (d_x * b_dir->y)) / cross;
+  F32 v = ((d_y * a_dir->x) - (d_x * a_dir->y)) / cross;
   if (u < 0 || v < 0) { return false; }
   if (intersect_point != NULL) {
-    V2MultF32(intersect_point, &a_dir, u);
-    V2AddV2(intersect_point, &a_start, intersect_point);
+    V2MultF32(intersect_point, a_dir, u);
+    V2AddV2(intersect_point, a_start, intersect_point);
   }
   return true;
 }
 
-B32 Ray2IntersectTri2(V2 ray_start, V2 ray_dir, V2 tri_points[3], V2* enter_point, V2* exit_point) {
+B32 Ray2IntersectTri2(V2* ray_start, V2* ray_dir, V2 tri_points[3], V2* enter_point, V2* exit_point) {
   return Ray2IntersectConvexHull2(ray_start, ray_dir, (V2*) tri_points, 3, enter_point, exit_point);
 }
 
-B32 Ray2IntersectAabb2(V2 ray_start, V2 ray_dir, V2 aabb_center, V2 aabb_size, V2* enter_point, V2* exit_point) {
+B32 Ray2IntersectAabb2(V2* ray_start, V2* ray_dir, V2* aabb_center, V2* aabb_size, V2* enter_point, V2* exit_point) {
   V2 aabb_min, aabb_max, ray_dir_inv;
   Aabb2GetMinMax(aabb_center, aabb_size, &aabb_min, &aabb_max);
   Ray2GetDirInv(ray_dir, &ray_dir_inv);
 
   V2 t_1, t_2;
-  V2SubV2(&t_1, &aabb_min, &ray_start);
+  V2SubV2(&t_1, &aabb_min, ray_start);
   V2HadamardV2(&t_1, &t_1, &ray_dir_inv);
-  V2SubV2(&t_2, &aabb_max, &ray_start);
+  V2SubV2(&t_2, &aabb_max, ray_start);
   V2HadamardV2(&t_2, &t_2, &ray_dir_inv);
 
   F32 t_min = MAX(MIN(t_1.x, t_2.x), MIN(t_1.y, t_2.y));
@@ -449,24 +448,24 @@ B32 Ray2IntersectAabb2(V2 ray_start, V2 ray_dir, V2 aabb_center, V2 aabb_size, V
   }
 
   if (enter_point != NULL) {
-    V2MultF32(enter_point, &ray_dir, t_min);
-    V2AddV2(enter_point, &ray_start, enter_point);
+    V2MultF32(enter_point, ray_dir, t_min);
+    V2AddV2(enter_point, ray_start, enter_point);
   }
   if (exit_point != NULL) {
-    V2MultF32(exit_point, &ray_dir, t_max);
-    V2AddV2(exit_point, &ray_start, exit_point);
+    V2MultF32(exit_point, ray_dir, t_max);
+    V2AddV2(exit_point, ray_start, exit_point);
   }
   return true;
 }
 
-B32 Ray2IntersectObb2(V2 ray_start, V2 ray_dir, V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2* enter_point, V2* exit_point) {
+B32 Ray2IntersectObb2(V2* ray_start, V2* ray_dir, V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* enter_point, V2* exit_point) {
   return Obb2IntersectRay2(obb_center, obb_size, obb_angle_rad, ray_start, ray_dir, enter_point, exit_point);
 }
 
-B32 Ray2IntersectCircle2(V2 ray_start, V2 ray_dir, V2 circle_center, F32 circle_radius, V2* enter_point, V2* exit_point) {
+B32 Ray2IntersectCircle2(V2* ray_start, V2* ray_dir, V2* circle_center, F32 circle_radius, V2* enter_point, V2* exit_point) {
   V2 rel_center;
-  V2SubV2(&rel_center, &circle_center, &ray_start);
-  F32 to_perp_center = V2DotV2(&rel_center, &ray_dir);
+  V2SubV2(&rel_center, circle_center, ray_start);
+  F32 to_perp_center = V2DotV2(&rel_center, ray_dir);
   F32 d2 = V2DotV2(&rel_center, &rel_center) - (to_perp_center * to_perp_center);
   if (d2 > circle_radius * circle_radius) { return false; }
   if (enter_point == NULL && exit_point == NULL) { return true; }
@@ -479,28 +478,28 @@ B32 Ray2IntersectCircle2(V2 ray_start, V2 ray_dir, V2 circle_center, F32 circle_
     t0 = t1;
   }
   if (enter_point != NULL) {
-    V2MultF32(enter_point, &ray_dir, t0);
-    V2AddV2(enter_point, &ray_start, enter_point);
+    V2MultF32(enter_point, ray_dir, t0);
+    V2AddV2(enter_point, ray_start, enter_point);
   }
   if (exit_point != NULL) {
-    V2MultF32(exit_point, &ray_dir, t1);
-    V2AddV2(exit_point, &ray_start, exit_point);
+    V2MultF32(exit_point, ray_dir, t1);
+    V2AddV2(exit_point, ray_start, exit_point);
   }
   return true;
 }
 
-B32 Ray2IntersectConvexHull2(V2 ray_start, V2 ray_dir, V2* hull_points, U32 hull_points_size, V2* enter_point, V2* exit_point) {
+B32 Ray2IntersectConvexHull2(V2* ray_start, V2* ray_dir, V2* hull_points, U32 hull_points_size, V2* enter_point, V2* exit_point) {
   B32 result = false;
   F32 min_sq = F32_MAX;
   F32 max_sq = F32_MIN;
   for (U32 i = 0; i < hull_points_size; i++) {
     V2 intersect;
-    if (!Ray2IntersectLine2(ray_start, ray_dir, hull_points[i], hull_points[(i + 1) % hull_points_size], &intersect)) {
+    if (!Ray2IntersectLine2(ray_start, ray_dir, &hull_points[i], &hull_points[(i + 1) % hull_points_size], &intersect)) {
       continue;
     }
     result = true;
     if (enter_point == NULL && exit_point == NULL) { continue; }
-    F32 length_sq = Line2GetLengthSq(ray_start, intersect);
+    F32 length_sq = Line2GetLengthSq(ray_start, &intersect);
     if (enter_point != NULL && length_sq < min_sq) {
       min_sq = length_sq;
       *enter_point = intersect;
@@ -525,13 +524,13 @@ B32 Tri2ApproxEq(V2 a_points[3], V2 b_points[3]) {
          V2ApproxEq(&a_points[2], &b_points[2]);
 }
 
-void Tri2Offset(V2 tri_points[3], V2 offset) {
-  V2AddV2(&tri_points[0], &tri_points[0], &offset);
-  V2AddV2(&tri_points[1], &tri_points[1], &offset);
-  V2AddV2(&tri_points[2], &tri_points[2], &offset);
+void Tri2Offset(V2 tri_points[3], V2* offset) {
+  V2AddV2(&tri_points[0], &tri_points[0], offset);
+  V2AddV2(&tri_points[1], &tri_points[1], offset);
+  V2AddV2(&tri_points[2], &tri_points[2], offset);
 }
 
-void Tri2RotateAboutPoint(V2 tri_points[3], V2 point, F32 angle_rad) {
+void Tri2RotateAboutPoint(V2 tri_points[3], V2* point, F32 angle_rad) {
   F32 s = F32Sin(angle_rad);
   F32 c = F32Cos(angle_rad);
   for (U32 i = 0; i < 3; i++) {
@@ -539,11 +538,11 @@ void Tri2RotateAboutPoint(V2 tri_points[3], V2 point, F32 angle_rad) {
   }
 }
 
-void Tri2SetCenter(V2 tri_points[3], V2 center) {
+void Tri2SetCenter(V2 tri_points[3], V2* center) {
   V2 curr_center, offset;
   Tri2GetCenter(tri_points, &curr_center);
-  V2SubV2(&offset, &center, &curr_center);
-  Tri2Offset(tri_points, offset);
+  V2SubV2(&offset, center, &curr_center);
+  Tri2Offset(tri_points, &offset);
 }
 
 void Tri2GetCenter(V2 tri_points[3], V2* center) {
@@ -558,15 +557,15 @@ void Tri2GetEnclosingAabb2(V2 tri_points[3], V2* aabb_center, V2* aabb_size) {
   ConvexHull2GetEnclosingAabb2((V2*) tri_points, 3, aabb_center, aabb_size);
 }
 
-B32 Tri2ContainsPoint(V2 tri_points[3], V2 point) {
+B32 Tri2ContainsPoint(V2 tri_points[3], V2* point) {
   return ConvexHull2ContainsPoint((V2*) tri_points, 3, point);
 }
 
-B32 Tri2IntersectLine2(V2 tri_points[3], V2 line_start, V2 line_end, V2* enter_point, V2* exit_point) {
+B32 Tri2IntersectLine2(V2 tri_points[3], V2* line_start, V2* line_end, V2* enter_point, V2* exit_point) {
   return Line2IntersectTri2(line_start, line_end, tri_points, enter_point, exit_point);
 }
 
-B32 Tri2IntersectRay2(V2 tri_points[3], V2 ray_start, V2 ray_dir, V2* enter_point, V2* exit_point) {
+B32 Tri2IntersectRay2(V2 tri_points[3], V2* ray_start, V2* ray_dir, V2* enter_point, V2* exit_point) {
   return Ray2IntersectTri2(ray_start, ray_dir, tri_points, enter_point, exit_point);
 }
 
@@ -574,19 +573,19 @@ B32 Tri2IntersectTri2(V2 a_points[3], V2 b_points[3], IntersectManifold2* manifo
   return ConvexHull2IntersectConvexHull2((V2*) a_points, 3, (V2*) b_points, 3, manifold);
 }
 
-B32 Tri2IntersectAabb2(V2 tri_points[3], V2 aabb_center, V2 aabb_size, IntersectManifold2* manifold) {
+B32 Tri2IntersectAabb2(V2 tri_points[3], V2* aabb_center, V2* aabb_size, IntersectManifold2* manifold) {
   V2 aabb_points[4];
   ConvexHull2FromAabb2(aabb_points, aabb_center, aabb_size);
   return ConvexHull2IntersectConvexHull2((V2*) tri_points, 3, aabb_points, 4, manifold);
 }
 
-B32 Tri2IntersectObb2(V2 tri_points[3], V2 obb_center, V2 obb_size, F32 obb_angle_rad, IntersectManifold2* manifold) {
+B32 Tri2IntersectObb2(V2 tri_points[3], V2* obb_center, V2* obb_size, F32 obb_angle_rad, IntersectManifold2* manifold) {
   B32 result = Obb2IntersectTri2(obb_center, obb_size, obb_angle_rad, tri_points, manifold);
   if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1); }
   return result;
 }
 
-B32  Tri2IntersectCircle2(V2 tri_points[3], V2 circle_center, F32 circle_radius, IntersectManifold2* manifold) {
+B32 Tri2IntersectCircle2(V2 tri_points[3], V2* circle_center, F32 circle_radius, IntersectManifold2* manifold) {
   return Circle2IntersectTri2(circle_center, circle_radius, tri_points, manifold);
 }
 
@@ -594,70 +593,70 @@ B32 Tri2IntersectConvexHull2(V2 tri_points[3], V2* hull_points, U32 hull_points_
   return ConvexHull2IntersectConvexHull2((V2*) tri_points, 3, hull_points, hull_points_size, manifold);
 }
 
-B32 Aabb2Eq(V2 a_center, V2 a_size, V2 b_center, V2 b_size) {
-  return V2Eq(&a_center, &b_center) && V2Eq(&a_size, &b_size);
+B32 Aabb2Eq(V2* a_center, V2* a_size, V2* b_center, V2* b_size) {
+  return V2Eq(a_center, b_center) && V2Eq(a_size, b_size);
 }
 
-B32 Aabb2ApproxEq(V2 a_center, V2 a_size, V2 b_center, V2 b_size) {
-  return V2ApproxEq(&a_center, &b_center) && V2ApproxEq(&a_size, &b_size);
+B32 Aabb2ApproxEq(V2* a_center, V2* a_size, V2* b_center, V2* b_size) {
+  return V2ApproxEq(a_center, b_center) && V2ApproxEq(a_size, b_size);
 }
 
-void Aabb2FromMinMax(V2* aabb_center, V2* aabb_size, V2 min, V2 max) {
-  DEBUG_ASSERT(min.x < max.x);
-  DEBUG_ASSERT(min.y < max.y);
-  aabb_center->x = (min.x + max.x) / 2.0f;
-  aabb_center->y = (min.y + max.y) / 2.0f;
-  aabb_size->x   = max.x - min.x;
-  aabb_size->y   = max.y - min.y;
+void Aabb2FromMinMax(V2* aabb_center, V2* aabb_size, V2* min, V2* max) {
+  DEBUG_ASSERT(min->x < max->x);
+  DEBUG_ASSERT(min->y < max->y);
+  aabb_center->x = (min->x + max->x) / 2.0f;
+  aabb_center->y = (min->y + max->y) / 2.0f;
+  aabb_size->x   = max->x - min->x;
+  aabb_size->y   = max->y - min->y;
 }
 
-void Aabb2FromTopLeft(V2* aabb_center, V2 top_left_point, V2 size) {
-  aabb_center->x = top_left_point.x + size.x / 2.0f;
-  aabb_center->y = top_left_point.y - size.y / 2.0f;
+void Aabb2FromTopLeft(V2* aabb_center, V2* top_left_point, V2* size) {
+  aabb_center->x = top_left_point->x + size->x / 2.0f;
+  aabb_center->y = top_left_point->y - size->y / 2.0f;
 }
 
-void Aabb2GetMinMax(V2 aabb_center, V2 aabb_size, V2* min, V2* max) {
+void Aabb2GetMinMax(V2* aabb_center, V2* aabb_size, V2* min, V2* max) {
   V2 half_size;
-  V2DivF32(&half_size, &aabb_size, 2.0f);
-  min->x = aabb_center.x - half_size.x;
-  min->y = aabb_center.y - half_size.y;
-  max->x = aabb_center.x + half_size.x;
-  max->y = aabb_center.y + half_size.y;
+  V2DivF32(&half_size, aabb_size, 2.0f);
+  min->x = aabb_center->x - half_size.x;
+  min->y = aabb_center->y - half_size.y;
+  max->x = aabb_center->x + half_size.x;
+  max->y = aabb_center->y + half_size.y;
 }
 
-void Aabb2GetEnclosingCircle2(V2 aabb_center, V2 aabb_size, F32* circle_radius) {
+void Aabb2GetEnclosingCircle2(V2* aabb_center, V2* aabb_size, F32* circle_radius) {
   V2 min, max, rel_center;
   Aabb2GetMinMax(aabb_center, aabb_size, &min, &max);
-  V2SubV2(&rel_center, &max, &aabb_center);
+  V2SubV2(&rel_center, &max, aabb_center);
   *circle_radius = V2Length(&rel_center);
 }
 
-void Aabb2RotateAboutPoint(V2* aabb_center, V2* UNUSED(aabb_size), V2 point, F32 angle_rad) {
+void Aabb2RotateAboutPoint(V2* aabb_center, V2* UNUSED(aabb_size), V2* point, F32 angle_rad) {
   PointRotateAboutPoint(aabb_center, point, F32Sin(angle_rad), F32Cos(angle_rad));
 }
 
-B32 Aabb2ContainsPoint(V2 aabb_center, V2 aabb_size, V2 point) {
+B32 Aabb2ContainsPoint(V2* aabb_center, V2* aabb_size, V2* point) {
   V2 min, max;
   Aabb2GetMinMax(aabb_center, aabb_size, &min, &max);
-  return (min.x <= point.x && point.x <= max.x) &&
-         (min.y <= point.y && point.y <= max.y);
+  return (min.x <= point->x && point->x <= max.x) &&
+         (min.y <= point->y && point->y <= max.y);
 }
 
-B32 Aabb2IntersectLine2(V2 aabb_center, V2 aabb_size, V2 line_start, V2 line_end, V2* enter_point, V2* exit_point) {
+B32 Aabb2IntersectLine2(V2* aabb_center, V2* aabb_size, V2* line_start, V2* line_end, V2* enter_point, V2* exit_point) {
   return Line2IntersectAabb2(line_start, line_end, aabb_center, aabb_size, enter_point, exit_point);
 }
 
-B32 Aabb2IntersectRay2(V2 aabb_center, V2 aabb_size, V2 ray_start, V2 ray_dir, V2* enter_point, V2* exit_point) {
+B32 Aabb2IntersectRay2(V2* aabb_center, V2* aabb_size, V2* ray_start, V2* ray_dir, V2* enter_point, V2* exit_point) {
   return Ray2IntersectAabb2(ray_start, ray_dir, aabb_center, aabb_size, enter_point, exit_point);
 }
 
-B32 Aabb2IntersectTri2(V2 aabb_center, V2 aabb_size, V2 tri_points[3], IntersectManifold2* manifold) {
+B32 Aabb2IntersectTri2(V2* aabb_center, V2* aabb_size, V2 tri_points[3], IntersectManifold2* manifold) {
   B32 result = Tri2IntersectAabb2(tri_points, aabb_center, aabb_size, manifold);
   if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1); }
   return result;
 }
 
-B32 Aabb2IntersectAabb2(V2 a_center, V2 a_size, V2 b_center, V2 b_size, IntersectManifold2* manifold) {
+B32 Aabb2IntersectAabb2(V2* a_center, V2* a_size, V2* b_center, V2* b_size, IntersectManifold2* manifold) {
   V2 a_min, a_max, b_min, b_max;
   Aabb2GetMinMax(a_center, a_size, &a_min, &a_max);
   Aabb2GetMinMax(b_center, b_size, &b_min, &b_max);
@@ -690,85 +689,85 @@ B32 Aabb2IntersectAabb2(V2 a_center, V2 a_size, V2 b_center, V2 b_size, Intersec
   return true;
 }
 
-B32 Aabb2IntersectObb2(V2 aabb_center, V2 aabb_size, V2 obb_center, V2 obb_size, F32 obb_angle_rad, IntersectManifold2* manifold) {
+B32 Aabb2IntersectObb2(V2* aabb_center, V2* aabb_size, V2* obb_center, V2* obb_size, F32 obb_angle_rad, IntersectManifold2* manifold) {
   B32 result = Obb2IntersectAabb2(obb_center, obb_size, obb_angle_rad, aabb_center, aabb_size, manifold);
   if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1); }
   return result;
 }
 
-B32 Aabb2IntersectCircle2(V2 aabb_center, V2 aabb_size, V2 circle_center, F32 circle_radius, IntersectManifold2* manifold) {
+B32 Aabb2IntersectCircle2(V2* aabb_center, V2* aabb_size, V2* circle_center, F32 circle_radius, IntersectManifold2* manifold) {
   B32 result = Circle2IntersectAabb2(circle_center, circle_radius, aabb_center, aabb_size, manifold);
   if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1); }
   return result;
 }
 
-B32 Aabb2IntersectConvexHull2(V2 aabb_center, V2 aabb_size, V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold) {
+B32 Aabb2IntersectConvexHull2(V2* aabb_center, V2* aabb_size, V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold) {
   V2 aabb_points[4];
   ConvexHull2FromAabb2(aabb_points, aabb_center, aabb_size);
   return ConvexHull2IntersectConvexHull2(aabb_points, 4, hull_points, hull_points_size, manifold);
 }
 
-B32 Obb2Eq(V2 a_center, V2 a_size, F32 a_angle_rad, V2 b_center, V2 b_size, F32 b_angle_rad) {
-  return V2Eq(&a_center, &b_center) &&
-         V2Eq(&a_size, &b_size) &&
+B32 Obb2Eq(V2* a_center, V2* a_size, F32 a_angle_rad, V2* b_center, V2* b_size, F32 b_angle_rad) {
+  return V2Eq(a_center, b_center) &&
+         V2Eq(a_size, b_size) &&
          a_angle_rad == b_angle_rad;
 }
 
-B32 Obb2ApproxEq(V2 a_center, V2 a_size, F32 a_angle_rad, V2 b_center, V2 b_size, F32 b_angle_rad) {
-  return V2ApproxEq(&a_center, &b_center) &&
-         V2ApproxEq(&a_size, &b_size) &&
+B32 Obb2ApproxEq(V2* a_center, V2* a_size, F32 a_angle_rad, V2* b_center, V2* b_size, F32 b_angle_rad) {
+  return V2ApproxEq(a_center, b_center) &&
+         V2ApproxEq(a_size, b_size) &&
          F32ApproxEq(a_angle_rad, b_angle_rad);
 }
 
-void Obb2RotateAboutPoint(V2* obb_center, F32* obb_angle_rad, V2 point, F32 angle_rad) {
+void Obb2RotateAboutPoint(V2* obb_center, F32* obb_angle_rad, V2* point, F32 angle_rad) {
   PointRotateAboutPoint(obb_center, point, F32Sin(angle_rad), F32Cos(angle_rad));
   *obb_angle_rad += angle_rad;
 }
 
 // SPEEDUP: Lots of OBB fns convert to a convex hull; may be better to cache the translation.
-void Obb2GetEnclosingCircle2(V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2* circle_center, F32* circle_radius) {
+void Obb2GetEnclosingCircle2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* circle_center, F32* circle_radius) {
   V2 obb_points[4];
   ConvexHull2FromObb2(obb_points, obb_center, obb_size, obb_angle_rad);
   ConvexHull2GetEnclosingCircle2((V2*) obb_points, 4, circle_center, circle_radius);
 }
 
-void Obb2GetEnclosingAabb2(V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2* aabb_size) {
+void Obb2GetEnclosingAabb2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* aabb_size) {
   V2 obb_points[4], temp;
   ConvexHull2FromObb2(obb_points, obb_center, obb_size, obb_angle_rad);
   ConvexHull2GetEnclosingAabb2((V2*) obb_points, 4, &temp, aabb_size);
 }
 
-B32 Obb2ContainsPoint(V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2 point) {
+B32 Obb2ContainsPoint(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* point) {
   V2 obb_points[4];
   ConvexHull2FromObb2(obb_points, obb_center, obb_size, obb_angle_rad);
   return ConvexHull2ContainsPoint((V2*) obb_points, 4, point);
 }
 
-B32 Obb2IntersectLine2(V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2 line_start, V2 line_end, V2* enter_point, V2* exit_point) {
+B32 Obb2IntersectLine2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* line_start, V2* line_end, V2* enter_point, V2* exit_point) {
   V2 obb_points[4];
   ConvexHull2FromObb2(obb_points, obb_center, obb_size, obb_angle_rad);
   return ConvexHull2IntersectLine2((V2*) obb_points, 4, line_start, line_end, enter_point, exit_point);
 }
 
-B32 Obb2IntersectRay2(V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2 ray_start, V2 ray_dir, V2* enter_point, V2* exit_point) {
+B32 Obb2IntersectRay2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* ray_start, V2* ray_dir, V2* enter_point, V2* exit_point) {
   V2 obb_points[4];
   ConvexHull2FromObb2(obb_points, obb_center, obb_size, obb_angle_rad);
   return ConvexHull2IntersectRay2((V2*) obb_points, 4, ray_start, ray_dir, enter_point, exit_point);
 }
 
-B32 Obb2IntersectTri2(V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2 tri_points[3], IntersectManifold2* manifold) {
+B32 Obb2IntersectTri2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2 tri_points[3], IntersectManifold2* manifold) {
   V2 obb_points[4];
   ConvexHull2FromObb2(obb_points, obb_center, obb_size, obb_angle_rad);
   return ConvexHull2IntersectTri2(obb_points, 4, tri_points, manifold);
 }
 
-B32 Obb2IntersectAabb2(V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2 aabb_center, V2 aabb_size, IntersectManifold2* manifold) {
+B32 Obb2IntersectAabb2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* aabb_center, V2* aabb_size, IntersectManifold2* manifold) {
   V2 obb_points[4];
   ConvexHull2FromObb2(obb_points, obb_center, obb_size, obb_angle_rad);
   return ConvexHull2IntersectAabb2((V2*) obb_points, 4, aabb_center, aabb_size, manifold);
 }
 
-B32 Obb2IntersectObb2(V2 a_center, V2 a_size, F32 a_angle_rad, V2 b_center, V2 b_size, F32 b_angle_rad, IntersectManifold2* manifold) {
+B32 Obb2IntersectObb2(V2* a_center, V2* a_size, F32 a_angle_rad, V2* b_center, V2* b_size, F32 b_angle_rad, IntersectManifold2* manifold) {
   V2 a_points[4];
   ConvexHull2FromObb2(a_points, a_center, a_size, a_angle_rad);
   V2 b_points[4];
@@ -776,24 +775,24 @@ B32 Obb2IntersectObb2(V2 a_center, V2 a_size, F32 a_angle_rad, V2 b_center, V2 b
   return ConvexHull2IntersectConvexHull2((V2*) a_points, 4, (V2*) b_points, 4, manifold);
 }
 
-B32 Obb2IntersectCircle2(V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2 circle_center, F32 circle_radius, IntersectManifold2* manifold) {
+B32 Obb2IntersectCircle2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* circle_center, F32 circle_radius, IntersectManifold2* manifold) {
   V2 obb_points[4];
   ConvexHull2FromObb2(obb_points, obb_center, obb_size, obb_angle_rad);
   return ConvexHull2IntersectCircle2((V2*) obb_points, 4, circle_center, circle_radius, manifold);
 }
 
-B32 Obb2IntersectConvexHull2(V2 obb_center, V2 obb_size, F32 obb_angle_rad, V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold) {
+B32 Obb2IntersectConvexHull2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold) {
   V2 obb_points[4];
   ConvexHull2FromObb2(obb_points, obb_center, obb_size, obb_angle_rad);
   return ConvexHull2IntersectConvexHull2(obb_points, 4, hull_points, hull_points_size, manifold);
 }
 
-B32 Circle2Eq(V2 a_center, F32 a_radius, V2 b_center, F32 b_radius) {
-  return V2Eq(&a_center, &b_center) && a_radius == b_radius;
+B32 Circle2Eq(V2* a_center, F32 a_radius, V2* b_center, F32 b_radius) {
+  return V2Eq(a_center, b_center) && a_radius == b_radius;
 }
 
-B32 Circle2ApproxEq(V2 a_center, F32 a_radius, V2 b_center, F32 b_radius) {
-  return V2ApproxEq(&a_center, &b_center) && F32ApproxEq(a_radius, b_radius);
+B32 Circle2ApproxEq(V2* a_center, F32 a_radius, V2* b_center, F32 b_radius) {
+  return V2ApproxEq(a_center, b_center) && F32ApproxEq(a_radius, b_radius);
 }
 
 void Circle2GetEnclosingAabb2(F32 circle_radius, V2* aabb_size) {
@@ -801,29 +800,29 @@ void Circle2GetEnclosingAabb2(F32 circle_radius, V2* aabb_size) {
   aabb_size->y = aabb_size->x;
 }
 
-B32 Circle2ContainsPoint(V2 circle_center, F32 circle_radius, V2 point) {
+B32 Circle2ContainsPoint(V2* circle_center, F32 circle_radius, V2* point) {
   V2 to_pt;
-  V2SubV2(&to_pt, &point, &circle_center);
+  V2SubV2(&to_pt, point, circle_center);
   return V2LengthSq(&to_pt) < (circle_radius * circle_radius);
 }
 
-B32 Circle2IntersectLine2(V2 circle_center, F32 circle_radius, V2 line_start, V2 line_end, V2* enter_point, V2* exit_point) {
+B32 Circle2IntersectLine2(V2* circle_center, F32 circle_radius, V2* line_start, V2* line_end, V2* enter_point, V2* exit_point) {
   return Line2IntersectCircle2(line_start, line_end, circle_center, circle_radius, enter_point, exit_point);
 }
 
-B32 Circle2IntersectRay2(V2 circle_center, F32 circle_radius, V2 ray_start, V2 ray_dir, V2* enter_point, V2* exit_point) {
+B32 Circle2IntersectRay2(V2* circle_center, F32 circle_radius, V2* ray_start, V2* ray_dir, V2* enter_point, V2* exit_point) {
   return Ray2IntersectCircle2(ray_start, ray_dir, circle_center, circle_radius, enter_point, exit_point);
 }
 
-B32 Circle2IntersectTri2(V2 circle_center, F32 circle_radius, V2 tri_points[3], IntersectManifold2* manifold) {
+B32 Circle2IntersectTri2(V2* circle_center, F32 circle_radius, V2 tri_points[3], IntersectManifold2* manifold) {
   V2 p_p0p1, p_p1p2, p_p2p0;
-  Line2GetClosestPoint(tri_points[0], tri_points[1], circle_center, &p_p0p1);
-  Line2GetClosestPoint(tri_points[1], tri_points[2], circle_center, &p_p1p2);
-  Line2GetClosestPoint(tri_points[2], tri_points[0], circle_center, &p_p2p0);
+  Line2GetClosestPoint(&tri_points[0], &tri_points[1], circle_center, &p_p0p1);
+  Line2GetClosestPoint(&tri_points[1], &tri_points[2], circle_center, &p_p1p2);
+  Line2GetClosestPoint(&tri_points[2], &tri_points[0], circle_center, &p_p2p0);
   V2 to_p_p0p1, to_p_p1p2, to_p_p2p0;
-  V2SubV2(&to_p_p0p1, &p_p0p1, &circle_center);
-  V2SubV2(&to_p_p1p2, &p_p1p2, &circle_center);
-  V2SubV2(&to_p_p2p0, &p_p2p0, &circle_center);
+  V2SubV2(&to_p_p0p1, &p_p0p1, circle_center);
+  V2SubV2(&to_p_p1p2, &p_p1p2, circle_center);
+  V2SubV2(&to_p_p2p0, &p_p2p0, circle_center);
   F32 to_p_p0p1_len_sq = V2LengthSq(&to_p_p0p1);
   F32 to_p_p1p2_len_sq = V2LengthSq(&to_p_p1p2);
   F32 to_p_p2p0_len_sq = V2LengthSq(&to_p_p2p0);
@@ -863,16 +862,16 @@ B32 Circle2IntersectTri2(V2 circle_center, F32 circle_radius, V2 tri_points[3], 
   }
 }
 
-B32 Circle2IntersectAabb2(V2 circle_center, F32 circle_radius, V2 aabb_center, V2 aabb_size, IntersectManifold2* manifold) {
+B32 Circle2IntersectAabb2(V2* circle_center, F32 circle_radius, V2* aabb_center, V2* aabb_size, IntersectManifold2* manifold) {
   V2 min, max;
   Aabb2GetMinMax(aabb_center, aabb_size, &min, &max);
 
   V2 rel_closest_point;
-  rel_closest_point.x = CLAMP(min.x, circle_center.x, max.x);
-  rel_closest_point.y = CLAMP(min.y, circle_center.y, max.y);
+  rel_closest_point.x = CLAMP(min.x, circle_center->x, max.x);
+  rel_closest_point.y = CLAMP(min.y, circle_center->y, max.y);
 
   V2 to_closest_point;
-  V2SubV2(&to_closest_point, &circle_center, &rel_closest_point);
+  V2SubV2(&to_closest_point, circle_center, &rel_closest_point);
   F32 d_sq = V2LengthSq(&to_closest_point);
   F32 r_sq = circle_radius * circle_radius;
 
@@ -888,10 +887,10 @@ B32 Circle2IntersectAabb2(V2 circle_center, F32 circle_radius, V2 aabb_center, V
     return true;
   } else {
     // NOTE: Inside the AABB.
-    F32 dx_left  = circle_center.x - min.x;
-    F32 dx_right = max.x - circle_center.x;
-    F32 dy_bot   = circle_center.y - min.y;
-    F32 dy_top   = max.y - circle_center.y;
+    F32 dx_left  = circle_center->x - min.x;
+    F32 dx_right = max.x - circle_center->x;
+    F32 dy_bot   = circle_center->y - min.y;
+    F32 dy_top   = max.y - circle_center->y;
 
     F32 min = dx_left;
     V2 normal = V2_X_NEG;
@@ -914,15 +913,15 @@ B32 Circle2IntersectAabb2(V2 circle_center, F32 circle_radius, V2 aabb_center, V
   }
 }
 
-B32 Circle2IntersectObb2(V2 circle_center, F32 circle_radius, V2 obb_center, V2 obb_size, F32 obb_angle_rad, IntersectManifold2* manifold) {
+B32 Circle2IntersectObb2(V2* circle_center, F32 circle_radius, V2* obb_center, V2* obb_size, F32 obb_angle_rad, IntersectManifold2* manifold) {
   B32 result = Obb2IntersectCircle2(obb_center, obb_size, obb_angle_rad, circle_center, circle_radius, manifold);
   if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1.0f); }
   return result;
 }
 
-B32 Circle2IntersectCircle2(V2 a_center, F32 a_radius, V2 b_center, F32 b_radius, IntersectManifold2* manifold) {
+B32 Circle2IntersectCircle2(V2* a_center, F32 a_radius, V2* b_center, F32 b_radius, IntersectManifold2* manifold) {
   V2 center_diff;
-  V2SubV2(&center_diff, &a_center, &b_center);
+  V2SubV2(&center_diff, a_center, b_center);
   F32 min_distance = a_radius + b_radius;
   F32 distance = V2Length(&center_diff);
   if (min_distance < distance) { return false; }
@@ -935,7 +934,7 @@ B32 Circle2IntersectCircle2(V2 a_center, F32 a_radius, V2 b_center, F32 b_radius
   return true;
 }
 
-B32 Circle2IntersectConvexHull2(V2 circle_center, F32 circle_radius, V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold) {
+B32 Circle2IntersectConvexHull2(V2* circle_center, F32 circle_radius, V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold) {
   B32 result = ConvexHull2IntersectCircle2(hull_points, hull_points_size, circle_center, circle_radius, manifold);
   if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1.0f); }
   return result;
@@ -969,7 +968,7 @@ B32 ConvexHull2ApproxEq(V2* a_points, U32 a_points_size, V2* b_points, U32 b_poi
   return true;
 }
 
-void ConvexHull2FromAabb2(V2 hull_points[4], V2 aabb_center, V2 aabb_size) {
+void ConvexHull2FromAabb2(V2 hull_points[4], V2* aabb_center, V2* aabb_size) {
   V2 min, max;
   Aabb2GetMinMax(aabb_center, aabb_size, &min, &max);
   hull_points[0] = (V2) { min.x, min.y };
@@ -978,18 +977,18 @@ void ConvexHull2FromAabb2(V2 hull_points[4], V2 aabb_center, V2 aabb_size) {
   hull_points[3] = (V2) { min.x, max.y };
 }
 
-void ConvexHull2FromObb2(V2 hull_points[4], V2 obb_center, V2 obb_size, F32 obb_angle_rad) {
+void ConvexHull2FromObb2(V2 hull_points[4], V2* obb_center, V2* obb_size, F32 obb_angle_rad) {
   ConvexHull2FromAabb2(hull_points, obb_center, obb_size);
   ConvexHull2RotateAboutPoint((V2*) hull_points, 4, obb_center, obb_angle_rad);
 }
 
-void ConvexHull2Offset(V2* hull_points, U32 hull_points_size, V2 offset) {
+void ConvexHull2Offset(V2* hull_points, U32 hull_points_size, V2* offset) {
   for (U32 i = 0; i < hull_points_size; i++) {
-    V2AddV2(&hull_points[i], &hull_points[i], &offset);
+    V2AddV2(&hull_points[i], &hull_points[i], offset);
   }
 }
 
-void ConvexHull2RotateAboutPoint(V2* hull_points, U32 hull_points_size, V2 point, F32 angle_rad) {
+void ConvexHull2RotateAboutPoint(V2* hull_points, U32 hull_points_size, V2* point, F32 angle_rad) {
   F32 s = F32Sin(angle_rad);
   F32 c = F32Cos(angle_rad);
   for (U32 i = 0; i < hull_points_size; i++) {
@@ -997,11 +996,11 @@ void ConvexHull2RotateAboutPoint(V2* hull_points, U32 hull_points_size, V2 point
   }
 }
 
-void ConvexHull2SetCenter(V2* hull_points, U32 hull_points_size, V2 center) {
+void ConvexHull2SetCenter(V2* hull_points, U32 hull_points_size, V2* center) {
   V2 curr_center, offset;
   ConvexHull2GetCenter(hull_points, hull_points_size, &curr_center);
-  V2SubV2(&offset, &center, &curr_center);
-  ConvexHull2Offset(hull_points, hull_points_size, offset);
+  V2SubV2(&offset, center, &curr_center);
+  ConvexHull2Offset(hull_points, hull_points_size, &offset);
 }
 
 void ConvexHull2GetCenter(V2* hull_points, U32 hull_points_size, V2* center) {
@@ -1045,24 +1044,24 @@ void ConvexHull2GetEnclosingAabb2(V2* hull_points, U32 hull_points_size, V2* aab
   aabb_size->y = y_max - y_min;
 }
 
-B32 ConvexHull2ContainsPoint(V2* hull_points, U32 hull_points_size, V2 point) {
+B32 ConvexHull2ContainsPoint(V2* hull_points, U32 hull_points_size, V2* point) {
   for (U32 i = 0; i < hull_points_size; i++) {
     V2* a = &hull_points[i];
     V2* b = &hull_points[(i + 1) % hull_points_size];
     V2 ab, ap;
     V2SubV2(&ab, b, a);
-    V2SubV2(&ap, &point, a);
+    V2SubV2(&ap, point, a);
     F32 cross = V2CrossV2(&ab, &ap);
     if (cross < 0) { return false; }
   }
   return true;
 }
 
-B32 ConvexHull2IntersectLine2(V2* hull_points, U32 hull_points_size, V2 line_start, V2 line_end, V2* enter_point, V2* exit_point) {
+B32 ConvexHull2IntersectLine2(V2* hull_points, U32 hull_points_size, V2* line_start, V2* line_end, V2* enter_point, V2* exit_point) {
   return Line2IntersectConvexHull2(line_start, line_end, hull_points, hull_points_size, enter_point, exit_point);
 }
 
-B32 ConvexHull2IntersectRay2(V2* hull_points, U32 hull_points_size, V2 ray_start, V2 ray_dir, V2* enter_point, V2* exit_point) {
+B32 ConvexHull2IntersectRay2(V2* hull_points, U32 hull_points_size, V2* ray_start, V2* ray_dir, V2* enter_point, V2* exit_point) {
   return Ray2IntersectConvexHull2(ray_start, ray_dir, hull_points, hull_points_size, enter_point, exit_point);
 }
 
@@ -1072,35 +1071,35 @@ B32 ConvexHull2IntersectTri2(V2* hull_points, U32 hull_points_size, V2 tri_point
   return result;
 }
 
-B32 ConvexHull2IntersectAabb2(V2* hull_points, U32 hull_points_size, V2 aabb_center, V2 aabb_size, IntersectManifold2* manifold) {
+B32 ConvexHull2IntersectAabb2(V2* hull_points, U32 hull_points_size, V2* aabb_center, V2* aabb_size, IntersectManifold2* manifold) {
   B32 result = Aabb2IntersectConvexHull2(aabb_center, aabb_size, hull_points, hull_points_size, manifold);
   if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1.0f); }
   return result;
 }
 
-B32 ConvexHull2IntersectObb2(V2* hull_points, U32 hull_points_size, V2 obb_center, V2 obb_size, F32 obb_angle_rad, IntersectManifold2* manifold) {
+B32 ConvexHull2IntersectObb2(V2* hull_points, U32 hull_points_size, V2* obb_center, V2* obb_size, F32 obb_angle_rad, IntersectManifold2* manifold) {
   B32 result = Obb2IntersectConvexHull2(obb_center, obb_size, obb_angle_rad, hull_points, hull_points_size, manifold);
   if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1.0f); }
   return result;
 }
 
-B32 ConvexHull2IntersectCircle2(V2* hull_points, U32 hull_points_size, V2 circle_center, F32 circle_radius, IntersectManifold2* manifold) {
+B32 ConvexHull2IntersectCircle2(V2* hull_points, U32 hull_points_size, V2* circle_center, F32 circle_radius, IntersectManifold2* manifold) {
   V2 hull_center, rel_center;
   ConvexHull2GetCenter(hull_points, hull_points_size, &hull_center);
-  V2SubV2(&rel_center, &hull_center, &circle_center);
+  V2SubV2(&rel_center, &hull_center, circle_center);
 
   V2 min_axis;
   F32 min_penetration = F32_MAX;
   for (U32 i = 0; i < hull_points_size; i++) {
-    V2 start = hull_points[i];
-    V2 end   = hull_points[(i + 1) % hull_points_size];
+    V2* start = &hull_points[i];
+    V2* end   = &hull_points[(i + 1) % hull_points_size];
     DEBUG_ASSERT(Line2GetLengthSq(start, end) > 0);
     V2 axis;
     Line2GetNormalOut(start, end, &axis);
 
     F32 hull_min, hull_max;
     ConvexHull2ProjectAxis(hull_points, hull_points_size, &axis, &hull_min, &hull_max);
-    F32 circle_center_proj = V2DotV2(&circle_center, &axis);
+    F32 circle_center_proj = V2DotV2(circle_center, &axis);
     F32 circle_min = circle_center_proj - circle_radius;
     F32 circle_max = circle_center_proj + circle_radius;
     F32 overlap = MIN(hull_max, circle_max) - MAX(hull_min, circle_min);
@@ -1138,8 +1137,8 @@ B32 ConvexHull2IntersectConvexHull2(V2* a_points, U32 a_points_size, V2* b_point
     }
 
     for (U32 i = 0; i < points_size; i++) {
-      V2 start = points[i];
-      V2 end   = points[(i + 1) % points_size];
+      V2* start = &points[i];
+      V2* end   = &points[(i + 1) % points_size];
       DEBUG_ASSERT(Line2GetLengthSq(start, end) > 0);
       V2 axis;
       Line2GetNormalOut(start, end, &axis);

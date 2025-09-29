@@ -7,11 +7,11 @@
 #define CDEFAULT_GEOMETRY_IMPLEMENTATION
 #include "../cdefault_geometry.h"
 
-static void DrawIntersectManifold(V2 start, IntersectManifold2 manifold, V3 color) {
+static void DrawIntersectManifold(V2* start, IntersectManifold2 manifold, V3 color) {
   V2 end;
   V2MultF32(&end, &manifold.normal, manifold.penetration);
-  V2AddV2(&end, &start, &end);
-  DrawLineV(start, end, 5, color);
+  V2AddV2(&end, start, &end);
+  DrawLineV(*start, end, 5, color);
 }
 
 int main(void) {
@@ -90,7 +90,7 @@ int main(void) {
 
     obb_angle_rad += 0.05f;
     V2 obb_hull_points[4];
-    ConvexHull2FromObb2(obb_hull_points, obb_center, obb_size, obb_angle_rad);
+    ConvexHull2FromObb2(obb_hull_points, &obb_center, &obb_size, obb_angle_rad);
     DrawConvexHullV(obb_hull_points, STATIC_ARRAY_SIZE(obb_hull_points), V3_BLUE);
 
     V2 ray_end;
@@ -102,28 +102,28 @@ int main(void) {
 
     V2 enter, exit;
     IntersectManifold2 manifold;
-    if (Aabb2IntersectCircle2(aabb_center, aabb_size, circle_center, circle_radius, &manifold)) {
-      DrawIntersectManifold(aabb_center, manifold, V3_GREEN);
+    if (Aabb2IntersectCircle2(&aabb_center, &aabb_size, &circle_center, circle_radius, &manifold)) {
+      DrawIntersectManifold(&aabb_center, manifold, V3_GREEN);
     }
-    if (Aabb2IntersectAabb2(aabb_center, aabb_size, other_aabb_center, other_aabb_size, &manifold)) {
-      DrawIntersectManifold(aabb_center, manifold, V3_GREEN);
+    if (Aabb2IntersectAabb2(&aabb_center, &aabb_size, &other_aabb_center, &other_aabb_size, &manifold)) {
+      DrawIntersectManifold(&aabb_center, manifold, V3_GREEN);
     }
-    if (Aabb2IntersectObb2(aabb_center, aabb_size, obb_center, obb_size, obb_angle_rad, &manifold)) {
-      DrawIntersectManifold(aabb_center, manifold, V3_GREEN);
+    if (Aabb2IntersectObb2(&aabb_center, &aabb_size, &obb_center, &obb_size, obb_angle_rad, &manifold)) {
+      DrawIntersectManifold(&aabb_center, manifold, V3_GREEN);
     }
-    if (Aabb2IntersectTri2(aabb_center, aabb_size, tri_points, &manifold)) {
-      DrawIntersectManifold(aabb_center, manifold, V3_GREEN);
+    if (Aabb2IntersectTri2(&aabb_center, &aabb_size, tri_points, &manifold)) {
+      DrawIntersectManifold(&aabb_center, manifold, V3_GREEN);
     }
-    if (Aabb2IntersectLine2(aabb_center, aabb_size, line_start, line_end, &enter, &exit)) {
+    if (Aabb2IntersectLine2(&aabb_center, &aabb_size, &line_start, &line_end, &enter, &exit)) {
       DrawCircleV(enter, 10, V3_GREEN);
       DrawRingV(exit, 10, 5, V3_RED);
     }
-    if (Aabb2IntersectRay2(aabb_center, aabb_size, ray_start, ray_dir, &enter, &exit)) {
+    if (Aabb2IntersectRay2(&aabb_center, &aabb_size, &ray_start, &ray_dir, &enter, &exit)) {
       DrawCircleV(enter, 10, V3_GREEN);
       DrawRingV(exit, 10, 5, V3_RED);
     }
-    if (Aabb2IntersectConvexHull2(aabb_center, aabb_size, hull_points, STATIC_ARRAY_SIZE(hull_points), &manifold)) {
-      DrawIntersectManifold(aabb_center, manifold, V3_GREEN);
+    if (Aabb2IntersectConvexHull2(&aabb_center, &aabb_size, hull_points, STATIC_ARRAY_SIZE(hull_points), &manifold)) {
+      DrawIntersectManifold(&aabb_center, manifold, V3_GREEN);
     }
 
     WindowSwapBuffers();

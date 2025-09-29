@@ -84,7 +84,7 @@ int main(void) {
     V2 mouse_pos;
     WindowGetMousePositionV(&mouse_pos);
     RendererCastRayV(mouse_pos, &mouse_pos);
-    ConvexHull2SetCenter(hull_points, STATIC_ARRAY_SIZE(hull_points), mouse_pos);
+    ConvexHull2SetCenter(hull_points, STATIC_ARRAY_SIZE(hull_points), &mouse_pos);
 
     DrawCircleV(circle_center, circle_radius, V3_BLUE);
     DrawRectangleV(aabb_center, aabb_size, V3_BLUE);
@@ -94,7 +94,7 @@ int main(void) {
 
     obb_angle_rad += 0.05f;
     V2 obb_hull_points[4];
-    ConvexHull2FromObb2(obb_hull_points, obb_center, obb_size, obb_angle_rad);
+    ConvexHull2FromObb2(obb_hull_points, &obb_center, &obb_size, obb_angle_rad);
     DrawConvexHullV(obb_hull_points, STATIC_ARRAY_SIZE(obb_hull_points), V3_BLUE);
 
     V2 ray_end;
@@ -106,23 +106,23 @@ int main(void) {
 
     V2 enter, exit;
     IntersectManifold2 manifold;
-    if (ConvexHull2IntersectCircle2(hull_points, STATIC_ARRAY_SIZE(hull_points), circle_center, circle_radius, &manifold)) {
+    if (ConvexHull2IntersectCircle2(hull_points, STATIC_ARRAY_SIZE(hull_points), &circle_center, circle_radius, &manifold)) {
       DrawIntersectManifold(hull_points, STATIC_ARRAY_SIZE(hull_points), manifold, V3_GREEN);
     }
-    if (ConvexHull2IntersectAabb2(hull_points, STATIC_ARRAY_SIZE(hull_points), aabb_center, aabb_size, &manifold)) {
+    if (ConvexHull2IntersectAabb2(hull_points, STATIC_ARRAY_SIZE(hull_points), &aabb_center, &aabb_size, &manifold)) {
       DrawIntersectManifold(hull_points, STATIC_ARRAY_SIZE(hull_points), manifold, V3_GREEN);
     }
-    if (ConvexHull2IntersectObb2(hull_points, STATIC_ARRAY_SIZE(hull_points), obb_center, obb_size, obb_angle_rad, &manifold)) {
+    if (ConvexHull2IntersectObb2(hull_points, STATIC_ARRAY_SIZE(hull_points), &obb_center, &obb_size, obb_angle_rad, &manifold)) {
       DrawIntersectManifold(hull_points, STATIC_ARRAY_SIZE(hull_points), manifold, V3_GREEN);
     }
     if (ConvexHull2IntersectTri2(hull_points, STATIC_ARRAY_SIZE(hull_points), tri_points, &manifold)) {
       DrawIntersectManifold(hull_points, STATIC_ARRAY_SIZE(hull_points), manifold, V3_GREEN);
     }
-    if (ConvexHull2IntersectLine2(hull_points, STATIC_ARRAY_SIZE(hull_points), line_start, line_end, &enter, &exit)) {
+    if (ConvexHull2IntersectLine2(hull_points, STATIC_ARRAY_SIZE(hull_points), &line_start, &line_end, &enter, &exit)) {
       DrawCircleV(enter, 10, V3_GREEN);
       DrawRingV(exit, 10, 5, V3_RED);
     }
-    if (ConvexHull2IntersectRay2(hull_points, STATIC_ARRAY_SIZE(hull_points), ray_start, ray_dir, &enter, &exit)) {
+    if (ConvexHull2IntersectRay2(hull_points, STATIC_ARRAY_SIZE(hull_points), &ray_start, &ray_dir, &enter, &exit)) {
       DrawCircleV(enter, 10, V3_GREEN);
       DrawRingV(exit, 10, 5, V3_RED);
     }
