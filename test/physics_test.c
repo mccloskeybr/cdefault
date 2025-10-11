@@ -2,62 +2,75 @@
 #include "../cdefault_std.h"
 #define CDEFAULT_GEOMETRY_IMPLEMENTATION
 #include "../cdefault_geometry.h"
-#define CDEFAULT_PHYSICS_2D_IMPLEMENTATION
+#define CDEFAULT_PHYSICS2_IMPLEMENTATION
 #include "../cdefault_physics_2d.h"
 #define CDEFAULT_MATH_IMPLEMENTATION
 #include "../cdefault_math.h"
 #define CDEFAULT_RENDER_IMPLEMENTATION
 #include "../cdefault_render.h"
 
-#define CIRCLE_RADIUS 50
-#define INPUT_FORCE 500.0f
+#define CIRCLE_RADIUS 20
+#define AABB_SIZE (V2) {20, 20}
+
 #define COLOR_RED  (V3) { 1, 0, 0 }
 #define COLOR_BLUE (V3) { 0, 0, 1 }
+
+Collider2* circle_colliders[255];
+U32 next_circle_collider = 0;
+Collider2* aabb_colliders[255];
+U32 next_aabb_collider = 0;
+
+static void DrawVelocityArrow(Collider2* c, RigidBody2* rb) {
+  V2* start_pos = Collider2Center(c);
+  V2 end_pos;
+  V2AddV2(&end_pos, start_pos, RigidBody2Velocity(rb));
+  DrawLineV(*start_pos, end_pos, 5, (V3) { 0.5f, 0.0f, 0.5f });
+}
+
+static void AddColliderCircle(V2 pos) {
+  RigidBody2Opts opts;
+  opts.type = RigidBody2Type_Dynamic;
+  opts.restitution = 0.5f;
+  opts.mass = 5;
+  opts.static_friction = 0.2f;
+  opts.dynamic_friction = 0.2f;
+  Collider2* c = Physics2RegisterColliderCircle(pos, CIRCLE_RADIUS);
+  Collider2SetRigidBody(c, opts);
+  circle_colliders[next_circle_collider++] = c;
+}
+
+static void AddColliderAabb(V2 pos) {
+  RigidBody2Opts opts;
+  opts.type = RigidBody2Type_Dynamic;
+  opts.restitution = 0.5f;
+  opts.mass = 5;
+  opts.static_friction = 0.2f;
+  opts.dynamic_friction = 0.2f;
+  Collider2* c = Physics2RegisterColliderAabb(pos, AABB_SIZE);
+  Collider2SetRigidBody(c, opts);
+  aabb_colliders[next_aabb_collider++] = c;
+}
 
 int main(void) {
   TimeInit();
   ASSERT(WindowInit(1280, 720, "physics"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
-  Physics2DInit();
-  Physics2DSetGravity((V2) { 0, -9.8f });
+  Physics2Init();
+  Physics2SetGravity((V2) { 0, -90.8f });
 
-  V2 a_pos;
-  a_pos.x = 75;
-  a_pos.y = 300;
-  RigidBody2Opts a_rb_opts;
-  a_rb_opts.type = RigidBody2Type_Dynamic;
-  a_rb_opts.restitution = 0.98f;
-  a_rb_opts.mass = 1;
-  a_rb_opts.static_friction = 0.00f;
-  a_rb_opts.dynamic_friction = 0.00f;
-  Collider2* a = Physics2DRegisterColliderCircle(a_pos, CIRCLE_RADIUS);
-  RigidBody2* a_rb = Collider2SetRigidBody(a, a_rb_opts);
-
-  V2 c_pos;
-  c_pos.x = 100;
-  c_pos.y = 500;
-  RigidBody2Opts c_rb_opts;
-  c_rb_opts.type = RigidBody2Type_Dynamic;
-  c_rb_opts.restitution = 0.01f;
-  c_rb_opts.mass = 1000;
-  c_rb_opts.static_friction = 0.00f;
-  c_rb_opts.dynamic_friction = 0.00f;
-  Collider2* c = Physics2DRegisterColliderCircle(c_pos, CIRCLE_RADIUS);
-  Collider2SetRigidBody(c, c_rb_opts);
-
-  V2 b_pos;
-  b_pos.x = 500;
-  b_pos.y = 100;
-  V2 b_size;
-  b_size.x = 1000;
-  b_size.y = 100;
-  RigidBody2Opts b_rb_opts;
-  b_rb_opts.type = RigidBody2Type_Static;
-  b_rb_opts.restitution = 0.2f;
-  b_rb_opts.static_friction = 0.2f;
-  b_rb_opts.dynamic_friction = 0.2f;
-  Collider2* b = Physics2DRegisterColliderAabb(b_pos, b_size);
-  Collider2SetRigidBody(b, b_rb_opts);
+  V2 g_pos;
+  g_pos.x = 500;
+  g_pos.y = 50;
+  V2 g_size;
+  g_size.x = 10000;
+  g_size.y = 100;
+  RigidBody2Opts g_rb_opts;
+  g_rb_opts.type = RigidBody2Type_Static;
+  g_rb_opts.restitution = 1.0f;
+  g_rb_opts.static_friction = 0.0f;
+  g_rb_opts.dynamic_friction = 0.0f;
+  Collider2* ground = Physics2RegisterColliderAabb(g_pos, g_size);
+  Collider2SetRigidBody(ground, g_rb_opts);
 
   F32 dt_s = 0.0f;
   Stopwatch frame_stopwatch;
@@ -69,23 +82,30 @@ int main(void) {
       exit(0);
     }
 
-    MEMORY_ZERO_STRUCT(RigidBody2Force(a_rb));
-    if (WindowIsKeyPressed(Key_W)) {
-      RigidBody2Force(a_rb)->y = INPUT_FORCE;
-    } else if (WindowIsKeyPressed(Key_S)) {
-      RigidBody2Force(a_rb)->y = -INPUT_FORCE;
-    }
-    if (WindowIsKeyPressed(Key_A)) {
-      RigidBody2Force(a_rb)->x = -INPUT_FORCE;
-    } else if (WindowIsKeyPressed(Key_D)) {
-      RigidBody2Force(a_rb)->x = INPUT_FORCE;
+    V2 mouse_pos;
+    WindowGetMousePositionV(&mouse_pos);
+    RendererCastRayV(mouse_pos, &mouse_pos);
+    if (WindowIsMouseButtonJustPressed(MouseButton_Left)) {
+      AddColliderCircle(mouse_pos);
+    } else if (WindowIsMouseButtonJustPressed(MouseButton_Right)) {
+      AddColliderAabb(mouse_pos);
     }
 
-    Physics2DUpdate(dt_s);
+    Physics2Update(dt_s);
 
-    DrawCircleV(*Collider2Position(a), CIRCLE_RADIUS, COLOR_RED);
-    DrawCircleV(*Collider2Position(c), CIRCLE_RADIUS, COLOR_BLUE);
-    DrawRectangleV(*Collider2Position(b), b_size, COLOR_BLUE);
+    DrawRectangleV(*Collider2Center(ground), g_size, COLOR_BLUE);
+    for (U32 i = 0; i < next_circle_collider; i++) {
+      Collider2* c = circle_colliders[i];
+      RigidBody2* rb = (RigidBody2*) Collider2GetSubtype(c, COLLIDER2_RIGID_BODY);
+      DrawCircleV(*Collider2Center(c), CIRCLE_RADIUS, COLOR_RED);
+      DrawVelocityArrow(c, rb);
+    }
+    for (U32 i = 0; i < next_aabb_collider; i++) {
+      Collider2* c = aabb_colliders[i];
+      RigidBody2* rb = (RigidBody2*) Collider2GetSubtype(c, COLLIDER2_RIGID_BODY);
+      DrawRectangleV(*Collider2Center(c), AABB_SIZE, COLOR_RED);
+      DrawVelocityArrow(c, rb);
+    }
 
     do { dt_s = StopwatchReadSeconds(&frame_stopwatch); } while (dt_s < 0.016);
     StopwatchReset(&frame_stopwatch);
