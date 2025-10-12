@@ -3,6 +3,111 @@
 #define CDEFAULT_MATH_IMPLEMENTATION
 #include "../cdefault_math.h"
 
+B32 M2TrivialOpTest(void) {
+  M2 test = {
+    10, 10,
+    10, 10,
+  };
+  M2 other = {
+    1, 2,
+    3, 4,
+  };
+
+  M2 expected_add = {
+    11, 12,
+    13, 14,
+  };
+  M2 add;
+  M2AddM2(&add, &test, &other);
+  TEST_EXPECT(IS_MEMORY_EQUAL_STRUCT(&add, &expected_add));
+
+  M2 expected_sub = {
+    9, 8,
+    7, 6,
+  };
+  M2 sub;
+  M2SubM2(&sub, &test, &other);
+  TEST_EXPECT(IS_MEMORY_EQUAL_STRUCT(&sub, &expected_sub));
+
+  M2 expected_mf32 = {
+    20, 20,
+    20, 20,
+  };
+  M2 mf32;
+  M2MultF32(&mf32, 2, &test);
+  TEST_EXPECT(IS_MEMORY_EQUAL_STRUCT(&mf32, &expected_mf32));
+
+  return true;
+}
+
+B32 M2TransposeTest(void) {
+  M2 m = {
+    1, 2,
+    3, 4,
+  };
+  M2 expected_m_t = {
+    1, 3,
+    2, 4,
+  };
+  M2 m_t;
+  M2Transpose(&m_t, &m);
+  TEST_EXPECT(IS_MEMORY_EQUAL_STRUCT(&m_t, &expected_m_t));
+
+  return true;
+}
+
+B32 M2MultTest(void) {
+  M2 m = {
+    1, 2,
+    3, 4,
+  };
+
+  V2 v = { 1, 2 };
+  V2 expected_mult_v = { 5, 11 };
+  V2 mult_v;
+  M2MultV2(&mult_v, &m, &v);
+  TEST_EXPECT(IS_MEMORY_EQUAL_STRUCT(&mult_v, &expected_mult_v));
+
+  M2 m2 = {
+    2, 1,
+    4, 3,
+  };
+  M2 expected_mult_m2 = {
+     10, 7,
+     22, 15,
+  };
+  M2 mult_m2;
+  M2MultM2(&mult_m2, &m, &m2);
+  TEST_EXPECT(IS_MEMORY_EQUAL_STRUCT(&mult_m2, &expected_mult_m2));
+
+  return true;
+}
+
+B32 M2DetTest(void) {
+  M2 test = {
+    1, 2,
+    3, 4,
+  };
+  TEST_EXPECT(M2Det(&test) == -2);
+  return true;
+}
+
+B32 M2InvertTest(void) {
+  M2 test = {
+    1, 2,
+    3, 4,
+  };
+  M2 expected_test_inv = {
+      -2,     1,
+    1.5f, -0.5f,
+  };
+  M2 test_inv;
+  M2Invert(&test_inv, &test);
+  TEST_EXPECT(IS_MEMORY_EQUAL_STRUCT(&test_inv, &expected_test_inv));
+
+  return true;
+}
+
 B32 M3TrivialOpTest(void) {
   M3 test = {
     10, 10, 10,
@@ -181,6 +286,11 @@ B32 M4InvertTest(void) {
 }
 
 int main(void) {
+  TEST(M2TrivialOpTest());
+  TEST(M2TransposeTest());
+  TEST(M2MultTest());
+  TEST(M2DetTest());
+  TEST(M2InvertTest());
   TEST(M3TrivialOpTest());
   TEST(M3TransposeTest());
   TEST(M3MultTest());

@@ -31,6 +31,12 @@ union V4 {
   F32 e[4];
 };
 
+typedef union M2 M2;
+union M2 {
+  F32 e[2][2];
+  F32 i[4];
+};
+
 typedef union M3 M3;
 union M3 {
   F32 e[3][3];
@@ -217,6 +223,25 @@ void V4Slerp(V4* dest, V4* a, V4* b, F32 t);
 void V4RotateAroundAxis(V4* dest, V3* axis, F32 angle_rad);
 void V4LookInDir(V4* dest, V3* dir);
 void V4LookAt(V4* dest, V3* pos, V3* target);
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: M2
+///////////////////////////////////////////////////////////////////////////////
+
+#define M2_IDENTITY (M2) {1, 0, 0, \
+                          0, 1, 0, \
+                          0, 0, 1 }
+
+void M2AddM2(M2* dest, M2* x, M2* y);
+void M2SubM2(M2* dest, M2* x, M2* y);
+void M2MultF32(M2* dest, F32 c, M2* m);
+void M2MultM2(M2* dest, M2* x, M2* y);
+void M2MultV2(V2* dest, M2* x, V2* y);
+void M2Transpose(M2* dest, M2* x);
+F32  M2Det(M2* m);
+void M2Invert(M2* dest, M2* x);
+B32  M2ApproxEq(M2* x, M2* y);
+B32  M2Eq(M2* x, M2* y);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: M3
@@ -767,6 +792,93 @@ void V4LookAt(V4* dest, V3* pos, V3* target) {
   V3SubV3(&dir, target, pos);
   V3Normalize(&dir, &dir);
   V4LookInDir(dest, &dir);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// NOTE: M2 implementation
+///////////////////////////////////////////////////////////////////////////////
+
+void M2AddM2(M2* dest, M2* x, M2* y) {
+  for (U32 i = 0; i < 2; i++) {
+    for (U32 j = 0; j < 2; j++) {
+      dest->e[i][j] = x->e[i][j] + y->e[i][j];
+    }
+  }
+}
+
+void M2SubM2(M2* dest, M2* x, M2* y) {
+  for (U32 i = 0; i < 2; i++) {
+    for (U32 j = 0; j < 2; j++) {
+      dest->e[i][j] = x->e[i][j] - y->e[i][j];
+    }
+  }
+}
+
+void M2MultF32(M2* dest, F32 c, M2* m) {
+  for (U32 i = 0; i < 2; i++) {
+    for (U32 j = 0; j < 2; j++) {
+      dest->e[i][j] = m->e[i][j] * c;
+    }
+  }
+}
+
+void M2MultM2(M2* dest, M2* x, M2* y) {
+  DEBUG_ASSERT(x != dest);
+  DEBUG_ASSERT(y != dest);
+  M2 y_t;
+  M2Transpose(&y_t, y);
+  for (U32 i = 0; i < 2; i++) {
+    for (U32 j = 0; j < 2; j++) {
+      V2* x_sub = (V2*) &x->e[i][0];
+      V2* y_sub = (V2*) &y_t.e[j][0];
+      dest->e[i][j] = V2DotV2(x_sub, y_sub);
+    }
+  }
+}
+
+void M2MultV2(V2* dest, M2* x, V2* y) {
+  DEBUG_ASSERT(y != dest);
+  for (U32 i = 0; i < 2; i++) {
+    V2* x_sub = (V2*) &x->e[i][0];
+    dest->e[i] = V2DotV2(x_sub, y);
+  }
+}
+
+void M2Transpose(M2* dest, M2* x) {
+  DEBUG_ASSERT(x != dest);
+  for (U32 i = 0; i < 2; i++) {
+    for (U32 j = 0; j < 2; j++) {
+      dest->e[j][i] = x->e[i][j];
+    }
+  }
+}
+
+F32 M2Det(M2* m) {
+  return (m->e[0][0] * m->e[1][1]) - (m->e[0][1] * m->e[1][0]);
+}
+
+void M2Invert(M2* dest, M2* x) {
+  F32 det = M2Det(x);
+  DEBUG_ASSERT(det != 0);
+  F32 det_inv = 1.0f / det;
+  dest->e[0][0] = det_inv * +x->e[1][1];
+  dest->e[0][1] = det_inv * -x->e[0][1];
+  dest->e[1][0] = det_inv * -x->e[1][0];
+  dest->e[1][1] = det_inv * +x->e[0][0];
+}
+
+B32 M2ApproxEq(M2* x, M2* y) {
+  for (U32 i = 0; i < 4; i++) {
+    if (!F32ApproxEq(x->i[i], y->i[i])) { return false; }
+  }
+  return true;
+}
+
+B32 M2Eq(M2* x, M2* y) {
+  for (U32 i = 0; i < 4; i++) {
+    if (x->i[i] != y->i[i]) { return false; }
+  }
+  return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
