@@ -10,7 +10,7 @@
 #include "../cdefault_render.h"
 
 #define CIRCLE_RADIUS 20
-#define AABB_SIZE (V2) {20, 20}
+#define AABB_SIZE (V2) {40, 40}
 
 #define COLOR_RED  (V3) { 1, 0, 0 }
 #define COLOR_BLUE (V3) { 0, 0, 1 }
@@ -30,10 +30,10 @@ static void DrawVelocityArrow(Collider2* c, RigidBody2* rb) {
 static void AddColliderCircle(V2 pos) {
   RigidBody2Opts opts;
   opts.type = RigidBody2Type_Dynamic;
-  opts.restitution = 0.5f;
-  opts.mass = 5;
-  opts.static_friction = 0.2f;
-  opts.dynamic_friction = 0.2f;
+  opts.restitution = 1.0f;
+  opts.mass = 50;
+  opts.static_friction = 0.0f;
+  opts.dynamic_friction = 0.0f;
   Collider2* c = Physics2RegisterColliderCircle(pos, CIRCLE_RADIUS);
   Collider2SetRigidBody(c, opts);
   circle_colliders[next_circle_collider++] = c;
@@ -43,9 +43,9 @@ static void AddColliderAabb(V2 pos) {
   RigidBody2Opts opts;
   opts.type = RigidBody2Type_Dynamic;
   opts.restitution = 0.5f;
-  opts.mass = 5;
-  opts.static_friction = 0.2f;
-  opts.dynamic_friction = 0.2f;
+  opts.mass = 50;
+  opts.static_friction = 0.0f;
+  opts.dynamic_friction = 0.0f;
   Collider2* c = Physics2RegisterColliderAabb(pos, AABB_SIZE);
   Collider2SetRigidBody(c, opts);
   aabb_colliders[next_aabb_collider++] = c;

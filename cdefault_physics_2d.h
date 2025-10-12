@@ -10,19 +10,23 @@
 // supported example of this. Each datum must have the Collider2SubtypeHeader as its first field.
 // Pointers provided to Collider2SetSubtype(...) must be stable and outlive the Collider2.
 //
-// #define PLAYER_COLLIDER_TYPE 123
+// #define COLLIDER2_PLAYER_COLLIDER 123
 // struct PlayerCollider {
 //   Collider2SubtypeHeader header;
 //   U32 is_ethereal;
 // }
-// void PlayerRigidBodyResolver(Collider2* a_collider, Collider2SubtypeHeader* player_type,
-//                              Collider2* b_collider, Collider2SubtypeHeader* rigid_body_type,
-//                              IntersectManifold2 manifold) {
-//   PlayerCollider* player_collider = (PlayerCollider*) player_type;
-//   if (!player_collider->is_ethereal) { GotoGameOverState(); }
+//
+// void PlayerRigidBodyResolver(DynamicArray* /*Collision2*/ collisions) {
+//   for (U32 i = 0; i < collisions->size; i++) {
+//     // NOTE: collision->a and collision->b subtypes will match what is registered via Physics2RegisterResolver.
+//     Collision2* collision = (Collision2*) DynamicArrayGet(collisions, i);
+//     PlayerCollider* player     = Collider2GetSubtype(collision->a, COLLIDER2_PLAYER_COLLIDER);
+//     PlayerCollider* rigid_body = Collider2GetSubtype(collision->b, COLLIDER2_RIGID_BODY);
+//     if (!player_collider->is_ethereal) { GotoGameOverState(); }
+//   }
 // }
 //
-// Physics2RegisterResolver(PLAYER_COLLIDER_TYPE, COLLIDER2_RIGID_BODY, PlayerRigidBodyResolver);
+// Physics2RegisterResolver(COLLIDER2_PLAYER_COLLIDER, COLLIDER2_RIGID_BODY, PlayerRigidBodyResolver);
 #define COLLIDER2_RIGID_BODY ((U32) ~0)
 typedef struct Collider2SubtypeHeader Collider2SubtypeHeader;
 struct Collider2SubtypeHeader {
@@ -33,7 +37,7 @@ struct Collider2SubtypeHeader {
 typedef enum RigidBody2Type RigidBody2Type;
 enum RigidBody2Type {
   RigidBody2Type_Dynamic, // NOTE: Movable / influenced by external forces.
-  RigidBody2Type_Static,  // NOTE: Immovable / not invluenced by external forces.
+  RigidBody2Type_Static,  // NOTE: Immovable / not influenced by external forces.
 };
 
 typedef struct RigidBody2Opts RigidBody2Opts;
@@ -54,20 +58,29 @@ typedef struct RigidBody2 RigidBody2;
 typedef struct Collider2 Collider2;
 
 // NOTE: Resolvers define the behavior when 2 colliders of specific defined types collide.
-typedef void Resolver_Fn(Collider2* a_collider, Collider2SubtypeHeader* a_header,
-                         Collider2* b_collider, Collider2SubtypeHeader* b_header,
-                         IntersectManifold2 manifold);
+typedef struct Collision2 Collision2;
+struct Collision2 {
+  Collider2* a;
+  Collider2* b;
+  IntersectManifold2 manifold;
+};
+typedef void Collision2Resolver_Fn(DynamicArray* /* Collision2 */ collisions);
 
+// NOTE: Init must be called before any other function.
 void Physics2Init();
 void Physics2Deinit();
-void Physics2Update(F32 dt_s); // NOTE: This must be called, e.g. 1x per frame.
 void Physics2SetGravity(V2 gravity);
-void Physics2RegisterResolver(U32 type_a, U32 type_b, Resolver_Fn* resolver); // NOTE: Resolvers can only be registered 1x per type pair.
+void Physics2RegisterResolver(U32 type_a, U32 type_b, Collision2Resolver_Fn* resolver); // NOTE: Resolvers can only be registered 1x per type pair.
+
+// NOTE: This must be called, e.g. 1x per frame. A fixed timestep can be implemented in the user's program.
+void Physics2Update(F32 dt_s);
+
 Collider2* Physics2RegisterColliderCircle(V2 center, F32 radius);
 Collider2* Physics2RegisterColliderAabb(V2 center, V2 size);
-void Physics2RemoveCollider(Collider2* collider);
+void Physics2DeregisterCollider(Collider2* collider);
 
 // TODO: some way to get shape information back out from the collider
+// TODO: i think prefer exposing the collider2 and rigidbody2 structs directly, but is there a clean way?
 void Collider2SetSubtype(Collider2* collider, Collider2SubtypeHeader* subtype);
 RigidBody2* Collider2SetRigidBody(Collider2* collider, RigidBody2Opts rigid_body_opts);
 Collider2SubtypeHeader* Collider2GetSubtype(Collider2* collider, U32 type);
@@ -80,12 +93,33 @@ V2*  RigidBody2Velocity(RigidBody2* rigid_body);
 void RigidBody2UpdateOpts(RigidBody2* rigid_body, RigidBody2Opts opts);
 RigidBody2Opts RigidBody2GetOpts(RigidBody2* rigid_body);
 
+// TODO: expose as dynamic configs?
+// NOTE: How much play to allow for in RigidBody2 x RigidBody2 collisions.
+#ifndef PHYSICS2_PENETRATION_SLOP
+#define PHYSICS2_PENETRATION_SLOP 0.05f
+#endif
+
+// NOTE: How much separation to apply per RigidBody2 x RigidBody2 resolution instance.
+#ifndef PHYSICS2_POS_CORRECTION_PCT
+#define PHYSICS2_POS_CORRECTION_PCT 0.9f
+#endif
+
+// NOTE: How many iterations to apply for collision detection and resolution.
+// Lower values may lead to instability among RigidBody2 x RigidBody2 collision clusters.
+#ifndef PHYSICS2_ITERATIONS
+#define PHYSICS2_ITERATIONS 5
+#endif
+
+// NOTE: How many iterations to apply for RigidBody2 x RigidBody2 collisions.
+// Lower values may lead to instability among collision clusters.
+#ifndef PHYSICS2_RIGID_BODY_ITERATIONS
+#define PHYSICS2_RIGID_BODY_ITERATIONS 4
+#endif
+
 #endif // CDEFAULT_PHYSICS2_H_
 
 #ifdef CDEFAULT_PHYSICS2_IMPLEMENTATION
 #undef CDEFAULT_PHYSICS2_IMPLEMENTATION
-
-#define PENETRATION_SLOP 0.05f
 
 typedef enum Collider2Type Collider2Type;
 enum Collider2Type {
@@ -95,7 +129,6 @@ enum Collider2Type {
 
 typedef struct Collider2 Collider2;
 struct Collider2 {
-  Collider2SubtypeHeader* subtypes;
   U32 group;
   V2 center;
   F32 broad_circle_radius;
@@ -104,6 +137,7 @@ struct Collider2 {
     F32 circle_radius;
     V2 aabb_size;
   };
+  Collider2SubtypeHeader* subtypes;
   Collider2* prev;
   Collider2* next;
 };
@@ -123,17 +157,12 @@ struct RigidBody2 {
   RigidBody2* next;
 };
 
-typedef struct Collision2 Collision2;
-struct Collision2 {
-  Collider2* a;
-  Collider2* b;
-};
-
 typedef struct ResolverEntry ResolverEntry;
 struct ResolverEntry {
   U32 type_a;
   U32 type_b;
-  Resolver_Fn* fn;
+  DynamicArray collisions;
+  Collision2Resolver_Fn* fn;
   ResolverEntry* next;
 };
 
@@ -143,7 +172,6 @@ struct Physics2Context {
   Collider2*     collider_head;
   Collider2*     collider_tail;
   Collider2*     collider_free_list;
-  DynamicArray   collisions;
   Arena*         rigid_body_pool;
   RigidBody2*    rigid_body_free_list;
   RigidBody2*    rigid_body_head;
@@ -209,74 +237,98 @@ static void Physics2RigidBodyUpdate(F32 dt_s) {
   }
 }
 
-static void Physics2RigidBodyResolver(Collider2* a_collider, Collider2SubtypeHeader* a_subtype,
-                                     Collider2* b_collider, Collider2SubtypeHeader* b_subtype,
-                                     IntersectManifold2 manifold) {
-  RigidBody2* a_rigid_body = (RigidBody2*) a_subtype;
-  RigidBody2* b_rigid_body = (RigidBody2*) b_subtype;
-
-  if (a_rigid_body->type == RigidBody2Type_Static && b_rigid_body->type == RigidBody2Type_Static) {
-    return;
+static void Physics2RigidBodyResolver(DynamicArray* collisions) {
+  for (U32 i = 0; i < collisions->size; i++) {
+    Collision2* collision = (Collision2*) DynamicArrayGet(collisions, i);
+    RigidBody2* a_rigid_body = (RigidBody2*) Collider2GetSubtype(collision->a, COLLIDER2_RIGID_BODY);
+    RigidBody2* b_rigid_body = (RigidBody2*) Collider2GetSubtype(collision->b, COLLIDER2_RIGID_BODY);
+    if (a_rigid_body->type == RigidBody2Type_Static && b_rigid_body->type == RigidBody2Type_Static) {
+      DynamicArraySwapRemove(collisions, i);
+      i--;
+    }
   }
 
-  // NOTE: Separate bodies
-  do {
-    V2 correction;
-    V2MultF32(&correction, &manifold.normal, MAX(manifold.penetration - PENETRATION_SLOP, 0));
-    V2DivF32(&correction, &correction, a_rigid_body->mass_inv + b_rigid_body->mass_inv);
-
-    if (a_rigid_body->type == RigidBody2Type_Dynamic) {
-      V2 a_separation;
-      V2MultF32(&a_separation, &correction, a_rigid_body->mass_inv);
-      V2AddV2(&a_collider->center, &a_collider->center, &a_separation);
+  for (U32 i = 0; i < collisions->size * PHYSICS2_RIGID_BODY_ITERATIONS; i++) {
+    // NOTE: find collision with max penetration
+    Collision2* max = (Collision2*) DynamicArrayGet(collisions, 0);
+    for (U32 j = 1; j < collisions->size; j++) {
+      Collision2* test = (Collision2*) DynamicArrayGet(collisions, j);
+      if (test->manifold.penetration > max->manifold.penetration) { max = test; }
     }
+    if (max->manifold.penetration <= PHYSICS2_PENETRATION_SLOP) { break; }
 
-    if (b_rigid_body->type == RigidBody2Type_Dynamic) {
-      V2 b_separation;
-      V2MultF32(&b_separation, &correction, b_rigid_body->mass_inv);
-      V2SubV2(&b_collider->center, &b_collider->center, &b_separation);
-    }
-  } while (0);
+    IntersectManifold2* manifold = &max->manifold;
+    Collider2* a = max->a;
+    Collider2* b = max->b;
+    RigidBody2* a_rigid_body = (RigidBody2*) Collider2GetSubtype(a, COLLIDER2_RIGID_BODY);
+    RigidBody2* b_rigid_body = (RigidBody2*) Collider2GetSubtype(b, COLLIDER2_RIGID_BODY);
 
-  // NOTE: Apply impulse
-  do {
+    // NOTE: Separate bodies
+    F32 pen_ratio = PHYSICS2_POS_CORRECTION_PCT * MAX(manifold->penetration - PHYSICS2_PENETRATION_SLOP, 0);
+    pen_ratio /= a_rigid_body->mass_inv + b_rigid_body->mass_inv;
+    F32 a_pen = a_rigid_body->mass_inv * pen_ratio;
+    F32 b_pen = b_rigid_body->mass_inv * pen_ratio;
+
+    V2 a_separation;
+    V2MultF32(&a_separation, &manifold->normal, a_pen);
+    V2AddV2(&a->center, &a->center, &a_separation);
+
+    V2 b_separation;
+    V2MultF32(&b_separation, &manifold->normal, b_pen);
+    V2SubV2(&b->center, &b->center, &b_separation);
+
+    // NOTE: Apply impulse
     V2 relative_velocity;
     V2SubV2(&relative_velocity, &a_rigid_body->velocity, &b_rigid_body->velocity);
-    F32 separating_velocity = V2DotV2(&relative_velocity, &manifold.normal);
-    if (separating_velocity > 0) { return; }
+    F32 separating_velocity = V2DotV2(&relative_velocity, &manifold->normal);
+    if (separating_velocity <= 0) {
+      V2 impulse;
+      F32 e = a_rigid_body->restitution * b_rigid_body->restitution;
+      F32 j = (-(1.0f + e) * separating_velocity) / (a_rigid_body->mass_inv + b_rigid_body->mass_inv);
+      V2MultF32(&impulse, &manifold->normal, j);
 
-    V2 impulse;
-    F32 e = a_rigid_body->restitution * b_rigid_body->restitution;
-    F32 j = (-(1.0f + e) * separating_velocity) / (a_rigid_body->mass_inv + b_rigid_body->mass_inv);
-    V2MultF32(&impulse, &manifold.normal, j);
+      // NOTE: Apply friction
+      V2 tangent;
+      V2MultF32(&tangent, &manifold->normal, separating_velocity);
+      V2SubV2(&tangent, &relative_velocity, &tangent);
+      if (V2LengthSq(&tangent) > 0) { V2Normalize(&tangent, &tangent); }
+      F32 jt = (-1.0f * V2DotV2(&relative_velocity, &tangent)) / (a_rigid_body->mass_inv + b_rigid_body->mass_inv);
+      V2 static_friction  = { a_rigid_body->static_friction, b_rigid_body->static_friction };
+      V2 dynamic_friction = { a_rigid_body->dynamic_friction, b_rigid_body->dynamic_friction };
+      F32 mu_static  = V2Length(&static_friction);
+      F32 mu_dynamic = V2Length(&dynamic_friction);
+      V2 friction_impulse;
+      if (F32Abs(jt) < j * mu_static) { V2MultF32(&friction_impulse, &tangent, jt);              }
+      else                            { V2MultF32(&friction_impulse, &tangent, -j * mu_dynamic); }
+      V2AddV2(&impulse, &impulse, &friction_impulse);
 
-    // NOTE: Friction
-    V2 tangent;
-    V2MultF32(&tangent, &manifold.normal, separating_velocity);
-    V2SubV2(&tangent, &relative_velocity, &tangent);
-    if (V2LengthSq(&tangent) > 0) { V2Normalize(&tangent, &tangent); }
-    F32 jt = (-1.0f * V2DotV2(&relative_velocity, &tangent)) / (a_rigid_body->mass_inv + b_rigid_body->mass_inv);
-    V2 static_friction  = { a_rigid_body->static_friction, b_rigid_body->static_friction };
-    V2 dynamic_friction = { a_rigid_body->dynamic_friction, b_rigid_body->dynamic_friction };
-    F32 mu_static  = V2Length(&static_friction);
-    F32 mu_dynamic = V2Length(&dynamic_friction);
-    V2 friction_impulse;
-    if (F32Abs(jt) < j * mu_static) { V2MultF32(&friction_impulse, &tangent, jt);              }
-    else                            { V2MultF32(&friction_impulse, &tangent, -j * mu_dynamic); }
-    V2AddV2(&impulse, &impulse, &friction_impulse);
-
-    if (a_rigid_body->type == RigidBody2Type_Dynamic) {
-      V2 a_separation;
-      V2MultF32(&a_separation, &impulse, a_rigid_body->mass_inv);
-      V2AddV2(&a_rigid_body->velocity, &a_rigid_body->velocity, &a_separation);
+      if (a_rigid_body->type == RigidBody2Type_Dynamic) {
+        V2 a_dv;
+        V2MultF32(&a_dv, &impulse, a_rigid_body->mass_inv);
+        V2AddV2(&a_rigid_body->velocity, &a_rigid_body->velocity, &a_dv);
+      }
+      if (b_rigid_body->type == RigidBody2Type_Dynamic) {
+        V2 b_dv;
+        V2MultF32(&b_dv, &impulse, b_rigid_body->mass_inv);
+        V2SubV2(&b_rigid_body->velocity, &b_rigid_body->velocity, &b_dv);
+      }
     }
 
-    if (b_rigid_body->type == RigidBody2Type_Dynamic) {
-      V2 b_separation;
-      V2MultF32(&b_separation, &impulse, b_rigid_body->mass_inv);
-      V2SubV2(&b_rigid_body->velocity, &b_rigid_body->velocity, &b_separation);
+    // NOTE: Update object position across known collisions
+    for (U32 j = 0; j < collisions->size; j++) {
+      Collision2* test = (Collision2*) DynamicArrayGet(collisions, j);
+      if (test->a == a) {
+        test->manifold.penetration -= V2DotV2(&test->manifold.normal, &a_separation);
+      } else if (test->a == b) {
+        test->manifold.penetration += V2DotV2(&test->manifold.normal, &b_separation);
+      }
+      if (test->b == a) {
+        test->manifold.penetration += V2DotV2(&test->manifold.normal, &a_separation);
+      } else if (test->b == b) {
+        test->manifold.penetration -= V2DotV2(&test->manifold.normal, &b_separation);
+      }
     }
-  } while (0);
+  }
 }
 
 void Physics2Init() {
@@ -285,60 +337,59 @@ void Physics2Init() {
   c->collider_pool = ArenaAllocate();
   c->rigid_body_pool = ArenaAllocate();
   c->resolver_pool = ArenaAllocate();
-  DynamicArrayInit(&c->collisions, sizeof(Collision2), 64);
   Physics2RegisterResolver(COLLIDER2_RIGID_BODY, COLLIDER2_RIGID_BODY, Physics2RigidBodyResolver);
 }
 
 void Physics2Deinit() {
   Physics2Context* c = &_cdef_phys_2d_context;
+  for (ResolverEntry* resolver = c->resolvers; resolver != NULL; resolver = resolver->next) {
+    DynamicArrayDeinit(&resolver->collisions);
+  }
   ArenaRelease(c->collider_pool);
   ArenaRelease(c->rigid_body_pool);
   ArenaRelease(c->resolver_pool);
-  DynamicArrayDeinit(&c->collisions);
 }
 
 void Physics2Update(F32 dt_s) {
   Physics2Context* c = &_cdef_phys_2d_context;
   Physics2RigidBodyUpdate(dt_s);
 
-  // NOTE: Broad phase collision
-  DEBUG_ASSERT(c->collisions.size == 0);
-  for (Collider2* a = c->collider_tail; a->next != NULL; a = a->next) {
-    for (Collider2* b = a->next; b != NULL; b = b->next) {
-      if ((a->group | b->group) == 0) { continue; }
-      IntersectManifold2 manifold;
-      if (!Collider2IntersectBroad(a, b, &manifold)) { continue; }
+  for (U32 iteration = 0; iteration < PHYSICS2_ITERATIONS; iteration++) {
+    for (Collider2* a = c->collider_tail; a->next != NULL; a = a->next) {
+      for (Collider2* b = a->next; b != NULL; b = b->next) {
+        if ((a->group | b->group) == 0) { continue; }
 
-      Collision2 collision;
-      collision.a = a;
-      collision.b = b;
-      DynamicArrayPushBack(&c->collisions, (U8*) &collision);
-    }
-  }
+        IntersectManifold2 manifold;
+        if (!Collider2IntersectBroad(a, b, &manifold)) { continue; }
+        if (!Collider2IntersectNarrow(a, b, &manifold)) { continue; }
 
-  // NOTE: Narrow phase collision
-  for (U32 i = 0; i < c->collisions.size; i++) {
-    Collision2* collision = (Collision2*) DynamicArrayGet(&c->collisions, i);
-    Collider2* a = collision->a;
-    Collider2* b = collision->b;
-    IntersectManifold2 manifold;
-    if (!Collider2IntersectNarrow(a, b, &manifold)) { continue; }
+        Collision2 collision;
+        collision.a = a;
+        collision.b = b;
+        collision.manifold = manifold;
 
-    for (Collider2SubtypeHeader* a_subtype = a->subtypes; a_subtype != NULL; a_subtype = a_subtype->next) {
-      for (Collider2SubtypeHeader* b_subtype = b->subtypes; b_subtype != NULL; b_subtype = b_subtype->next) {
-        ResolverEntry* resolver = NULL;
-        for (resolver = c->resolvers; resolver != NULL; resolver = resolver->next) {
-          // NOTE: resolver fn should be called with correct a / b type ordering.
-          if (a_subtype->type == resolver->type_a && b_subtype->type == resolver->type_b) {
-            resolver->fn(a, a_subtype, b, b_subtype, manifold);
-          } else if (a_subtype->type == resolver->type_b && b_subtype->type == resolver->type_a) {
-            resolver->fn(b, b_subtype, a, a_subtype, manifold);
+        for (Collider2SubtypeHeader* a_subtype = a->subtypes; a_subtype != NULL; a_subtype = a_subtype->next) {
+          for (Collider2SubtypeHeader* b_subtype = b->subtypes; b_subtype != NULL; b_subtype = a_subtype->next) {
+            for (ResolverEntry* resolver = c->resolvers; resolver != NULL; resolver = resolver->next) {
+              if (a_subtype->type == resolver->type_a && b_subtype->type == resolver->type_b) {
+                DynamicArrayPushBack(&resolver->collisions, (U8*) &collision);
+              } else if (a_subtype->type == resolver->type_b && b_subtype->type == resolver->type_a) {
+                SWAP(Collider2*, collision.a, collision.b);
+                V2MultF32(&collision.manifold.normal, &collision.manifold.normal, -1);
+                DynamicArrayPushBack(&resolver->collisions, (U8*) &collision);
+              }
+            }
           }
         }
       }
     }
+
+    for (ResolverEntry* resolver = c->resolvers; resolver != NULL; resolver = resolver->next) {
+      if (resolver->collisions.size == 0) { continue; }
+      resolver->fn(&resolver->collisions);
+      DynamicArrayClear(&resolver->collisions);
+    }
   }
-  DynamicArrayClear(&c->collisions);
 }
 
 void Physics2SetGravity(V2 gravity) {
@@ -346,7 +397,7 @@ void Physics2SetGravity(V2 gravity) {
   c->rigid_body_gravity = gravity;
 }
 
-void Physics2RegisterResolver(U32 type_a, U32 type_b, Resolver_Fn* resolver) {
+void Physics2RegisterResolver(U32 type_a, U32 type_b, Collision2Resolver_Fn* resolver) {
   Physics2Context* c = &_cdef_phys_2d_context;
   // NOTE: Trip if the resolver has already been registered.
   for (ResolverEntry* entry = c->resolvers; entry != NULL; entry = entry->next) {
@@ -355,9 +406,11 @@ void Physics2RegisterResolver(U32 type_a, U32 type_b, Resolver_Fn* resolver) {
       DEBUG_ASSERT(!(entry->type_a == type_b && entry->type_b == type_a));
     }
   }
+
   ResolverEntry* entry = ARENA_PUSH_STRUCT(c->resolver_pool, ResolverEntry);
   entry->type_a = type_a;
   entry->type_b = type_b;
+  DynamicArrayInit(&entry->collisions, sizeof(Collision2), 10);
   entry->fn = resolver;
   SLL_STACK_PUSH(c->resolvers, entry, next);
 }
@@ -382,7 +435,7 @@ Collider2* Physics2RegisterColliderAabb(V2 center, V2 size) {
   return collider;
 }
 
-void Physics2RemoveCollider(Collider2* collider) {
+void Physics2DeregisterCollider(Collider2* collider) {
   Physics2Context* c = &_cdef_phys_2d_context;
   DLL_REMOVE(c->collider_head, c->collider_tail, collider, prev, next);
   SLL_STACK_PUSH(c->collider_free_list, collider, next);
