@@ -43,6 +43,7 @@ enum RigidBody2Type {
 typedef struct RigidBody2Opts RigidBody2Opts;
 struct RigidBody2Opts {
   RigidBody2Type type;
+  B32 fix_angle;
   F32 restitution;
   F32 mass;
   F32 static_friction;
@@ -67,16 +68,17 @@ struct Collision2 {
 typedef void Collision2Resolver_Fn(DynamicArray* /* Collision2 */ collisions);
 
 // NOTE: Init must be called before any other function.
-void Physics2Init();
+void Physics2Init(U32 iterations);
 void Physics2Deinit();
+void Physics2ConfigRigidBodies(U32 iterations, F32 penetration_slop, F32 pos_correction_pct);
 void Physics2SetGravity(V2 gravity);
 void Physics2RegisterResolver(U32 type_a, U32 type_b, Collision2Resolver_Fn* resolver); // NOTE: Resolvers can only be registered 1x per type pair.
 
 // NOTE: This must be called, e.g. 1x per frame. A fixed timestep can be implemented in the user's program.
 void Physics2Update(F32 dt_s);
 
-Collider2* Physics2RegisterColliderCircle(V2 center, F32 radius);
-Collider2* Physics2RegisterColliderAabb(V2 center, V2 size);
+Collider2* Physics2RegisterColliderCircle(V2 center, F32 radius, F32 angle_rad);
+Collider2* Physics2RegisterColliderObb(V2 center, V2 size, F32 angle_rad);
 void Physics2DeregisterCollider(Collider2* collider);
 
 // TODO: some way to get shape information back out from the collider
@@ -86,35 +88,15 @@ RigidBody2* Collider2SetRigidBody(Collider2* collider, RigidBody2Opts rigid_body
 Collider2SubtypeHeader* Collider2GetSubtype(Collider2* collider, U32 type);
 B32  Collider2RemoveSubtype(Collider2* colluder, U32 type);
 V2*  Collider2Center(Collider2* collider);
+F32* Collider2AngleRad(Collider2* collider);
 U32* Collider2Group(Collider2* collider);
 
+// TODO: AddForce fn that takes a force and a point, breaks into force / torque components.
 V2*  RigidBody2Force(RigidBody2* rigid_body);
+V2*  RigidBody2Torque(RigidBody2* rigid_body);
 V2*  RigidBody2Velocity(RigidBody2* rigid_body);
 void RigidBody2UpdateOpts(RigidBody2* rigid_body, RigidBody2Opts opts);
 RigidBody2Opts RigidBody2GetOpts(RigidBody2* rigid_body);
-
-// TODO: expose as dynamic configs?
-// NOTE: How much play to allow for in RigidBody2 x RigidBody2 collisions.
-#ifndef PHYSICS2_PENETRATION_SLOP
-#define PHYSICS2_PENETRATION_SLOP 0.05f
-#endif
-
-// NOTE: How much separation to apply per RigidBody2 x RigidBody2 resolution instance.
-#ifndef PHYSICS2_POS_CORRECTION_PCT
-#define PHYSICS2_POS_CORRECTION_PCT 0.9f
-#endif
-
-// NOTE: How many iterations to apply for collision detection and resolution.
-// Lower values may lead to instability among RigidBody2 x RigidBody2 collision clusters.
-#ifndef PHYSICS2_ITERATIONS
-#define PHYSICS2_ITERATIONS 5
-#endif
-
-// NOTE: How many iterations to apply for RigidBody2 x RigidBody2 collisions.
-// Lower values may lead to instability among collision clusters.
-#ifndef PHYSICS2_RIGID_BODY_ITERATIONS
-#define PHYSICS2_RIGID_BODY_ITERATIONS 4
-#endif
 
 #endif // CDEFAULT_PHYSICS2_H_
 
@@ -124,18 +106,20 @@ RigidBody2Opts RigidBody2GetOpts(RigidBody2* rigid_body);
 typedef enum Collider2Type Collider2Type;
 enum Collider2Type {
   Collider2Type_Circle,
-  Collider2Type_Aabb,
+  Collider2Type_Obb,
 };
 
 typedef struct Collider2 Collider2;
 struct Collider2 {
   U32 group;
-  V2 center;
+  V2  center;
+  F32 angle_rad;
   F32 broad_circle_radius;
   Collider2Type type;
   union {
     F32 circle_radius;
     V2 aabb_size;
+    V2 obb_size;
   };
   Collider2SubtypeHeader* subtypes;
   Collider2* prev;
@@ -146,12 +130,18 @@ typedef struct RigidBody2 RigidBody2;
 struct RigidBody2 {
   Collider2SubtypeHeader header;
   RigidBody2Type type;
+  B32 fix_angle;
   F32 restitution;
+  F32 mass;
   F32 mass_inv;
+  F32 moment_inertia;
+  F32 moment_inertia_inv;
   F32 static_friction;
   F32 dynamic_friction;
   V2  force;
+  V2  torque;
   V2  velocity;
+  F32 angular_velocity;
   Collider2* collider;
   RigidBody2* prev;
   RigidBody2* next;
@@ -168,6 +158,11 @@ struct ResolverEntry {
 
 typedef struct Physics2Context Physics2Context;
 struct Physics2Context {
+  U32 iterations;
+  F32 rigid_body_penetration_slop;
+  F32 rigid_body_iter_pos_correction_pct;
+  U32 rigid_body_iterations;
+
   Arena*         collider_pool;
   Collider2*     collider_head;
   Collider2*     collider_tail;
@@ -206,13 +201,13 @@ static B32 Collider2IntersectNarrow(Collider2* a, Collider2* b, IntersectManifol
     case Collider2Type_Circle: {
       switch (b->type) {
         case Collider2Type_Circle: return Circle2IntersectCircle2(&a->center, a->circle_radius, &b->center, b->circle_radius, manifold);
-        case Collider2Type_Aabb:   return Circle2IntersectAabb2(&a->center, a->circle_radius, &b->center, &b->aabb_size, manifold);
+        case Collider2Type_Obb:    return Circle2IntersectObb2(&a->center, a->circle_radius, &b->center, &b->obb_size, b->angle_rad, manifold);
       }
     } break;
-    case Collider2Type_Aabb: {
+    case Collider2Type_Obb: {
       switch (b->type) {
-        case Collider2Type_Circle: return Aabb2IntersectCircle2(&a->center, &a->aabb_size, &b->center, b->circle_radius, manifold);
-        case Collider2Type_Aabb:   return Aabb2IntersectAabb2(&a->center, &a->aabb_size, &b->center, &b->aabb_size, manifold);
+        case Collider2Type_Circle: return Obb2IntersectCircle2(&a->center, &a->obb_size, a->angle_rad, &b->center, b->circle_radius, manifold);
+        case Collider2Type_Obb:    return Obb2IntersectObb2(&a->center, &a->obb_size, a->angle_rad, &b->center, &b->obb_size, b->angle_rad, manifold);
       }
     } break;
   }
@@ -232,12 +227,15 @@ static void Physics2RigidBodyUpdate(F32 dt_s) {
     V2AddV2(&rigid_body->velocity, &rigid_body->velocity, &moment_acceleration);
     V2MultF32(&moment_velocity, &rigid_body->velocity, dt_s);
     V2AddV2(&rigid_body->collider->center, &rigid_body->collider->center, &moment_velocity);
+    rigid_body->collider->angle_rad += rigid_body->angular_velocity * dt_s;
 
     MEMORY_ZERO_STRUCT(&rigid_body->force);
   }
 }
 
 static void Physics2RigidBodyResolver(DynamicArray* collisions) {
+  Physics2Context* c = &_cdef_phys_2d_context;
+  // NOTE: remove static / static collisions
   for (U32 i = 0; i < collisions->size; i++) {
     Collision2* collision = (Collision2*) DynamicArrayGet(collisions, i);
     RigidBody2* a_rigid_body = (RigidBody2*) Collider2GetSubtype(collision->a, COLLIDER2_RIGID_BODY);
@@ -248,14 +246,14 @@ static void Physics2RigidBodyResolver(DynamicArray* collisions) {
     }
   }
 
-  for (U32 i = 0; i < collisions->size * PHYSICS2_RIGID_BODY_ITERATIONS; i++) {
+  for (U32 i = 0; i < collisions->size * c->rigid_body_iterations; i++) {
     // NOTE: find collision with max penetration
     Collision2* max = (Collision2*) DynamicArrayGet(collisions, 0);
     for (U32 j = 1; j < collisions->size; j++) {
       Collision2* test = (Collision2*) DynamicArrayGet(collisions, j);
       if (test->manifold.penetration > max->manifold.penetration) { max = test; }
     }
-    if (max->manifold.penetration <= PHYSICS2_PENETRATION_SLOP) { break; }
+    if (max->manifold.penetration <= c->rigid_body_penetration_slop) { break; }
 
     IntersectManifold2* manifold = &max->manifold;
     Collider2* a = max->a;
@@ -263,58 +261,126 @@ static void Physics2RigidBodyResolver(DynamicArray* collisions) {
     RigidBody2* a_rigid_body = (RigidBody2*) Collider2GetSubtype(a, COLLIDER2_RIGID_BODY);
     RigidBody2* b_rigid_body = (RigidBody2*) Collider2GetSubtype(b, COLLIDER2_RIGID_BODY);
 
-    // NOTE: Separate bodies
-    F32 pen_ratio = PHYSICS2_POS_CORRECTION_PCT * MAX(manifold->penetration - PHYSICS2_PENETRATION_SLOP, 0);
+    // NOTE: separate bodies
+    F32 pen_ratio = c->rigid_body_iter_pos_correction_pct * MAX(manifold->penetration - c->rigid_body_penetration_slop, 0);
     pen_ratio /= a_rigid_body->mass_inv + b_rigid_body->mass_inv;
     F32 a_pen = a_rigid_body->mass_inv * pen_ratio;
     F32 b_pen = b_rigid_body->mass_inv * pen_ratio;
-
     V2 a_separation;
     V2MultF32(&a_separation, &manifold->normal, a_pen);
     V2AddV2(&a->center, &a->center, &a_separation);
-
     V2 b_separation;
     V2MultF32(&b_separation, &manifold->normal, b_pen);
     V2SubV2(&b->center, &b->center, &b_separation);
 
-    // NOTE: Apply impulse
-    V2 relative_velocity;
-    V2SubV2(&relative_velocity, &a_rigid_body->velocity, &b_rigid_body->velocity);
-    F32 separating_velocity = V2DotV2(&relative_velocity, &manifold->normal);
-    if (separating_velocity <= 0) {
-      V2 impulse;
+    // TODO: cases where there is a manifold but no contact points?
+
+    // NOTE: determine impulse
+    V2  ra[2], rb[2], ra_perp[2], rb_perp[2];
+    F32 j[2];
+    for (U32 i = 0; i < manifold->contact_points_size; i++) {
+      j[i] = 0;
+
+      V2SubV2(&ra[i], &manifold->contact_points[i], &a->center);
+      V2SubV2(&rb[i], &manifold->contact_points[i], &b->center);
+      ra_perp[i] = (V2) { -ra[i].y, +ra[i].x };
+      rb_perp[i] = (V2) { -rb[i].y, +rb[i].x };
+
+      V2 a_angular_linear_velocity, b_angular_linear_velocity;
+      V2MultF32(&a_angular_linear_velocity, &ra_perp[i], a_rigid_body->angular_velocity);
+      V2MultF32(&b_angular_linear_velocity, &rb_perp[i], b_rigid_body->angular_velocity);
+
+      V2 a_total_velocity, b_total_velocity, relative_velocity;
+      V2AddV2(&a_total_velocity, &a_rigid_body->velocity, &a_angular_linear_velocity);
+      V2AddV2(&b_total_velocity, &b_rigid_body->velocity, &b_angular_linear_velocity);
+      V2SubV2(&relative_velocity, &a_total_velocity, &b_total_velocity);
+
+      F32 separating_velocity = V2DotV2(&relative_velocity, &manifold->normal);
+      if (separating_velocity > 0) { continue; }
+
+      F32 ra_perp_dot_i_norm = V2DotV2(&ra_perp[i], &manifold->normal);
+      F32 rb_perp_dot_i_norm = V2DotV2(&rb_perp[i], &manifold->normal);
       F32 e = a_rigid_body->restitution * b_rigid_body->restitution;
-      F32 j = (-(1.0f + e) * separating_velocity) / (a_rigid_body->mass_inv + b_rigid_body->mass_inv);
-      V2MultF32(&impulse, &manifold->normal, j);
+      F32 j_num   = -(1.0f + e) * separating_velocity;
+      F32 j_denom = (a_rigid_body->mass_inv + b_rigid_body->mass_inv);
+      j_denom += ra_perp_dot_i_norm * ra_perp_dot_i_norm * a_rigid_body->moment_inertia_inv;
+      j_denom += rb_perp_dot_i_norm * rb_perp_dot_i_norm * b_rigid_body->moment_inertia_inv;
+      j_denom *= manifold->contact_points_size;
+      j[i]  = j_num / j_denom;
+    }
 
-      // NOTE: Apply friction
+    // NOTE: apply impulse
+    // this is done separately from determination as subsequent impulse calculations are dependent on prior velocity values.
+    for (U32 i = 0; i < manifold->contact_points_size; i++) {
+      V2 impulse;
+      V2MultF32(&impulse, &manifold->normal, j[i]);
+
+      V2 a_dv;
+      V2MultF32(&a_dv, &impulse, a_rigid_body->mass_inv);
+      V2AddV2(&a_rigid_body->velocity, &a_rigid_body->velocity, &a_dv);
+
+      V2 b_dv;
+      V2MultF32(&b_dv, &impulse, b_rigid_body->mass_inv);
+      V2SubV2(&b_rigid_body->velocity, &b_rigid_body->velocity, &b_dv);
+
+      a_rigid_body->angular_velocity += V2CrossV2(&ra[i], &impulse) * a_rigid_body->moment_inertia_inv * !a_rigid_body->fix_angle;
+      b_rigid_body->angular_velocity -= V2CrossV2(&rb[i], &impulse) * b_rigid_body->moment_inertia_inv * !b_rigid_body->fix_angle;
+    }
+
+    // NOTE: determine tangent / friction impulse
+    // this is done separately to utilize the final velocity values.
+    V2 friction_impulse[2];
+    F32 static_friction  = (a_rigid_body->static_friction  + b_rigid_body->static_friction)  * 0.5f;
+    F32 dynamic_friction = (a_rigid_body->dynamic_friction + b_rigid_body->dynamic_friction) * 0.5f;
+    for (U32 i = 0; i < manifold->contact_points_size; i++) {
+      friction_impulse[i] = (V2) { 0, 0 };
+
+      V2 a_angular_linear_velocity, b_angular_linear_velocity;
+      V2MultF32(&a_angular_linear_velocity, &ra_perp[i], a_rigid_body->angular_velocity);
+      V2MultF32(&b_angular_linear_velocity, &rb_perp[i], b_rigid_body->angular_velocity);
+
+      V2 a_total_velocity, b_total_velocity, relative_velocity;
+      V2AddV2(&a_total_velocity, &a_rigid_body->velocity, &a_angular_linear_velocity);
+      V2AddV2(&b_total_velocity, &b_rigid_body->velocity, &b_angular_linear_velocity);
+      V2SubV2(&relative_velocity, &a_total_velocity, &b_total_velocity);
+
       V2 tangent;
-      V2MultF32(&tangent, &manifold->normal, separating_velocity);
+      V2MultF32(&tangent, &manifold->normal, V2DotV2(&relative_velocity, &manifold->normal));
       V2SubV2(&tangent, &relative_velocity, &tangent);
-      if (V2LengthSq(&tangent) > 0) { V2Normalize(&tangent, &tangent); }
-      F32 jt = (-1.0f * V2DotV2(&relative_velocity, &tangent)) / (a_rigid_body->mass_inv + b_rigid_body->mass_inv);
-      V2 static_friction  = { a_rigid_body->static_friction, b_rigid_body->static_friction };
-      V2 dynamic_friction = { a_rigid_body->dynamic_friction, b_rigid_body->dynamic_friction };
-      F32 mu_static  = V2Length(&static_friction);
-      F32 mu_dynamic = V2Length(&dynamic_friction);
-      V2 friction_impulse;
-      if (F32Abs(jt) < j * mu_static) { V2MultF32(&friction_impulse, &tangent, jt);              }
-      else                            { V2MultF32(&friction_impulse, &tangent, -j * mu_dynamic); }
-      V2AddV2(&impulse, &impulse, &friction_impulse);
+      if (V2LengthSq(&tangent) < 0.0005) { continue; }
+      V2Normalize(&tangent, &tangent);
 
-      if (a_rigid_body->type == RigidBody2Type_Dynamic) {
-        V2 a_dv;
-        V2MultF32(&a_dv, &impulse, a_rigid_body->mass_inv);
-        V2AddV2(&a_rigid_body->velocity, &a_rigid_body->velocity, &a_dv);
-      }
-      if (b_rigid_body->type == RigidBody2Type_Dynamic) {
-        V2 b_dv;
-        V2MultF32(&b_dv, &impulse, b_rigid_body->mass_inv);
-        V2SubV2(&b_rigid_body->velocity, &b_rigid_body->velocity, &b_dv);
-      }
+      F32 ra_perp_dot_tan = V2DotV2(&ra_perp[i], &tangent);
+      F32 rb_perp_dot_tan = V2DotV2(&rb_perp[i], &tangent);
+      F32 jt_num = -V2DotV2(&relative_velocity, &tangent);
+      F32 jt_denom = a_rigid_body->mass_inv + b_rigid_body->mass_inv;
+      jt_denom += (ra_perp_dot_tan * ra_perp_dot_tan) * a_rigid_body->moment_inertia_inv;
+      jt_denom += (rb_perp_dot_tan * rb_perp_dot_tan) * b_rigid_body->moment_inertia_inv;
+      jt_denom *= manifold->contact_points_size;
+      F32 jt = jt_num / jt_denom;
+
+      if (F32Abs(jt) <= j[i] * static_friction) { V2MultF32(&friction_impulse[i], &tangent, jt); }
+      else { V2MultF32(&friction_impulse[i], &tangent, -j[i] * dynamic_friction); }
+    }
+
+    // NOTE: apply tangent / friction impulse
+    for (U32 i = 0; i < manifold->contact_points_size; i++) {
+      V2* impulse = &friction_impulse[i];
+
+      V2 a_dv;
+      V2MultF32(&a_dv, impulse, a_rigid_body->mass_inv);
+      V2AddV2(&a_rigid_body->velocity, &a_rigid_body->velocity, &a_dv);
+
+      V2 b_dv;
+      V2MultF32(&b_dv, impulse, b_rigid_body->mass_inv);
+      V2SubV2(&b_rigid_body->velocity, &b_rigid_body->velocity, &b_dv);
+
+      a_rigid_body->angular_velocity += V2CrossV2(&ra[i], impulse) * a_rigid_body->moment_inertia_inv * !a_rigid_body->fix_angle;
+      b_rigid_body->angular_velocity -= V2CrossV2(&rb[i], impulse) * b_rigid_body->moment_inertia_inv * !b_rigid_body->fix_angle;
     }
 
     // NOTE: Update object position across known collisions
+    // TODO: update the contact points also?
     for (U32 j = 0; j < collisions->size; j++) {
       Collision2* test = (Collision2*) DynamicArrayGet(collisions, j);
       if (test->a == a) {
@@ -331,9 +397,13 @@ static void Physics2RigidBodyResolver(DynamicArray* collisions) {
   }
 }
 
-void Physics2Init() {
+void Physics2Init(U32 iterations) {
   Physics2Context* c = &_cdef_phys_2d_context;
   MEMORY_ZERO_STRUCT(c);
+  c->iterations = iterations;
+  c->rigid_body_penetration_slop = 0.05f;
+  c->rigid_body_iter_pos_correction_pct = 0.7f;
+  c->rigid_body_iterations = 5;
   c->collider_pool = ArenaAllocate();
   c->rigid_body_pool = ArenaAllocate();
   c->resolver_pool = ArenaAllocate();
@@ -350,11 +420,18 @@ void Physics2Deinit() {
   ArenaRelease(c->resolver_pool);
 }
 
+void Physics2ConfigRigidBodies(U32 iterations, F32 penetration_slop, F32 pos_correction_pct) {
+  Physics2Context* c = &_cdef_phys_2d_context;
+  c->rigid_body_iterations = iterations;
+  c->rigid_body_penetration_slop = penetration_slop;
+  c->rigid_body_iter_pos_correction_pct = pos_correction_pct;
+}
+
 void Physics2Update(F32 dt_s) {
   Physics2Context* c = &_cdef_phys_2d_context;
   Physics2RigidBodyUpdate(dt_s);
 
-  for (U32 iteration = 0; iteration < PHYSICS2_ITERATIONS; iteration++) {
+  for (U32 iteration = 0; iteration < c->iterations; iteration++) {
     for (Collider2* a = c->collider_tail; a->next != NULL; a = a->next) {
       for (Collider2* b = a->next; b != NULL; b = b->next) {
         if ((a->group | b->group) == 0) { continue; }
@@ -415,23 +492,25 @@ void Physics2RegisterResolver(U32 type_a, U32 type_b, Collision2Resolver_Fn* res
   SLL_STACK_PUSH(c->resolvers, entry, next);
 }
 
-Collider2* Physics2RegisterColliderCircle(V2 center, F32 radius) {
+Collider2* Physics2RegisterColliderCircle(V2 center, F32 radius, F32 angle_rad) {
   DEBUG_ASSERT(radius > 0);
   Collider2* collider = Collider2Allocate();
   collider->type = Collider2Type_Circle;
+  collider->angle_rad = angle_rad;
   collider->center = center;
   collider->broad_circle_radius = radius;
   collider->circle_radius = radius;
   return collider;
 }
 
-Collider2* Physics2RegisterColliderAabb(V2 center, V2 size) {
+Collider2* Physics2RegisterColliderObb(V2 center, V2 size, F32 angle_rad) {
   DEBUG_ASSERT(size.x > 0 && size.y > 0);
   Collider2* collider = Collider2Allocate();
-  collider->type = Collider2Type_Aabb;
+  collider->type = Collider2Type_Obb;
+  collider->angle_rad = angle_rad;
   collider->center = center;
-  Aabb2GetEnclosingCircle2(&center, &size, &collider->broad_circle_radius);
-  collider->aabb_size = size;
+  Obb2GetEnclosingCircle2(&center, &size, angle_rad, &collider->broad_circle_radius);
+  collider->obb_size = size;
   return collider;
 }
 
@@ -448,11 +527,6 @@ void Collider2SetSubtype(Collider2* collider, Collider2SubtypeHeader* subtype) {
 
 RigidBody2* Collider2SetRigidBody(Collider2* collider, RigidBody2Opts rigid_body_opts) {
   Physics2Context* c = &_cdef_phys_2d_context;
-  DEBUG_ASSERT(rigid_body_opts.restitution >= 0);
-  DEBUG_ASSERT(rigid_body_opts.mass > 0 || rigid_body_opts.type == RigidBody2Type_Static);
-  DEBUG_ASSERT(rigid_body_opts.static_friction >= 0);
-  DEBUG_ASSERT(rigid_body_opts.dynamic_friction >= 0);
-
   RigidBody2* rigid_body;
   if (c->rigid_body_free_list != NULL) {
     rigid_body = c->rigid_body_free_list;
@@ -501,6 +575,10 @@ V2* Collider2Center(Collider2* collider) {
   return &collider->center;
 }
 
+F32* Collider2AngleRad(Collider2* collider) {
+  return &collider->angle_rad;
+}
+
 U32* Collider2Group(Collider2* collider) {
   return &collider->group;
 }
@@ -509,32 +587,56 @@ V2* RigidBody2Force(RigidBody2* rigid_body) {
   return &rigid_body->force;
 }
 
+V2* RigidBody2Torque(RigidBody2* rigid_body) {
+  return &rigid_body->torque;
+}
+
 V2* RigidBody2Velocity(RigidBody2* rigid_body) {
   return &rigid_body->velocity;
 }
 
 void RigidBody2UpdateOpts(RigidBody2* rigid_body, RigidBody2Opts opts) {
+  DEBUG_ASSERT(opts.restitution >= 0);
+  DEBUG_ASSERT(opts.mass > 0 || opts.type == RigidBody2Type_Static);
+  DEBUG_ASSERT(opts.static_friction >= 0);
+  DEBUG_ASSERT(opts.dynamic_friction >= 0);
+
   rigid_body->type = opts.type;
+  rigid_body->fix_angle = opts.fix_angle;
+  rigid_body->mass = opts.mass;
   rigid_body->restitution = opts.restitution;
   rigid_body->static_friction = opts.static_friction;
   rigid_body->dynamic_friction = opts.dynamic_friction;
+  switch (rigid_body->collider->type) {
+    case Collider2Type_Circle: {
+      F32 radius = rigid_body->collider->circle_radius;
+      rigid_body->moment_inertia = (2.0f / 3.0f) * opts.mass * radius * radius;
+    } break;
+    case Collider2Type_Obb: {
+      V2 size = rigid_body->collider->obb_size;
+      rigid_body->moment_inertia = (1.0f / 12.0f) * opts.mass * (size.x * size.x + size.y * size.y);
+    } break;
+    default: UNREACHABLE();
+  }
   if (rigid_body->type == RigidBody2Type_Dynamic) {
     rigid_body->mass_inv = 1.0f / opts.mass;
+    rigid_body->moment_inertia_inv = 1.0f / rigid_body->moment_inertia;
   } else {
     rigid_body->mass_inv = 0.0f;
+    rigid_body->moment_inertia_inv = 0.0f;
   }
+  DEBUG_ASSERT(rigid_body->moment_inertia != 0);
 }
 
 RigidBody2Opts RigidBody2GetOpts(RigidBody2* rigid_body) {
   RigidBody2Opts opts;
   MEMORY_ZERO_STRUCT(&opts);
   opts.type = rigid_body->type;
+  opts.fix_angle = rigid_body->fix_angle;
+  opts.mass = rigid_body->mass;
   opts.restitution = rigid_body->restitution;
   opts.static_friction = rigid_body->static_friction;
   opts.dynamic_friction = rigid_body->dynamic_friction;
-  if (opts.type == RigidBody2Type_Dynamic) {
-    opts.mass = 1.0f / rigid_body->mass_inv;
-  }
   return opts;
 }
 

@@ -91,6 +91,7 @@ B32  Aabb2IntersectConvexHull2(V2* aabb_center, V2* aabb_size, V2* hull_points, 
 B32  Obb2Eq(V2* a_center, V2* a_size, F32 a_angle_rad, V2* b_center, V2* b_size, F32 b_angle_rad);
 B32  Obb2ApproxEq(V2* a_center, V2* a_size, F32 a_angle_rad, V2* b_center, V2* b_size, F32 b_angle_rad);
 void Obb2RotateAboutPoint(V2* obb_center, F32* obb_angle_rad, V2* point, F32 angle_rad);
+void Obb2GetEnclosingCircle2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, F32* circle_radius);
 void Obb2GetEnclosingAabb2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* abb_size);
 B32  Obb2ContainsPoint(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* point);
 B32  Obb2IntersectLine2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* line_start, V2* line_end, V2* enter_point, V2* exit_point);
@@ -705,10 +706,10 @@ void Obb2RotateAboutPoint(V2* obb_center, F32* obb_angle_rad, V2* point, F32 ang
 }
 
 // SPEEDUP: Lots of OBB fns convert to a convex hull; may be better to cache the translation.
-void Obb2GetEnclosingCircle2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* circle_center, F32* circle_radius) {
-  V2 obb_points[4];
+void Obb2GetEnclosingCircle2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, F32* circle_radius) {
+  V2 temp, obb_points[4];
   ConvexHull2FromObb2(obb_points, obb_center, obb_size, obb_angle_rad);
-  ConvexHull2GetEnclosingCircle2((V2*) obb_points, 4, circle_center, circle_radius);
+  ConvexHull2GetEnclosingCircle2((V2*) obb_points, 4, &temp, circle_radius);
 }
 
 void Obb2GetEnclosingAabb2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* aabb_size) {
@@ -880,10 +881,10 @@ B32 Circle2IntersectConvexHull2(V2* circle_center, F32 circle_radius, V2* hull_p
     }
   }
   if (manifold != NULL) {
-    if (V2DotV2(&rel_center, &manifold->normal) < 0) { V2MultF32(&manifold->normal, &manifold->normal, -1); }
+    if (V2DotV2(&rel_center, &manifold->normal) > 0) { V2MultF32(&manifold->normal, &manifold->normal, -1); }
     V2Normalize(&manifold->normal, &manifold->normal);
 
-    V2MultF32(&manifold->contact_points[0], &manifold->normal, circle_radius);
+    V2MultF32(&manifold->contact_points[0], &manifold->normal, -circle_radius);
     V2AddV2(&manifold->contact_points[0], &manifold->contact_points[0], circle_center);
     manifold->contact_points_size = 1;
   }
@@ -1184,7 +1185,7 @@ B32 ConvexHull2IntersectConvexHull2(V2* a_points, U32 a_points_size, V2* b_point
     manifold->contact_points_size = 0;
     for (U32 i = 0; i < c_points_size; i++) {
       V2 test = c_points[i];
-      if (V2DotV2(&ref_normal, &test) - max > 0) {
+      if (V2DotV2(&ref_normal, &test) - max >= 0) {
         manifold->contact_points[manifold->contact_points_size++] = test;
       }
     }
