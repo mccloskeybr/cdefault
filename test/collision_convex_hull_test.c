@@ -13,6 +13,9 @@ static void DrawIntersectManifold(V2* hull_points, U32 hull_points_size, Interse
   V2MultF32(&end, &manifold.normal, manifold.penetration);
   V2AddV2(&end, &start, &end);
   DrawLineV(start, end, 5, color);
+  for (U32 i = 0; i < manifold.contact_points_size; i++) {
+    DrawRingV(manifold.contact_points[i], 10, 5, V3_RED);
+  }
 }
 
 int main(void) {

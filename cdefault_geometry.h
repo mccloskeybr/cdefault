@@ -18,7 +18,12 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 typedef struct IntersectManifold2 IntersectManifold2;
-struct IntersectManifold2 { V2 normal; F32 penetration; };
+struct IntersectManifold2 {
+  V2  normal;
+  F32 penetration;
+  V2  contact_points[2];
+  U32 contact_points_size;
+};
 
 B32  Line2Eq(V2* a_start, V2* a_end, V2* b_start, V2* b_end);
 B32  Line2ApproxEq(V2* a_start, V2* a_end, V2* b_start, V2* b_end);
@@ -580,13 +585,13 @@ B32 Tri2IntersectAabb2(V2 tri_points[3], V2* aabb_center, V2* aabb_size, Interse
 }
 
 B32 Tri2IntersectObb2(V2 tri_points[3], V2* obb_center, V2* obb_size, F32 obb_angle_rad, IntersectManifold2* manifold) {
-  B32 result = Obb2IntersectTri2(obb_center, obb_size, obb_angle_rad, tri_points, manifold);
-  if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1); }
-  return result;
+  V2 obb_points[4];
+  ConvexHull2FromObb2(obb_points, obb_center, obb_size, obb_angle_rad);
+  return ConvexHull2IntersectConvexHull2((V2*) tri_points, 3, (V2*) obb_points, 4, manifold);
 }
 
 B32 Tri2IntersectCircle2(V2 tri_points[3], V2* circle_center, F32 circle_radius, IntersectManifold2* manifold) {
-  return Circle2IntersectTri2(circle_center, circle_radius, tri_points, manifold);
+  return ConvexHull2IntersectCircle2((V2*) tri_points, 3, circle_center, circle_radius, manifold);
 }
 
 B32 Tri2IntersectConvexHull2(V2 tri_points[3], V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold) {
@@ -651,54 +656,29 @@ B32 Aabb2IntersectRay2(V2* aabb_center, V2* aabb_size, V2* ray_start, V2* ray_di
 }
 
 B32 Aabb2IntersectTri2(V2* aabb_center, V2* aabb_size, V2 tri_points[3], IntersectManifold2* manifold) {
-  B32 result = Tri2IntersectAabb2(tri_points, aabb_center, aabb_size, manifold);
-  if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1); }
-  return result;
+  V2 aabb_points[4];
+  ConvexHull2FromAabb2(aabb_points, aabb_center, aabb_size);
+  return ConvexHull2IntersectConvexHull2((V2*) aabb_points, 4, (V2*) tri_points, 3, manifold);
 }
 
 B32 Aabb2IntersectAabb2(V2* a_center, V2* a_size, V2* b_center, V2* b_size, IntersectManifold2* manifold) {
-  V2 a_min, a_max, b_min, b_max;
-  Aabb2GetMinMax(a_center, a_size, &a_min, &a_max);
-  Aabb2GetMinMax(b_center, b_size, &b_min, &b_max);
-
-  if (!(a_max.x > b_min.x &&
-        a_min.x < b_max.x &&
-        a_max.y > b_min.y &&
-        a_min.y < b_max.y)) {
-    return false;
-  }
-
-  if (manifold != NULL) {
-    F32 penetration = F32_MAX;
-    F32 penetration_test = 0;
-    V2 min_axis = {};
-#define CDEFAULT_PENETRATION_TEST(test, axis) \
-      penetration_test = (test);              \
-      if (penetration_test < penetration) {   \
-        penetration = penetration_test;       \
-        min_axis = (axis);                    \
-      }
-    CDEFAULT_PENETRATION_TEST(b_max.x - a_min.x, V2_X_POS);
-    CDEFAULT_PENETRATION_TEST(a_max.x - b_min.x, V2_X_NEG);
-    CDEFAULT_PENETRATION_TEST(b_max.y - a_min.y, V2_Y_POS);
-    CDEFAULT_PENETRATION_TEST(a_max.y - b_min.y, V2_Y_NEG);
-#undef CDEFAULT_PENETRATION_TEST
-    manifold->normal = min_axis;
-    manifold->penetration = penetration;
-  }
-  return true;
+  V2 a_points[4], b_points[4];
+  ConvexHull2FromAabb2(a_points, a_center, a_size);
+  ConvexHull2FromAabb2(b_points, b_center, b_size);
+  return ConvexHull2IntersectConvexHull2((V2*) a_points, 4, (V2*) b_points, 4, manifold);
 }
 
 B32 Aabb2IntersectObb2(V2* aabb_center, V2* aabb_size, V2* obb_center, V2* obb_size, F32 obb_angle_rad, IntersectManifold2* manifold) {
-  B32 result = Obb2IntersectAabb2(obb_center, obb_size, obb_angle_rad, aabb_center, aabb_size, manifold);
-  if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1); }
-  return result;
+  V2 aabb_points[4], obb_points[4];
+  ConvexHull2FromAabb2(aabb_points, aabb_center, aabb_size);
+  ConvexHull2FromObb2(obb_points, obb_center, obb_size, obb_angle_rad);
+  return ConvexHull2IntersectConvexHull2((V2*) aabb_points, 4, (V2*) obb_points, 4, manifold);
 }
 
 B32 Aabb2IntersectCircle2(V2* aabb_center, V2* aabb_size, V2* circle_center, F32 circle_radius, IntersectManifold2* manifold) {
-  B32 result = Circle2IntersectAabb2(circle_center, circle_radius, aabb_center, aabb_size, manifold);
-  if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1); }
-  return result;
+  V2 aabb_points[4];
+  ConvexHull2FromAabb2(aabb_points, aabb_center, aabb_size);
+  return ConvexHull2IntersectCircle2((V2*) aabb_points, 4, circle_center, circle_radius, manifold);
 }
 
 B32 Aabb2IntersectConvexHull2(V2* aabb_center, V2* aabb_size, V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold) {
@@ -758,19 +738,19 @@ B32 Obb2IntersectRay2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* ray_s
 B32 Obb2IntersectTri2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2 tri_points[3], IntersectManifold2* manifold) {
   V2 obb_points[4];
   ConvexHull2FromObb2(obb_points, obb_center, obb_size, obb_angle_rad);
-  return ConvexHull2IntersectTri2(obb_points, 4, tri_points, manifold);
+  return ConvexHull2IntersectConvexHull2(obb_points, 4, tri_points, 3, manifold);
 }
 
 B32 Obb2IntersectAabb2(V2* obb_center, V2* obb_size, F32 obb_angle_rad, V2* aabb_center, V2* aabb_size, IntersectManifold2* manifold) {
-  V2 obb_points[4];
+  V2 obb_points[4], aabb_points[4];
   ConvexHull2FromObb2(obb_points, obb_center, obb_size, obb_angle_rad);
-  return ConvexHull2IntersectAabb2((V2*) obb_points, 4, aabb_center, aabb_size, manifold);
+  ConvexHull2FromAabb2(aabb_points, aabb_center, aabb_size);
+  return ConvexHull2IntersectConvexHull2((V2*) obb_points, 4, (V2*) aabb_points, 4, manifold);
 }
 
 B32 Obb2IntersectObb2(V2* a_center, V2* a_size, F32 a_angle_rad, V2* b_center, V2* b_size, F32 b_angle_rad, IntersectManifold2* manifold) {
-  V2 a_points[4];
+  V2 a_points[4], b_points[4];
   ConvexHull2FromObb2(a_points, a_center, a_size, a_angle_rad);
-  V2 b_points[4];
   ConvexHull2FromObb2(b_points, b_center, b_size, b_angle_rad);
   return ConvexHull2IntersectConvexHull2((V2*) a_points, 4, (V2*) b_points, 4, manifold);
 }
@@ -815,108 +795,19 @@ B32 Circle2IntersectRay2(V2* circle_center, F32 circle_radius, V2* ray_start, V2
 }
 
 B32 Circle2IntersectTri2(V2* circle_center, F32 circle_radius, V2 tri_points[3], IntersectManifold2* manifold) {
-  V2 p_p0p1, p_p1p2, p_p2p0;
-  Line2GetClosestPoint(&tri_points[0], &tri_points[1], circle_center, &p_p0p1);
-  Line2GetClosestPoint(&tri_points[1], &tri_points[2], circle_center, &p_p1p2);
-  Line2GetClosestPoint(&tri_points[2], &tri_points[0], circle_center, &p_p2p0);
-  V2 to_p_p0p1, to_p_p1p2, to_p_p2p0;
-  V2SubV2(&to_p_p0p1, &p_p0p1, circle_center);
-  V2SubV2(&to_p_p1p2, &p_p1p2, circle_center);
-  V2SubV2(&to_p_p2p0, &p_p2p0, circle_center);
-  F32 to_p_p0p1_len_sq = V2LengthSq(&to_p_p0p1);
-  F32 to_p_p1p2_len_sq = V2LengthSq(&to_p_p1p2);
-  F32 to_p_p2p0_len_sq = V2LengthSq(&to_p_p2p0);
-
-  V2 min_to_p = to_p_p0p1;
-  F32 min_len_sq = to_p_p0p1_len_sq;
-  if (to_p_p1p2_len_sq < min_len_sq) {
-    min_to_p = to_p_p1p2;
-    min_len_sq = to_p_p1p2_len_sq;
-  }
-  if (to_p_p2p0_len_sq < min_len_sq) {
-    min_to_p = to_p_p2p0;
-    min_len_sq = to_p_p2p0_len_sq;
-  }
-
-  F32 min_len = F32Sqrt(min_len_sq);
-  if (Tri2ContainsPoint(tri_points, circle_center)) {
-    // SPEEDUP: wasting cycles when manifold == NULL here, but this is more readable for now.
-    if (manifold != NULL) {
-      manifold->penetration = circle_radius + min_len;
-      if (min_len != 0) {
-        V2Normalize(&manifold->normal, &min_to_p);
-      }
-    }
-    return true;
-  } else if (min_len < circle_radius) {
-    if (manifold != NULL) {
-      manifold->penetration = circle_radius - min_len;
-      if (min_len != 0) {
-        V2Normalize(&manifold->normal, &min_to_p);
-        V2MultF32(&manifold->normal, &manifold->normal, -1.0f);
-      }
-    }
-    return true;
-  } else {
-    return false;
-  }
+  return Circle2IntersectConvexHull2(circle_center, circle_radius, (V2*) tri_points, 3, manifold);
 }
 
 B32 Circle2IntersectAabb2(V2* circle_center, F32 circle_radius, V2* aabb_center, V2* aabb_size, IntersectManifold2* manifold) {
-  V2 min, max;
-  Aabb2GetMinMax(aabb_center, aabb_size, &min, &max);
-
-  V2 rel_closest_point;
-  rel_closest_point.x = CLAMP(min.x, circle_center->x, max.x);
-  rel_closest_point.y = CLAMP(min.y, circle_center->y, max.y);
-
-  V2 to_closest_point;
-  V2SubV2(&to_closest_point, circle_center, &rel_closest_point);
-  F32 d_sq = V2LengthSq(&to_closest_point);
-  F32 r_sq = circle_radius * circle_radius;
-
-  if (d_sq > 0) {
-    // NOTE: Outside the AABB
-    if (d_sq >= r_sq) { return false; }
-    if (manifold != NULL) {
-      manifold->penetration = circle_radius - F32Sqrt(d_sq);
-      manifold->normal = to_closest_point;
-      DEBUG_ASSERT(V2Length(&manifold->normal) > 0);
-      V2Normalize(&manifold->normal, &manifold->normal);
-    }
-    return true;
-  } else {
-    // NOTE: Inside the AABB.
-    F32 dx_left  = circle_center->x - min.x;
-    F32 dx_right = max.x - circle_center->x;
-    F32 dy_bot   = circle_center->y - min.y;
-    F32 dy_top   = max.y - circle_center->y;
-
-    F32 min = dx_left;
-    V2 normal = V2_X_NEG;
-    if (dx_right < min) {
-      min = dx_right;
-      normal = V2_X_POS;
-    }
-    if (dy_bot < min) {
-      min = dy_bot;
-      normal = V2_Y_NEG;
-    }
-    if (dy_top < min) {
-      min = dy_top;
-      normal = V2_Y_POS;
-    }
-
-    manifold->normal = normal;
-    manifold->penetration = circle_radius + min;
-    return true;
-  }
+  V2 aabb_points[4];
+  ConvexHull2FromAabb2(aabb_points, aabb_center, aabb_size);
+  return Circle2IntersectConvexHull2(circle_center, circle_radius, (V2*) aabb_points, 4, manifold);
 }
 
 B32 Circle2IntersectObb2(V2* circle_center, F32 circle_radius, V2* obb_center, V2* obb_size, F32 obb_angle_rad, IntersectManifold2* manifold) {
-  B32 result = Obb2IntersectCircle2(obb_center, obb_size, obb_angle_rad, circle_center, circle_radius, manifold);
-  if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1.0f); }
-  return result;
+  V2 obb_points[4];
+  ConvexHull2FromObb2(obb_points, obb_center, obb_size, obb_angle_rad);
+  return Circle2IntersectConvexHull2(circle_center, circle_radius, (V2*) obb_points, 4, manifold);
 }
 
 B32 Circle2IntersectCircle2(V2* a_center, F32 a_radius, V2* b_center, F32 b_radius, IntersectManifold2* manifold) {
@@ -925,19 +816,21 @@ B32 Circle2IntersectCircle2(V2* a_center, F32 a_radius, V2* b_center, F32 b_radi
   F32 min_distance = a_radius + b_radius;
   F32 distance = V2Length(&center_diff);
   if (min_distance < distance) { return false; }
-
   if (manifold != NULL) {
     if (V2LengthSq(&center_diff) == 0) { center_diff.y = 1.0f; }
     V2Normalize(&manifold->normal, &center_diff);
     manifold->penetration = min_distance - distance;
+    V2MultF32(&manifold->contact_points[0], &manifold->normal, -a_radius);
+    V2AddV2(&manifold->contact_points[0], &manifold->contact_points[0], a_center);
+    manifold->contact_points_size = 1;
   }
   return true;
 }
 
-B32 Circle2IntersectConvexHull2(V2* circle_center, F32 circle_radius, V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold) {
-  B32 result = ConvexHull2IntersectCircle2(hull_points, hull_points_size, circle_center, circle_radius, manifold);
-  if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1.0f); }
-  return result;
+static void Circle2ProjectAxis(V2* circle_center, F32 circle_radius, V2* axis, F32* min, F32* max) {
+  F32 circle_center_proj = V2DotV2(circle_center, axis);
+  *min = circle_center_proj - circle_radius;
+  *max = circle_center_proj + circle_radius;
 }
 
 static void ConvexHull2ProjectAxis(V2* hull_points, U32 hull_points_size, V2* axis, F32* min, F32* max) {
@@ -949,6 +842,104 @@ static void ConvexHull2ProjectAxis(V2* hull_points, U32 hull_points_size, V2* ax
     proj = V2DotV2(&hull_points[i], axis);
     if (proj < *min) { *min = proj; }
     if (proj > *max) { *max = proj; }
+  }
+}
+
+// NOTE: this is the same as ConvexHull2IntersectCircle2 with different manifold calculations.
+B32 Circle2IntersectConvexHull2(V2* circle_center, F32 circle_radius, V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold) {
+  V2 hull_center, rel_center;
+  ConvexHull2GetCenter(hull_points, hull_points_size, &hull_center);
+  V2SubV2(&rel_center, &hull_center, circle_center);
+
+  F32 min_penetration = F32_MAX;
+  for (U32 i = 0; i < hull_points_size; i++) {
+    V2* start = &hull_points[i];
+    V2* end   = &hull_points[(i + 1) % hull_points_size];
+    DEBUG_ASSERT(Line2GetLengthSq(start, end) > 0);
+    V2 axis;
+    Line2GetNormalOut(start, end, &axis);
+
+    F32 hull_min, hull_max, circle_min, circle_max;
+    ConvexHull2ProjectAxis(hull_points, hull_points_size, &axis, &hull_min, &hull_max);
+    Circle2ProjectAxis(circle_center, circle_radius, &axis, &circle_min, &circle_max);
+    F32 hull_overlap = MIN(hull_max, circle_max) - MAX(hull_min, circle_min);
+    if (hull_overlap <= 0) { return false; }
+
+    V2 to_circle;
+    V2SubV2(&to_circle, &hull_points[i], circle_center);
+    V2Normalize(&to_circle, &to_circle);
+    ConvexHull2ProjectAxis(hull_points, hull_points_size, &to_circle, &hull_min, &hull_max);
+    Circle2ProjectAxis(circle_center, circle_radius, &to_circle, &circle_min, &circle_max);
+    F32 circle_overlap = MIN(hull_max, circle_max) - MAX(hull_min, circle_min);
+    if (circle_overlap <= 0) { return false; }
+
+    if (manifold != NULL && hull_overlap < min_penetration) {
+      min_penetration = hull_overlap;
+      manifold->penetration = hull_overlap;
+      manifold->normal = axis;
+    }
+  }
+  if (manifold != NULL) {
+    if (V2DotV2(&rel_center, &manifold->normal) < 0) { V2MultF32(&manifold->normal, &manifold->normal, -1); }
+    V2Normalize(&manifold->normal, &manifold->normal);
+
+    V2MultF32(&manifold->contact_points[0], &manifold->normal, circle_radius);
+    V2AddV2(&manifold->contact_points[0], &manifold->contact_points[0], circle_center);
+    manifold->contact_points_size = 1;
+  }
+  return true;
+}
+
+// NOTE: Finds the furthest vertex and edge in the given convex hull along the provided normal.
+static void ConvexHull2MaxFeatureAlongNormal(
+    V2* points, U32 points_size, V2* center, V2* normal,
+    V2** feature, V2** start, V2** end) {
+  U32 max_feature_idx = 0;
+  F32 max_proj = 0;
+  for (U32 i = 0; i < points_size; i++) {
+    V2 test;
+    V2SubV2(&test, &points[i], center);
+    F32 proj = V2DotV2(normal, &test);
+    if (proj > max_proj) {
+      max_proj = proj;
+      max_feature_idx = i;
+    }
+  }
+
+  *feature        = &points[max_feature_idx];
+  V2* left_start  = &points[(max_feature_idx + points_size - 1) % points_size];
+  V2* right_start = &points[(max_feature_idx + 1) % points_size];
+  V2 left, right;
+  V2SubV2(&left, *feature, left_start);
+  V2SubV2(&right, *feature, right_start);
+  V2Normalize(&left,  &left);
+  V2Normalize(&right, &right);
+
+  if (V2DotV2(&left, normal) <= V2DotV2(&right, normal)) {
+    *start = *feature;
+    *end   = left_start;
+  } else {
+    *start = right_start;
+    *end   = *feature;
+  }
+}
+
+// NOTE: Clips start and end along the ray described by normal and t.
+static void ConvexHull2Clip(V2 start, V2 end, V2 normal, F32 t, V2 clipped_points[2], U32* clipped_points_size) {
+  *clipped_points_size = 0;
+  F32 d_0 = V2DotV2(&normal, &start) - t;
+  F32 d_1 = V2DotV2(&normal, &end)   - t;
+  if (d_0 >= 0) { clipped_points[(*clipped_points_size)++] = start; }
+  if (d_1 >= 0) { clipped_points[(*clipped_points_size)++] = end;   }
+  // NOTE: will be negative iff d_0 and d_1 have different signs.
+  if (d_0 * d_1 < 0) {
+    DEBUG_ASSERT(*clipped_points_size < 2);
+    V2 edge;
+    V2SubV2(&edge, &end, &start);
+    F32 x = d_0 / (d_0 - d_1);
+    V2MultF32(&edge, &edge, x);
+    V2AddV2(&edge, &edge, &start);
+    clipped_points[(*clipped_points_size)++] = edge;
   }
 }
 
@@ -1066,29 +1057,27 @@ B32 ConvexHull2IntersectRay2(V2* hull_points, U32 hull_points_size, V2* ray_star
 }
 
 B32 ConvexHull2IntersectTri2(V2* hull_points, U32 hull_points_size, V2 tri_points[3], IntersectManifold2* manifold) {
-  B32 result = Tri2IntersectConvexHull2(tri_points, hull_points, hull_points_size, manifold);
-  if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1.0f); }
-  return result;
+  return ConvexHull2IntersectConvexHull2(hull_points, hull_points_size, (V2*) tri_points, 3, manifold);
 }
 
 B32 ConvexHull2IntersectAabb2(V2* hull_points, U32 hull_points_size, V2* aabb_center, V2* aabb_size, IntersectManifold2* manifold) {
-  B32 result = Aabb2IntersectConvexHull2(aabb_center, aabb_size, hull_points, hull_points_size, manifold);
-  if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1.0f); }
-  return result;
+  V2 aabb_points[4];
+  ConvexHull2FromAabb2(aabb_points, aabb_center, aabb_size);
+  return ConvexHull2IntersectConvexHull2(hull_points, hull_points_size, (V2*) aabb_points, 4, manifold);
 }
 
 B32 ConvexHull2IntersectObb2(V2* hull_points, U32 hull_points_size, V2* obb_center, V2* obb_size, F32 obb_angle_rad, IntersectManifold2* manifold) {
-  B32 result = Obb2IntersectConvexHull2(obb_center, obb_size, obb_angle_rad, hull_points, hull_points_size, manifold);
-  if (manifold != NULL) { V2MultF32(&manifold->normal, &manifold->normal, -1.0f); }
-  return result;
+  V2 obb_points[4];
+  ConvexHull2FromObb2(obb_points, obb_center, obb_size, obb_angle_rad);
+  return ConvexHull2IntersectConvexHull2(hull_points, hull_points_size, (V2*) obb_points, 4, manifold);
 }
 
+// NOTE: this is the same as Circle2IntersectConvexHull2 with different manifold calculations.
 B32 ConvexHull2IntersectCircle2(V2* hull_points, U32 hull_points_size, V2* circle_center, F32 circle_radius, IntersectManifold2* manifold) {
   V2 hull_center, rel_center;
   ConvexHull2GetCenter(hull_points, hull_points_size, &hull_center);
   V2SubV2(&rel_center, &hull_center, circle_center);
 
-  V2 min_axis;
   F32 min_penetration = F32_MAX;
   for (U32 i = 0; i < hull_points_size; i++) {
     V2* start = &hull_points[i];
@@ -1097,25 +1086,36 @@ B32 ConvexHull2IntersectCircle2(V2* hull_points, U32 hull_points_size, V2* circl
     V2 axis;
     Line2GetNormalOut(start, end, &axis);
 
-    F32 hull_min, hull_max;
+    F32 hull_min, hull_max, circle_min, circle_max;
     ConvexHull2ProjectAxis(hull_points, hull_points_size, &axis, &hull_min, &hull_max);
-    F32 circle_center_proj = V2DotV2(circle_center, &axis);
-    F32 circle_min = circle_center_proj - circle_radius;
-    F32 circle_max = circle_center_proj + circle_radius;
-    F32 overlap = MIN(hull_max, circle_max) - MAX(hull_min, circle_min);
-    if (overlap <= 0) { return false; }
+    Circle2ProjectAxis(circle_center, circle_radius, &axis, &circle_min, &circle_max);
+    F32 hull_overlap = MIN(hull_max, circle_max) - MAX(hull_min, circle_min);
+    if (hull_overlap <= 0) { return false; }
 
-    if (manifold != NULL && overlap < min_penetration) {
-      min_penetration = overlap;
-      min_axis = axis;
-      if (V2DotV2(&rel_center, &min_axis) < 0) {
-        V2MultF32(&min_axis, &min_axis, -1);
-      }
+    V2 to_circle;
+    V2SubV2(&to_circle, &hull_points[i], circle_center);
+    V2Normalize(&to_circle, &to_circle);
+    ConvexHull2ProjectAxis(hull_points, hull_points_size, &to_circle, &hull_min, &hull_max);
+    Circle2ProjectAxis(circle_center, circle_radius, &to_circle, &circle_min, &circle_max);
+    F32 circle_overlap = MIN(hull_max, circle_max) - MAX(hull_min, circle_min);
+    if (circle_overlap <= 0) { return false; }
+
+    if (manifold != NULL && hull_overlap < min_penetration) {
+      min_penetration = hull_overlap;
+      manifold->penetration = hull_overlap;
+      manifold->normal = axis;
     }
   }
+
   if (manifold != NULL) {
-    manifold->penetration = min_penetration;
-    V2Normalize(&manifold->normal, &min_axis);
+    if (V2DotV2(&rel_center, &manifold->normal) < 0) { V2MultF32(&manifold->normal, &manifold->normal, -1); }
+    V2Normalize(&manifold->normal, &manifold->normal);
+
+    V2 *i_start, *i_end, *feature, i_normal_inv;
+    V2MultF32(&i_normal_inv, &manifold->normal, -1);
+    ConvexHull2MaxFeatureAlongNormal(hull_points, hull_points_size, &hull_center, &i_normal_inv, &feature, &i_start, &i_end);
+    Line2GetClosestPoint(i_start, i_end, circle_center, &manifold->contact_points[0]);
+    manifold->contact_points_size = 1;
   }
   return true;
 }
@@ -1126,7 +1126,6 @@ B32 ConvexHull2IntersectConvexHull2(V2* a_points, U32 a_points_size, V2* b_point
   ConvexHull2GetCenter(b_points, b_points_size, &b_center);
   V2SubV2(&rel_center, &a_center, &b_center);
 
-  V2 min_axis;
   F32 min_penetration = F32_MAX;
   for (U32 shape_idx = 0; shape_idx < 2; shape_idx++) {
     V2* points      = a_points;
@@ -1151,16 +1150,44 @@ B32 ConvexHull2IntersectConvexHull2(V2* a_points, U32 a_points_size, V2* b_point
 
       if (manifold != NULL && overlap < min_penetration) {
         min_penetration = overlap;
-        min_axis = axis;
-        if (V2DotV2(&rel_center, &min_axis) < 0) {
-          V2MultF32(&min_axis, &min_axis, -1);
-        }
+        manifold->penetration = overlap;
+        manifold->normal = axis;
       }
     }
   }
+  // https://dyn4j.org/2011/11/contact-points-using-clipping/
   if (manifold != NULL) {
-    manifold->penetration = min_penetration;
-    V2Normalize(&manifold->normal, &min_axis);
+    if (V2DotV2(&rel_center, &manifold->normal) < 0) { V2MultF32(&manifold->normal, &manifold->normal, -1); }
+    V2Normalize(&manifold->normal, &manifold->normal);
+
+    V2 *a_i_start, *a_i_end, *b_i_start, *b_i_end, *a_feature, *b_feature, i_normal_inv;
+    V2MultF32(&i_normal_inv, &manifold->normal, -1);
+    ConvexHull2MaxFeatureAlongNormal(a_points, a_points_size, &a_center, &i_normal_inv, &a_feature, &a_i_start, &a_i_end);
+    ConvexHull2MaxFeatureAlongNormal(b_points, b_points_size, &b_center, &manifold->normal, &b_feature, &b_i_start, &b_i_end);
+
+    V2 ref_edge, ref_edge_inv, ref_normal;
+    V2SubV2(&ref_edge, b_i_end, b_i_start);
+    V2Normalize(&ref_edge, &ref_edge);
+    V2MultF32(&ref_edge_inv, &ref_edge, -1);
+    Line2GetNormalOut(b_i_start, b_i_end, &ref_normal);
+
+    V2 c_points[2];
+    U32 c_points_size;
+    F32 t_0 = +V2DotV2(&ref_edge, b_i_start);
+    ConvexHull2Clip(*a_i_start, *a_i_end, ref_edge, t_0, c_points, &c_points_size);
+    if (c_points_size > 1) {
+      F32 t_1 = -V2DotV2(&ref_edge, b_i_end);
+      ConvexHull2Clip(c_points[0], c_points[1], ref_edge_inv, t_1, c_points, &c_points_size);
+    }
+
+    F32 max = V2DotV2(&ref_normal, b_feature);
+    manifold->contact_points_size = 0;
+    for (U32 i = 0; i < c_points_size; i++) {
+      V2 test = c_points[i];
+      if (V2DotV2(&ref_normal, &test) - max > 0) {
+        manifold->contact_points[manifold->contact_points_size++] = test;
+      }
+    }
   }
   return true;
 }
