@@ -27,11 +27,60 @@
 // }
 //
 // Physics2RegisterResolver(COLLIDER2_PLAYER_COLLIDER, COLLIDER2_RIGID_BODY, PlayerRigidBodyResolver);
+
 #define COLLIDER2_RIGID_BODY ((U32) ~0)
 typedef struct Collider2SubtypeHeader Collider2SubtypeHeader;
 struct Collider2SubtypeHeader {
   U32 type; // NOTE: The types listed above are reserved.
   Collider2SubtypeHeader* next;
+};
+
+// NOTE: All collider types *must* store the center as a V2 as the first member.
+typedef struct Collider2Circle Collider2Circle;
+struct Collider2Circle {
+  V2  center;
+  F32 radius;
+};
+
+typedef struct Collider2Rect Collider2Rect;
+struct Collider2Rect {
+  V2 center;
+  V2 size;
+};
+
+typedef struct Collider2ConvexHull Collider2ConvexHull;
+struct Collider2ConvexHull {
+  V2 center;
+  U32 points_size;
+  V2* points_local; // NOTE: points in local space (centered around center).
+  V2* points_world; // NOTE: points in world space (rotated and translated).
+  Arena* arena;
+};
+
+typedef enum Collider2Type Collider2Type;
+enum Collider2Type {
+  Collider2Type_Circle,
+  Collider2Type_Rect,
+  Collider2Type_ConvexHull,
+};
+
+// NOTE: Colliders can only collide with other colliders that share a group bit.
+// COLLIDER2_GROUP_ALL is the default value for all registered colliders.
+#define COLLIDER2_GROUP_ALL  ~0
+#define COLLIDER2_GROUP_NONE  0
+typedef struct Collider2 Collider2;
+struct Collider2 {
+  Collider2Type type;
+  union {
+    V2                  center;
+    Collider2Circle     circle;
+    Collider2Rect       rect;
+    Collider2ConvexHull convex_hull;
+  };
+  F32 broad_circle_radius; // TODO: switch to aabb?
+  F32 angle_rad;
+  U32 group;
+  Collider2SubtypeHeader* subtypes;
 };
 
 typedef enum RigidBody2Type RigidBody2Type;
@@ -40,23 +89,22 @@ enum RigidBody2Type {
   RigidBody2Type_Static,  // NOTE: Immovable / not influenced by external forces.
 };
 
-typedef struct RigidBody2Opts RigidBody2Opts;
-struct RigidBody2Opts {
+typedef struct RigidBody2 RigidBody2;
+struct RigidBody2 {
+  Collider2SubtypeHeader header;
   RigidBody2Type type;
-  B32 fix_angle;
+  F32 mass_inv;
+  F32 moment_inertia_inv;
   F32 restitution;
-  F32 mass;
   F32 static_friction;
   F32 dynamic_friction;
+  B32 fix_angle;
+  V2  force;
+  V2  torque;
+  V2  velocity;
+  F32 angular_velocity;
+  Collider2* collider;
 };
-
-typedef struct RigidBody2 RigidBody2;
-
-// NOTE: Colliders can only collide with other colliders that share a group bit.
-// COLLIDER2_GROUP_ALL is the default value for all registered colliders.
-#define COLLIDER2_GROUP_ALL  ~0
-#define COLLIDER2_GROUP_NONE  0
-typedef struct Collider2 Collider2;
 
 // NOTE: Resolvers define the behavior when 2 colliders of specific defined types collide.
 typedef struct Collision2 Collision2;
@@ -77,74 +125,40 @@ void Physics2RegisterResolver(U32 type_a, U32 type_b, Collision2Resolver_Fn* res
 // NOTE: This must be called, e.g. 1x per frame. A fixed timestep can be implemented in the user's program.
 void Physics2Update(F32 dt_s);
 
-Collider2* Physics2RegisterColliderCircle(V2 center, F32 radius, F32 angle_rad);
-Collider2* Physics2RegisterColliderObb(V2 center, V2 size, F32 angle_rad);
-void Physics2DeregisterCollider(Collider2* collider);
-
-// TODO: some way to get shape information back out from the collider
-// TODO: i think prefer exposing the collider2 and rigidbody2 structs directly, but is there a clean way?
+Collider2* Physics2RegisterColliderCircle(V2 center, F32 radius);
+Collider2* Physics2RegisterColliderRect(V2 center, V2 size);
+Collider2* Physics2RegisterColliderConvexHull(V2* points, U32 points_size); // NOTE: points is copied.
+void Physics2DeregisterCollider(Collider2* collider); // NOTE: Must be called after all subtypes are deinitialized.
 void Collider2SetSubtype(Collider2* collider, Collider2SubtypeHeader* subtype);
-RigidBody2* Collider2SetRigidBody(Collider2* collider, RigidBody2Opts rigid_body_opts);
-Collider2SubtypeHeader* Collider2GetSubtype(Collider2* collider, U32 type);
 B32  Collider2RemoveSubtype(Collider2* colluder, U32 type);
-V2*  Collider2Center(Collider2* collider);
-F32* Collider2AngleRad(Collider2* collider);
-U32* Collider2Group(Collider2* collider);
+Collider2SubtypeHeader* Collider2GetSubtype(Collider2* collider, U32 type);
 
+// TODO: material-specific rigid body setup functions (for e.g. restitution, friction coeffs)
+// TODO: rigid body functions
 // TODO: AddForce fn that takes a force and a point, breaks into force / torque components.
-V2*  RigidBody2Force(RigidBody2* rigid_body);
-V2*  RigidBody2Torque(RigidBody2* rigid_body);
-V2*  RigidBody2Velocity(RigidBody2* rigid_body);
-void RigidBody2UpdateOpts(RigidBody2* rigid_body, RigidBody2Opts opts);
-RigidBody2Opts RigidBody2GetOpts(RigidBody2* rigid_body);
+// NOTE: Rigid body registration automatically attaches the rigid body to the collider.
+RigidBody2* Physics2RegisterRigidBodyStatic(Collider2* collider);
+RigidBody2* Physics2RegisterRigidBodyDynamic(Collider2* collider, F32 mass);
+RigidBody2* Physics2RegisterRigidBody(Collider2* collider); // NOTE: expects user to complete initialization.
+void Physics2DeregisterRigidBody(RigidBody2* rigid_body);
 
 #endif // CDEFAULT_PHYSICS2_H_
 
 #ifdef CDEFAULT_PHYSICS2_IMPLEMENTATION
 #undef CDEFAULT_PHYSICS2_IMPLEMENTATION
 
-typedef enum Collider2Type Collider2Type;
-enum Collider2Type {
-  Collider2Type_Circle,
-  Collider2Type_Obb,
+typedef struct Collider2Internal Collider2Internal;
+struct Collider2Internal {
+  Collider2 collider;
+  Collider2Internal* prev; // TODO: remove
+  Collider2Internal* next;
 };
 
-typedef struct Collider2 Collider2;
-struct Collider2 {
-  U32 group;
-  V2  center;
-  F32 angle_rad;
-  F32 broad_circle_radius;
-  Collider2Type type;
-  union {
-    F32 circle_radius;
-    V2 aabb_size;
-    V2 obb_size;
-  };
-  Collider2SubtypeHeader* subtypes;
-  Collider2* prev;
-  Collider2* next;
-};
-
-typedef struct RigidBody2 RigidBody2;
-struct RigidBody2 {
-  Collider2SubtypeHeader header;
-  RigidBody2Type type;
-  B32 fix_angle;
-  F32 restitution;
-  F32 mass;
-  F32 mass_inv;
-  F32 moment_inertia;
-  F32 moment_inertia_inv;
-  F32 static_friction;
-  F32 dynamic_friction;
-  V2  force;
-  V2  torque;
-  V2  velocity;
-  F32 angular_velocity;
-  Collider2* collider;
-  RigidBody2* prev;
-  RigidBody2* next;
+typedef struct RigidBody2Internal RigidBody2Internal;
+struct RigidBody2Internal {
+  RigidBody2 rigid_body;
+  RigidBody2Internal* prev; // TODO: remove
+  RigidBody2Internal* next;
 };
 
 typedef struct ResolverEntry ResolverEntry;
@@ -162,34 +176,39 @@ struct Physics2Context {
   F32 rigid_body_penetration_slop;
   F32 rigid_body_iter_pos_correction_pct;
   U32 rigid_body_iterations;
-
-  Arena*         collider_pool;
-  Collider2*     collider_head;
-  Collider2*     collider_tail;
-  Collider2*     collider_free_list;
-  Arena*         rigid_body_pool;
-  RigidBody2*    rigid_body_free_list;
-  RigidBody2*    rigid_body_head;
-  RigidBody2*    rigid_body_tail;
-  V2             rigid_body_gravity;
-  Arena*         resolver_pool;
-  ResolverEntry* resolvers;
+  Arena*              collider_pool;
+  Collider2Internal*  collider_head;
+  Collider2Internal*  collider_tail;
+  Collider2Internal*  collider_free_list;
+  Arena*              rigid_body_pool;
+  RigidBody2Internal* rigid_body_free_list;
+  RigidBody2Internal* rigid_body_head;
+  RigidBody2Internal* rigid_body_tail;
+  V2                  rigid_body_gravity;
+  Arena*              resolver_pool;
+  ResolverEntry*      resolvers;
 };
 static Physics2Context _cdef_phys_2d_context;
 
 static Collider2* Collider2Allocate() {
   Physics2Context* c = &_cdef_phys_2d_context;
-  Collider2* collider;
+  Collider2Internal* collider;
   if (c->collider_free_list != NULL) {
     collider = c->collider_free_list;
     SLL_STACK_POP(c->collider_free_list, next);
   } else {
-    collider = ARENA_PUSH_STRUCT(c->collider_pool, Collider2);
+    collider = ARENA_PUSH_STRUCT(c->collider_pool, Collider2Internal);
   }
   MEMORY_ZERO_STRUCT(collider);
   DLL_PUSH_BACK(c->collider_head, c->collider_tail, collider, prev, next);
-  collider->group = COLLIDER2_GROUP_ALL;
-  return collider;
+  return &collider->collider;
+}
+
+static void Collider2ConvexHullUpdateWorldPoints(Collider2* collider) {
+  DEBUG_ASSERT(collider->type == Collider2Type_ConvexHull);
+  MEMORY_COPY(collider->convex_hull.points_world, collider->convex_hull.points_local, collider->convex_hull.points_size * sizeof(V2));
+  ConvexHull2RotateAboutPoint(collider->convex_hull.points_world, collider->convex_hull.points_size, &(V2) {0, 0}, collider->angle_rad);
+  ConvexHull2Offset(collider->convex_hull.points_world, collider->convex_hull.points_size, &collider->convex_hull.center);
 }
 
 static B32 Collider2IntersectBroad(Collider2* a, Collider2* b, IntersectManifold2* manifold) {
@@ -200,14 +219,46 @@ static B32 Collider2IntersectNarrow(Collider2* a, Collider2* b, IntersectManifol
   switch (a->type) {
     case Collider2Type_Circle: {
       switch (b->type) {
-        case Collider2Type_Circle: return Circle2IntersectCircle2(&a->center, a->circle_radius, &b->center, b->circle_radius, manifold);
-        case Collider2Type_Obb:    return Circle2IntersectObb2(&a->center, a->circle_radius, &b->center, &b->obb_size, b->angle_rad, manifold);
+        case Collider2Type_Circle: {
+          return Circle2IntersectCircle2(&a->circle.center, a->circle.radius, &b->circle.center, b->circle.radius, manifold);
+        } break;
+        case Collider2Type_Rect: {
+          return Circle2IntersectObb2(&a->circle.center, a->circle.radius, &b->rect.center, &b->rect.size, b->angle_rad, manifold);
+        } break;
+        case Collider2Type_ConvexHull: {
+          Collider2ConvexHullUpdateWorldPoints(b);
+          B32 result = Circle2IntersectConvexHull2(&a->circle.center, a->circle.radius, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
+          return result;
+        }
       }
     } break;
-    case Collider2Type_Obb: {
+    case Collider2Type_Rect: {
       switch (b->type) {
-        case Collider2Type_Circle: return Obb2IntersectCircle2(&a->center, &a->obb_size, a->angle_rad, &b->center, b->circle_radius, manifold);
-        case Collider2Type_Obb:    return Obb2IntersectObb2(&a->center, &a->obb_size, a->angle_rad, &b->center, &b->obb_size, b->angle_rad, manifold);
+        case Collider2Type_Circle: {
+          return Obb2IntersectCircle2(&a->rect.center, &a->rect.size, a->angle_rad, &b->circle.center, b->circle.radius, manifold);
+        } break;
+        case Collider2Type_Rect: {
+          return Obb2IntersectObb2(&a->rect.center, &a->rect.size, a->angle_rad, &b->rect.center, &b->rect.size, b->angle_rad, manifold);
+        } break;
+        case Collider2Type_ConvexHull: {
+          Collider2ConvexHullUpdateWorldPoints(b);
+          return Obb2IntersectConvexHull2(&a->rect.center, &a->rect.size, a->angle_rad, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
+        }
+      }
+    } break;
+    case Collider2Type_ConvexHull: {
+      Collider2ConvexHullUpdateWorldPoints(a);
+      switch (b->type) {
+        case Collider2Type_Circle: {
+          return ConvexHull2IntersectCircle2(a->convex_hull.points_world, a->convex_hull.points_size, &b->circle.center, b->circle.radius, manifold);
+        } break;
+        case Collider2Type_Rect: {
+          return ConvexHull2IntersectObb2(a->convex_hull.points_world, a->convex_hull.points_size, &b->rect.center, &b->rect.size, b->angle_rad, manifold);
+        } break;
+        case Collider2Type_ConvexHull: {
+          Collider2ConvexHullUpdateWorldPoints(b);
+          return ConvexHull2IntersectConvexHull2(a->convex_hull.points_world, a->convex_hull.points_size, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
+        } break;
       }
     } break;
   }
@@ -215,9 +266,32 @@ static B32 Collider2IntersectNarrow(Collider2* a, Collider2* b, IntersectManifol
   return false;
 }
 
+static RigidBody2* RigidBody2Allocate() {
+  Physics2Context* c = &_cdef_phys_2d_context;
+  RigidBody2Internal* rigid_body_internal;
+  if (c->rigid_body_free_list != NULL) {
+    rigid_body_internal = c->rigid_body_free_list;
+    SLL_STACK_POP(c->rigid_body_free_list, next);
+  } else {
+    rigid_body_internal = ARENA_PUSH_STRUCT(c->rigid_body_pool, RigidBody2Internal);
+  }
+  MEMORY_ZERO_STRUCT(rigid_body_internal);
+  DLL_PUSH_BACK(c->rigid_body_head, c->rigid_body_tail, rigid_body_internal, prev, next);
+  return &rigid_body_internal->rigid_body;
+}
+
+static void RigidBody2CommonInit(RigidBody2* rigid_body) {
+  rigid_body->header.type = COLLIDER2_RIGID_BODY;
+  rigid_body->fix_angle = false;
+  rigid_body->restitution = 0.2f;
+  rigid_body->static_friction = 0.4f;
+  rigid_body->dynamic_friction = 0.6f;
+}
+
 static void Physics2RigidBodyUpdate(F32 dt_s) {
   Physics2Context* c = &_cdef_phys_2d_context;
-  for (RigidBody2* rigid_body = c->rigid_body_tail; rigid_body != NULL; rigid_body = rigid_body->next) {
+  for (RigidBody2Internal* rigid_body_internal = c->rigid_body_tail; rigid_body_internal != NULL; rigid_body_internal = rigid_body_internal->next) {
+    RigidBody2* rigid_body = &rigid_body_internal->rigid_body;
     if (rigid_body->type != RigidBody2Type_Dynamic) { continue; }
 
     V2 moment_acceleration, moment_velocity;
@@ -432,10 +506,13 @@ void Physics2Update(F32 dt_s) {
   Physics2RigidBodyUpdate(dt_s);
 
   for (U32 iteration = 0; iteration < c->iterations; iteration++) {
-    for (Collider2* a = c->collider_tail; a->next != NULL; a = a->next) {
-      for (Collider2* b = a->next; b != NULL; b = b->next) {
+    for (Collider2Internal* a_internal = c->collider_tail; a_internal->next != NULL; a_internal = a_internal->next) {
+      for (Collider2Internal* b_internal = a_internal->next; b_internal != NULL; b_internal = b_internal->next) {
+        Collider2* a = &a_internal->collider;
+        Collider2* b = &b_internal->collider;
         if ((a->group | b->group) == 0) { continue; }
 
+        // TODO: separate? acceleration structure? maybe just presort along one axis?
         IntersectManifold2 manifold;
         if (!Collider2IntersectBroad(a, b, &manifold)) { continue; }
         if (!Collider2IntersectNarrow(a, b, &manifold)) { continue; }
@@ -492,57 +569,56 @@ void Physics2RegisterResolver(U32 type_a, U32 type_b, Collision2Resolver_Fn* res
   SLL_STACK_PUSH(c->resolvers, entry, next);
 }
 
-Collider2* Physics2RegisterColliderCircle(V2 center, F32 radius, F32 angle_rad) {
+Collider2* Physics2RegisterColliderCircle(V2 center, F32 radius) {
   DEBUG_ASSERT(radius > 0);
   Collider2* collider = Collider2Allocate();
+  collider->group = COLLIDER2_GROUP_ALL;
   collider->type = Collider2Type_Circle;
-  collider->angle_rad = angle_rad;
-  collider->center = center;
+  collider->circle.center = center;
+  collider->circle.radius = radius;
   collider->broad_circle_radius = radius;
-  collider->circle_radius = radius;
   return collider;
 }
 
-Collider2* Physics2RegisterColliderObb(V2 center, V2 size, F32 angle_rad) {
+Collider2* Physics2RegisterColliderRect(V2 center, V2 size) {
   DEBUG_ASSERT(size.x > 0 && size.y > 0);
   Collider2* collider = Collider2Allocate();
-  collider->type = Collider2Type_Obb;
-  collider->angle_rad = angle_rad;
-  collider->center = center;
-  Obb2GetEnclosingCircle2(&center, &size, angle_rad, &collider->broad_circle_radius);
-  collider->obb_size = size;
+  collider->group = COLLIDER2_GROUP_ALL;
+  collider->type = Collider2Type_Rect;
+  collider->rect.center = center;
+  collider->rect.size = size;
+  Obb2GetEnclosingCircle2(&center, &size, 0, &collider->broad_circle_radius);
+  return collider;
+}
+
+Collider2* Physics2RegisterColliderConvexHull(V2* points, U32 points_size) {
+  Collider2* collider = Collider2Allocate();
+  collider->group = COLLIDER2_GROUP_ALL;
+  collider->type = Collider2Type_ConvexHull;
+  collider->convex_hull.arena = ArenaAllocate();
+  collider->convex_hull.points_local = ARENA_PUSH_ARRAY(collider->convex_hull.arena, V2, points_size);
+  collider->convex_hull.points_world = ARENA_PUSH_ARRAY(collider->convex_hull.arena, V2, points_size);
+  MEMORY_COPY(collider->convex_hull.points_local, points, points_size * sizeof(V2));
+  MEMORY_COPY(collider->convex_hull.points_world, points, points_size * sizeof(V2));
+  collider->convex_hull.points_size = points_size;
+  ConvexHull2GetEnclosingCircle2(points, points_size, &collider->convex_hull.center, &collider->broad_circle_radius);
+  V2 neg_center;
+  V2MultF32(&neg_center, &collider->convex_hull.center, -1);
+  ConvexHull2Offset(collider->convex_hull.points_local, collider->convex_hull.points_size, &neg_center);
   return collider;
 }
 
 void Physics2DeregisterCollider(Collider2* collider) {
   Physics2Context* c = &_cdef_phys_2d_context;
-  DLL_REMOVE(c->collider_head, c->collider_tail, collider, prev, next);
-  SLL_STACK_PUSH(c->collider_free_list, collider, next);
+  if (collider->type == Collider2Type_ConvexHull) { ArenaRelease(collider->convex_hull.arena); }
+  Collider2Internal* c_internal = (Collider2Internal*) collider;
+  DLL_REMOVE(c->collider_head, c->collider_tail, c_internal, prev, next);
+  SLL_STACK_PUSH(c->collider_free_list, c_internal, next);
 }
 
 void Collider2SetSubtype(Collider2* collider, Collider2SubtypeHeader* subtype) {
   Collider2RemoveSubtype(collider, subtype->type);
   SLL_STACK_PUSH(collider->subtypes, subtype, next);
-}
-
-RigidBody2* Collider2SetRigidBody(Collider2* collider, RigidBody2Opts rigid_body_opts) {
-  Physics2Context* c = &_cdef_phys_2d_context;
-  RigidBody2* rigid_body;
-  if (c->rigid_body_free_list != NULL) {
-    rigid_body = c->rigid_body_free_list;
-    SLL_STACK_POP(c->rigid_body_free_list, next);
-  } else {
-    rigid_body = ARENA_PUSH_STRUCT(c->rigid_body_pool, RigidBody2);
-  }
-  MEMORY_ZERO_STRUCT(rigid_body);
-
-  DLL_PUSH_BACK(c->rigid_body_head, c->rigid_body_tail, rigid_body, prev, next);
-  rigid_body->header.type = COLLIDER2_RIGID_BODY;
-  rigid_body->collider = collider;
-  RigidBody2UpdateOpts(rigid_body, rigid_body_opts);
-  Collider2SetSubtype(collider, &rigid_body->header);
-
-  return rigid_body;
 }
 
 Collider2SubtypeHeader* Collider2GetSubtype(Collider2* collider, U32 type) {
@@ -562,8 +638,8 @@ B32 Collider2RemoveSubtype(Collider2* collider, U32 type) {
   for (Collider2SubtypeHeader* subtype = collider->subtypes; subtype->next != NULL; subtype = subtype->next) {
     if (subtype->next->type != type) { continue; }
     if (type == COLLIDER2_RIGID_BODY) {
-      DLL_REMOVE(c->rigid_body_head, c->rigid_body_tail, (RigidBody2*) subtype->next, prev, next);
-      SLL_STACK_PUSH(c->rigid_body_free_list, (RigidBody2*) subtype->next, next);
+      DLL_REMOVE(c->rigid_body_head, c->rigid_body_tail, (RigidBody2Internal*) subtype->next, prev, next);
+      SLL_STACK_PUSH(c->rigid_body_free_list, (RigidBody2Internal*) subtype->next, next);
     }
     subtype->next = subtype->next->next;
     return true;
@@ -571,73 +647,56 @@ B32 Collider2RemoveSubtype(Collider2* collider, U32 type) {
   return false;
 }
 
-V2* Collider2Center(Collider2* collider) {
-  return &collider->center;
+RigidBody2* Physics2RegisterRigidBody(Collider2* collider) {
+  RigidBody2* rigid_body = RigidBody2Allocate();
+  Collider2SetSubtype(collider, &rigid_body->header);
+  return rigid_body;
 }
 
-F32* Collider2AngleRad(Collider2* collider) {
-  return &collider->angle_rad;
+RigidBody2* Physics2RegisterRigidBodyStatic(Collider2* collider) {
+  RigidBody2* rigid_body = Physics2RegisterRigidBody(collider);
+  RigidBody2CommonInit(rigid_body);
+  rigid_body->type = RigidBody2Type_Static;
+  rigid_body->collider = collider;
+  rigid_body->mass_inv = 0;
+  rigid_body->moment_inertia_inv = 0;
+  return rigid_body;
 }
 
-U32* Collider2Group(Collider2* collider) {
-  return &collider->group;
-}
-
-V2* RigidBody2Force(RigidBody2* rigid_body) {
-  return &rigid_body->force;
-}
-
-V2* RigidBody2Torque(RigidBody2* rigid_body) {
-  return &rigid_body->torque;
-}
-
-V2* RigidBody2Velocity(RigidBody2* rigid_body) {
-  return &rigid_body->velocity;
-}
-
-void RigidBody2UpdateOpts(RigidBody2* rigid_body, RigidBody2Opts opts) {
-  DEBUG_ASSERT(opts.restitution >= 0);
-  DEBUG_ASSERT(opts.mass > 0 || opts.type == RigidBody2Type_Static);
-  DEBUG_ASSERT(opts.static_friction >= 0);
-  DEBUG_ASSERT(opts.dynamic_friction >= 0);
-
-  rigid_body->type = opts.type;
-  rigid_body->fix_angle = opts.fix_angle;
-  rigid_body->mass = opts.mass;
-  rigid_body->restitution = opts.restitution;
-  rigid_body->static_friction = opts.static_friction;
-  rigid_body->dynamic_friction = opts.dynamic_friction;
+RigidBody2* Physics2RegisterRigidBodyDynamic(Collider2* collider, F32 mass) {
+  RigidBody2* rigid_body = Physics2RegisterRigidBody(collider);
+  RigidBody2CommonInit(rigid_body);
+  rigid_body->type = RigidBody2Type_Dynamic;
+  rigid_body->collider = collider;
+  DEBUG_ASSERT(mass > 0);
+  rigid_body->mass_inv = 1.0f / mass;
+  F32 moment_inertia;
   switch (rigid_body->collider->type) {
     case Collider2Type_Circle: {
-      F32 radius = rigid_body->collider->circle_radius;
-      rigid_body->moment_inertia = (2.0f / 3.0f) * opts.mass * radius * radius;
+      F32 radius = rigid_body->collider->circle.radius;
+      moment_inertia = (2.0f / 3.0f) * mass * radius * radius;
     } break;
-    case Collider2Type_Obb: {
-      V2 size = rigid_body->collider->obb_size;
-      rigid_body->moment_inertia = (1.0f / 12.0f) * opts.mass * (size.x * size.x + size.y * size.y);
+    case Collider2Type_Rect: {
+      V2 size = rigid_body->collider->rect.size;
+      moment_inertia = (1.0f / 12.0f) * mass * (size.x * size.x + size.y * size.y);
+    } break;
+    case Collider2Type_ConvexHull: {
+      // TODO: better moment of inertia calculation here!
+      F32 radius = 5;
+      moment_inertia = (2.0f / 3.0f) * mass * radius * radius;
     } break;
     default: UNREACHABLE();
   }
-  if (rigid_body->type == RigidBody2Type_Dynamic) {
-    rigid_body->mass_inv = 1.0f / opts.mass;
-    rigid_body->moment_inertia_inv = 1.0f / rigid_body->moment_inertia;
-  } else {
-    rigid_body->mass_inv = 0.0f;
-    rigid_body->moment_inertia_inv = 0.0f;
-  }
-  DEBUG_ASSERT(rigid_body->moment_inertia != 0);
+  rigid_body->moment_inertia_inv = 1.0f / moment_inertia;
+
+  return rigid_body;
 }
 
-RigidBody2Opts RigidBody2GetOpts(RigidBody2* rigid_body) {
-  RigidBody2Opts opts;
-  MEMORY_ZERO_STRUCT(&opts);
-  opts.type = rigid_body->type;
-  opts.fix_angle = rigid_body->fix_angle;
-  opts.mass = rigid_body->mass;
-  opts.restitution = rigid_body->restitution;
-  opts.static_friction = rigid_body->static_friction;
-  opts.dynamic_friction = rigid_body->dynamic_friction;
-  return opts;
+void Physics2DeregisterRigidBody(RigidBody2* rigid_body) {
+  Physics2Context* c = &_cdef_phys_2d_context;
+  RigidBody2Internal* rigid_body_internal = (RigidBody2Internal*) rigid_body;
+  DLL_REMOVE(c->rigid_body_head, c->rigid_body_tail, rigid_body_internal, prev, next);
+  SLL_STACK_PUSH(c->rigid_body_free_list, rigid_body_internal, next);
 }
 
 #endif // CDEFAULT_PHYSICS2_IMPLEMENTATION
