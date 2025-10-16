@@ -42,7 +42,9 @@ void WindowGetMouseDeltaPositionV(V2* pos);
 
 void RendererSetProjection(M4 projection);
 void RendererRegisterImage(U32* image_handle, U8* image_bytes, U32 width, U32 height); // NOTE: Expects RGBA byte values (0 -> 255)
+void RendererRegisterMesh(U32* mesh_handle, U32 image_handle, V3* points, U32 points_size, V3* normals, U32 normals_size, V2* uvs, U32 uvs_size, U32* indices, U32 indices_size);
 void RendererReleaseImage(U32 image_handle);
+void RendererReleaseMesh(U32 mesh_handle);
 void RendererEnableScissorTest(S32 x, S32 y, S32 width, S32 height);
 void RendererDisableScissorTest(void);
 void RendererEnableDepthTest(void);
@@ -83,6 +85,7 @@ void DrawImage(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 heig
 void DrawImageV(U32 image_handle, V2 pos, V2 size);
 void DrawImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 angle_rad);
 void DrawImageRotV(U32 image_handle, V2 pos, V2 size, F32 angle_rad);
+void DrawMesh(U32 mesh_handle, V3 pos, V4 rot);
 
 enum KeyboardKey {
   Key_A,
@@ -195,6 +198,7 @@ enum MouseButton {
 #define GL_DEPTH24_STENCIL8         0x88F0
 #define GL_STATIC_DRAW              0x88E4
 #define GL_FRAMEBUFFER_SRGB         0x8DB9
+#define GL_TEXTURE1                 0x84C1
 
 typedef char      GLchar;
 typedef ptrdiff_t GLintptr;
@@ -216,6 +220,7 @@ typedef void   glGenVertexArrays_Fn(GLsizei, GLuint*);
 typedef void   glGenBuffers_Fn(GLsizei, GLuint*);
 typedef void   glBindBuffer_Fn(GLenum, GLuint);
 typedef void   glBufferData_Fn(GLenum, GLsizeiptr, const void*, GLenum);
+typedef void   glBufferSubData_Fn(GLenum, GLintptr, GLsizeiptr, const void*);
 typedef void   glBindVertexArray_Fn(GLuint);
 typedef GLint  glGetUniformLocation_Fn(GLuint, const GLchar*);
 typedef void   glUniformMatrix4fv_Fn(GLint, GLsizei, GLboolean, const GLfloat*);
@@ -229,6 +234,7 @@ typedef void   glDeleteVertexArrays_Fn(GLsizei, const GLuint*);
 typedef void   glTexImage2D_Fn(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*);
 typedef void   glGenTextures_Fn(GLsizei, GLuint*);
 typedef void   glBindTexture_Fn(GLenum, GLuint);
+typedef void   glActiveTexture_Fn(GLenum);
 typedef void   glTexParameteri_Fn(GLenum, GLenum, GLint);
 typedef void   glDeleteTextures_Fn(GLsizei, const GLuint*);
 typedef void   glEnable_Fn(GLenum);
@@ -239,6 +245,7 @@ typedef void   glClearColor_Fn(GLfloat, GLfloat, GLfloat, GLfloat);
 typedef void   glBlendFunc_Fn(GLenum, GLenum);
 typedef void   glClear_Fn(GLenum);
 typedef void   glDrawArrays_Fn(GLenum, GLint, GLsizei);
+typedef void   glDrawElements_Fn(GLenum, GLsizei, GLenum, const void*);
 
 // NOTE: platform agnostic open gl api.
 typedef struct OpenGLAPI OpenGLAPI;
@@ -259,6 +266,7 @@ struct OpenGLAPI {
   glGenBuffers_Fn*              glGenBuffers;
   glBindBuffer_Fn*              glBindBuffer;
   glBufferData_Fn*              glBufferData;
+  glBufferSubData_Fn*           glBufferSubData;
   glBindVertexArray_Fn*         glBindVertexArray;
   glGetUniformLocation_Fn*      glGetUniformLocation;
   glUniformMatrix4fv_Fn*        glUniformMatrix4fv;
@@ -272,6 +280,7 @@ struct OpenGLAPI {
   glTexImage2D_Fn*              glTexImage2D;
   glGenTextures_Fn*             glGenTextures;
   glBindTexture_Fn*             glBindTexture;
+  glActiveTexture_Fn*           glActiveTexture;
   glTexParameteri_Fn*           glTexParameteri;
   glDeleteTextures_Fn*          glDeleteTextures;
   glEnable_Fn*                  glEnable;
@@ -282,8 +291,21 @@ struct OpenGLAPI {
   glBlendFunc_Fn*               glBlendFunc;
   glClear_Fn*                   glClear;
   glDrawArrays_Fn*              glDrawArrays;
+  glDrawElements_Fn*            glDrawElements;
 };
 static OpenGLAPI _ogl;
+
+typedef struct RenderMesh RenderMesh;
+struct RenderMesh {
+  U32 id;
+  U32 vao;
+  U32 vbo;
+  U32 ibo;
+  U32 indices_size;
+  U32 image_handle;
+  RenderMesh* prev;
+  RenderMesh* next;
+};
 
 typedef struct Renderer Renderer;
 struct Renderer {
@@ -291,28 +313,46 @@ struct Renderer {
   GLuint quad_vao;
 
   GLuint rect_shader;
-  GLint rect_camera_uniform;
-  GLint rect_color_uniform;
-  GLint rect_size_uniform;
-  GLint rect_radius_uniform;
+  GLint  rect_camera_uniform;
+  GLint  rect_color_uniform;
+  GLint  rect_size_uniform;
+  GLint  rect_radius_uniform;
 
   GLuint frame_shader;
-  GLint frame_camera_uniform;
-  GLint frame_color_uniform;
-  GLint frame_size_uniform;
-  GLint frame_border_size_uniform;
-  GLint frame_radius_uniform;
+  GLint  frame_camera_uniform;
+  GLint  frame_color_uniform;
+  GLint  frame_size_uniform;
+  GLint  frame_border_size_uniform;
+  GLint  frame_radius_uniform;
 
   GLuint tri_shader;
-  GLint tri_camera_uniform;
-  GLint tri_color_uniform;
+  GLint  tri_camera_uniform;
+  GLint  tri_color_uniform;
 
   GLuint image_shader;
-  GLint image_camera_uniform;
+  GLint  image_camera_uniform;
+
+  GLuint mesh_shader;
+  GLint  mesh_camera_uniform;
+  GLint  mesh_texture_uniform;
 
   M4 world_to_camera;
+
+  U32 next_mesh_id;
+  Arena* mesh_pool;
+  RenderMesh* meshes_head;
+  RenderMesh* meshes_tail;
+  RenderMesh* meshes_free_list;
 };
 static Renderer _renderer;
+
+static RenderMesh* RendererFindMesh(U32 mesh_handle) {
+  Renderer* r = &_renderer;
+  for (RenderMesh* curr = r->meshes_head; curr != NULL; curr = curr->next) {
+    if (curr->id == mesh_handle) { return curr; }
+  }
+  return NULL;
+}
 
 static B32 RendererCompileShader(GLuint* shader, char* vertex_shader_source, char* fragment_shader_source) {
   OpenGLAPI* g = &_ogl;
@@ -360,6 +400,7 @@ renderer_compile_shader_exit:
 // NOTE: Expected to be called immediately after the plat window is initialized.
 static B32 RendererInit(void) {
   Renderer* r = &_renderer;
+  MEMORY_ZERO_STRUCT(r);
   OpenGLAPI* g = &_ogl;
   B32 success = false; // TODO: error checking.
 
@@ -483,6 +524,33 @@ static B32 RendererInit(void) {
   DEBUG_ASSERT(RendererCompileShader(&r->image_shader, image_vertex_shader_source, image_fragment_shader_source));
   r->image_camera_uniform = g->glGetUniformLocation(r->image_shader, "to_camera_transform");
 
+  char* mesh_vertex_shader_source =
+    "#version 330 core\n"
+    "uniform mat4 to_camera_transform;\n"
+    "layout (location = 0) in vec3 in_pos;\n"
+    "layout (location = 1) in vec3 in_normal;\n"
+    "layout (location = 2) in vec2 in_tex_coord;\n"
+    "out vec3 normal;\n"
+    "out vec2 tex_coord;\n"
+    "void main() {\n"
+    "  gl_Position = to_camera_transform * vec4(in_pos, 1.0);\n"
+    "  normal = in_normal;\n"
+    "  tex_coord = in_tex_coord;\n"
+    "}\0";
+  char* mesh_fragment_shader_source =
+    "#version 330 core\n"
+    "uniform sampler2D texture_image;\n"
+    "in vec3 normal;\n"
+    "in vec2 tex_coord;\n"
+    "out vec4 frag_color;\n"
+    "void main() {\n"
+    "  frag_color = vec4(1, 1, 1, 1);\n"
+    //"  frag_color = texture(texture_image, tex_coord);\n"
+    "}\0";
+  DEBUG_ASSERT(RendererCompileShader(&r->mesh_shader, mesh_vertex_shader_source, mesh_fragment_shader_source));
+  r->mesh_camera_uniform = g->glGetUniformLocation(r->mesh_shader, "to_camera_transform");
+  r->mesh_texture_uniform = g->glGetUniformLocation(r->mesh_shader, "texture_image");
+
   F32 quad_vertices[6][4] = {
     {-0.5f, +0.5f, 0, 0 },
     {-0.5f, -0.5f, 0, 1 },
@@ -509,10 +577,17 @@ static B32 RendererInit(void) {
   M4Orthographic(&projection, 0, width, 0, height, 0.01f, 100.0f);
   RendererSetProjection(projection);
 
+  r->mesh_pool = ArenaAllocate();
+
   LOG_INFO("[RENDER] OpenGL renderer initialized.");
   success = true;
 
   return success;
+}
+
+static void RendererDeinit() {
+  Renderer* r = &_renderer;
+  ArenaRelease(r->mesh_pool);
 }
 
 void RendererSetProjection(M4 projection) {
@@ -538,6 +613,74 @@ void RendererRegisterImage(U32* image_handle, U8* image_bytes, U32 width, U32 he
 void RendererReleaseImage(U32 image_handle) {
   OpenGLAPI* g = &_ogl;
   g->glDeleteTextures(1, &image_handle);
+}
+
+void RendererRegisterMesh(U32* mesh_handle, U32 image_handle, V3* points, U32 points_size, V3* normals, U32 normals_size, V2* uvs, U32 uvs_size, U32* indices, U32 indices_size) {
+  Renderer* r = &_renderer;
+  OpenGLAPI* g = &_ogl;
+
+  GLuint vbo;
+  g->glGenBuffers(1, &vbo);
+  g->glBindBuffer(GL_ARRAY_BUFFER, vbo);
+  g->glBufferData(GL_ARRAY_BUFFER, (points_size * sizeof(V3)) + (normals_size * sizeof(V3)) + (uvs_size * sizeof(V2)), NULL, GL_STATIC_DRAW);
+
+  GLuint vao;
+  g->glGenVertexArrays(1, &vao);
+  g->glBindVertexArray(vao);
+  U64 offset = 0;
+
+  g->glEnableVertexAttribArray(0);
+  g->glBufferSubData(GL_ARRAY_BUFFER, offset, points_size * sizeof(V3), points);
+  g->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(V3), (void*) offset);
+  offset += points_size * sizeof(V3);
+
+  g->glEnableVertexAttribArray(1);
+  g->glBufferSubData(GL_ARRAY_BUFFER, offset, normals_size * sizeof(V3), normals);
+  g->glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(V3), (void*) offset);
+  offset += normals_size * sizeof(V3);
+
+  g->glEnableVertexAttribArray(2);
+  g->glBufferSubData(GL_ARRAY_BUFFER, offset, uvs_size * sizeof(V2), uvs);
+  g->glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(V2), (void*) offset);
+  offset += uvs_size * sizeof(V2);
+
+  GLuint ibo;
+  g->glGenBuffers(1, &ibo);
+  g->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+  g->glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices_size * sizeof(U32), indices, GL_STATIC_DRAW);
+
+  g->glBindBuffer(GL_ARRAY_BUFFER, 0);
+  g->glBindVertexArray(0);
+  g->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+  RenderMesh* mesh;
+  if (r->meshes_free_list != NULL) {
+    mesh = r->meshes_free_list;
+    SLL_STACK_POP(r->meshes_free_list, next);
+  } else {
+    mesh = ARENA_PUSH_STRUCT(r->mesh_pool, RenderMesh);
+  }
+  MEMORY_ZERO_STRUCT(mesh);
+  DLL_PUSH_BACK(r->meshes_head, r->meshes_tail, mesh, prev, next);
+  *mesh_handle = r->next_mesh_id++;
+  mesh->id = *mesh_handle;
+  mesh->vao = vao;
+  mesh->vbo = vbo;
+  mesh->ibo = ibo;
+  mesh->indices_size = indices_size;
+  mesh->image_handle = image_handle;
+}
+
+void RendererReleaseMesh(U32 mesh_handle) {
+  Renderer* r = &_renderer;
+  OpenGLAPI* g = &_ogl;
+  RenderMesh* mesh = RendererFindMesh(mesh_handle);
+  if (mesh == NULL) { return; }
+  g->glDeleteVertexArrays(1, &mesh->vao);
+  g->glDeleteBuffers(1, &mesh->vbo);
+  g->glDeleteBuffers(1, &mesh->ibo);
+  DLL_REMOVE(r->meshes_head, r->meshes_tail, mesh, prev, next);
+  SLL_STACK_PUSH(r->meshes_free_list, mesh, next);
 }
 
 void RendererEnableScissorTest(S32 x, S32 y, S32 width, S32 height) {
@@ -846,6 +989,31 @@ void DrawImageRotV(U32 image_handle, V2 pos, V2 size, F32 angle_rad) {
   DrawImageRot(image_handle, pos.x, pos.y, size.x, size.y, angle_rad);
 }
 
+void DrawMesh(U32 mesh_handle, V3 pos, V4 rot) {
+  Renderer* r = &_renderer;
+  OpenGLAPI* g = &_ogl;
+  RenderMesh* mesh = RendererFindMesh(mesh_handle);
+  if (mesh == NULL) { LOG_INFO("bingus");return; }
+
+  V3 scale = { 1, 1, 1 };
+  M4 mesh_to_world, mesh_to_camera, mesh_to_camera_t;
+  M4FromTransform(&mesh_to_world, &pos, &rot, &scale);
+  M4MultM4(&mesh_to_camera, &r->world_to_camera, &mesh_to_world);
+  M4Transpose(&mesh_to_camera_t, &mesh_to_camera);
+
+  g->glUseProgram(r->mesh_shader);
+  g->glUniformMatrix4fv(r->mesh_camera_uniform, 1, GL_FALSE, (GLfloat*) &mesh_to_camera_t);
+  g->glActiveTexture(GL_TEXTURE1);
+  g->glBindTexture(GL_TEXTURE_2D, mesh->image_handle);
+  g->glBindVertexArray(mesh->vao);
+  g->glDrawElements(GL_TRIANGLES, mesh->indices_size, GL_UNSIGNED_INT, 0);
+
+  g->glBindVertexArray(0);
+  g->glActiveTexture(GL_TEXTURE1);
+  g->glBindTexture(GL_TEXTURE_2D, 0);
+  g->glUseProgram(0);
+}
+
 #if defined(OS_WINDOWS)
 #define CDEFAULT_RENDER_BACKEND_NAMESPACE WIN_
 // NOTE: need to link with user32.lib opengl32.lib gdi32.lib
@@ -1045,6 +1213,7 @@ B32 WIN_WindowInit(S32 width, S32 height, char* title) {
   WIN_LINK_GL(glGenBuffers);
   WIN_LINK_GL(glBindBuffer);
   WIN_LINK_GL(glBufferData);
+  WIN_LINK_GL(glBufferSubData);
   WIN_LINK_GL(glBindVertexArray);
   WIN_LINK_GL(glGetUniformLocation);
   WIN_LINK_GL(glUniformMatrix4fv);
@@ -1053,6 +1222,7 @@ B32 WIN_WindowInit(S32 width, S32 height, char* title) {
   WIN_LINK_GL(glUniform1f);
   WIN_LINK_GL(glDeleteBuffers);
   WIN_LINK_GL(glDeleteVertexArrays);
+  WIN_LINK_GL(glActiveTexture);
   _ogl.glDeleteTextures = glDeleteTextures;
   _ogl.glGenTextures = glGenTextures;
   _ogl.glBindTexture = glBindTexture;
@@ -1068,6 +1238,7 @@ B32 WIN_WindowInit(S32 width, S32 height, char* title) {
   _ogl.glBlendFunc = glBlendFunc;
   _ogl.glClear = glClear;
   _ogl.glDrawArrays = glDrawArrays;
+  _ogl.glDrawElements = glDrawElements;
 
 #undef WIN_LINK_GL
 
@@ -1097,6 +1268,7 @@ win_window_create_exit:
 void WIN_WindowDeinit() {
   WIN_Window* window = &_win_window;
   DEBUG_ASSERT(window->initialized);
+  RendererDeinit();
   wglMakeCurrent(window->device_context, NULL);
   wglDeleteContext(window->ogl_context);
   CloseWindow(window->handle);

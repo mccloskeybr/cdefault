@@ -8,8 +8,6 @@
 #include "../cdefault_io.h"
 #define CDEFAULT_IMAGE_IMPLEMENTATION
 #include "../cdefault_image.h"
-#define STB_IMAGE_IMPLEMENTATION
-#include "third_party/stb_image.h"
 
 int main(void) {
   TimeInit();
