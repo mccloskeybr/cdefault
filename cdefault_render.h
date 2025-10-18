@@ -42,7 +42,7 @@ void WindowGetMouseDeltaPositionV(V2* pos);
 
 void RendererSetProjection(M4 projection);
 void RendererRegisterImage(U32* image_handle, U8* image_bytes, U32 width, U32 height); // NOTE: Expects RGBA byte values (0 -> 255)
-void RendererRegisterMesh(U32* mesh_handle, U32 image_handle, V3* points, U32 points_size, V3* normals, U32 normals_size, V2* uvs, U32 uvs_size, U32* indices, U32 indices_size);
+void RendererRegisterMesh(U32* mesh_handle, U32 image_handle, V3* points, V3* normals, V2* uvs, U32 vertices_size, U32* indices, U32 indices_size);
 void RendererReleaseImage(U32 image_handle);
 void RendererReleaseMesh(U32 mesh_handle);
 void RendererEnableScissorTest(S32 x, S32 y, S32 width, S32 height);
@@ -544,8 +544,7 @@ static B32 RendererInit(void) {
     "in vec2 tex_coord;\n"
     "out vec4 frag_color;\n"
     "void main() {\n"
-    "  frag_color = vec4(1, 1, 1, 1);\n"
-    //"  frag_color = texture(texture_image, tex_coord);\n"
+    "  frag_color = texture(texture_image, tex_coord);\n"
     "}\0";
   DEBUG_ASSERT(RendererCompileShader(&r->mesh_shader, mesh_vertex_shader_source, mesh_fragment_shader_source));
   r->mesh_camera_uniform = g->glGetUniformLocation(r->mesh_shader, "to_camera_transform");
@@ -615,9 +614,14 @@ void RendererReleaseImage(U32 image_handle) {
   g->glDeleteTextures(1, &image_handle);
 }
 
-void RendererRegisterMesh(U32* mesh_handle, U32 image_handle, V3* points, U32 points_size, V3* normals, U32 normals_size, V2* uvs, U32 uvs_size, U32* indices, U32 indices_size) {
+void RendererRegisterMesh(U32* mesh_handle, U32 image_handle, V3* points, V3* normals, V2* uvs, U32 vertices_size, U32* indices, U32 indices_size) {
   Renderer* r = &_renderer;
   OpenGLAPI* g = &_ogl;
+
+  DEBUG_ASSERT(points != NULL);
+  U32 points_size  = vertices_size;
+  U32 normals_size = vertices_size * (normals != NULL);
+  U32 uvs_size     = vertices_size * (uvs != NULL);
 
   GLuint vbo;
   g->glGenBuffers(1, &vbo);
@@ -993,9 +997,9 @@ void DrawMesh(U32 mesh_handle, V3 pos, V4 rot) {
   Renderer* r = &_renderer;
   OpenGLAPI* g = &_ogl;
   RenderMesh* mesh = RendererFindMesh(mesh_handle);
-  if (mesh == NULL) { LOG_INFO("bingus");return; }
+  DEBUG_ASSERT(mesh != NULL);
 
-  V3 scale = { 1, 1, 1 };
+  V3 scale = { 0.1f, 0.1f, 0.1f };
   M4 mesh_to_world, mesh_to_camera, mesh_to_camera_t;
   M4FromTransform(&mesh_to_world, &pos, &rot, &scale);
   M4MultM4(&mesh_to_camera, &r->world_to_camera, &mesh_to_world);
@@ -1003,13 +1007,11 @@ void DrawMesh(U32 mesh_handle, V3 pos, V4 rot) {
 
   g->glUseProgram(r->mesh_shader);
   g->glUniformMatrix4fv(r->mesh_camera_uniform, 1, GL_FALSE, (GLfloat*) &mesh_to_camera_t);
-  g->glActiveTexture(GL_TEXTURE1);
   g->glBindTexture(GL_TEXTURE_2D, mesh->image_handle);
   g->glBindVertexArray(mesh->vao);
   g->glDrawElements(GL_TRIANGLES, mesh->indices_size, GL_UNSIGNED_INT, 0);
 
   g->glBindVertexArray(0);
-  g->glActiveTexture(GL_TEXTURE1);
   g->glBindTexture(GL_TEXTURE_2D, 0);
   g->glUseProgram(0);
 }

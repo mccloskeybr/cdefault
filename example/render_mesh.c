@@ -8,6 +8,8 @@
 #include "../cdefault_io.h"
 #define CDEFAULT_IMAGE_IMPLEMENTATION
 #include "../cdefault_image.h"
+#define CDEFAULT_MESH_IMPLEMENTATION
+#include "../cdefault_mesh.h"
 
 int main(void) {
   TimeInit();
@@ -20,42 +22,13 @@ int main(void) {
   Stopwatch frame_stopwatch;
   StopwatchInit(&frame_stopwatch);
 
-  Image image;
   U32 image_handle, mesh_handle;
+  Image image;
   DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, (U8*) "../data/16bpp.bmp"));
   RendererRegisterImage(&image_handle, image.data, image.width, image.height);
-
-  V3 points[] = {
-    {-0.1f, -0.1f,  0.1f},
-    { 0.1f, -0.1f,  0.1f},
-    { 0.1f,  0.1f,  0.1f},
-    {-0.1f,  0.1f,  0.1f},
-    {-0.1f, -0.1f, -0.1f},
-    { 0.1f, -0.1f, -0.1f},
-    { 0.1f,  0.1f, -0.1f},
-    {-0.1f,  0.1f, -0.1f},
-  };
-  U32 indices[] = {
-    // Front face
-    0, 1, 2,
-    0, 2, 3,
-    // Back face (4, 7, 6, 5)
-    4, 7, 6,
-    4, 6, 5,
-    // Left face (4, 0, 3, 7)
-    4, 0, 3,
-    4, 3, 7,
-    // Right face (1, 5, 6, 2)
-    1, 5, 6,
-    1, 6, 2,
-    // Top face (3, 2, 6, 7)
-    3, 2, 6,
-    3, 6, 7,
-    // Bottom face (4, 5, 1, 0)
-    4, 5, 1,
-    4, 1, 0
-  };
-  RendererRegisterMesh(&mesh_handle, image_handle, points, 8, NULL, 0, NULL, 0, indices, 36);
+  Mesh cube;
+  DEBUG_ASSERT(MeshLoadFile(arena, &cube, (U8*) "../data/teapot.obj"));
+  RendererRegisterMesh(&mesh_handle, image_handle, cube.points, cube.normals, cube.uvs, cube.vertices_size, cube.indices, cube.indices_size);
 
   M4 projection;
   M4Perspective(&projection, F32_PI / 4.0f, 16.0f / 9.0f, 0.01f, 1000.0f);
@@ -68,9 +41,11 @@ int main(void) {
       exit(0);
     }
 
-    V4 rot;
-    V4RotateAroundAxis(&rot, &V3_Y_POS, theta);
-    DrawMesh(mesh_handle, (V3) { 0, 0, 0 }, rot);
+    V4 rot_1, rot_2, rot_3;
+    V4RotateAroundAxis(&rot_1, &V3_X_POS, theta);
+    V4RotateAroundAxis(&rot_2, &V3_Y_POS, theta);
+    V4QuatMulV4(&rot_3, &rot_1, &rot_2);
+    DrawMesh(mesh_handle, (V3) { 0, 0, 0 }, rot_3);
     theta += 0.01f;
 
     do { dt_s = StopwatchReadSeconds(&frame_stopwatch); } while (dt_s < 0.016);

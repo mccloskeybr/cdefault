@@ -209,6 +209,7 @@ void V4DivF32(V4* dest, V4* x, F32 c);
 void V4AddV4(V4* dest, V4* x, V4* y);
 void V4SubV4(V4* dest, V4* x, V4* y);
 void V4HadamardV4(V4* dest, V4* x, V4* y);
+void V4QuatMulV4(V4* dest, V4* x, V4* y);
 F32  V4InnerMultV4(V4* x, V4* y);
 F32  V4DotV4(V4* x, V4* y);
 B32  V4ApproxEq(V4* a, V4* b);
@@ -685,6 +686,21 @@ void V4Hadamard(V4* dest, V4* x, V4* y) {
   dest->y = x->y * y->y;
   dest->z = x->z * y->z;
   dest->w = x->w * y->w;
+}
+
+void V4HadamardV4(V4* dest, V4* x, V4* y) {
+  dest->x = x->x * y->x;
+  dest->y = x->y * y->y;
+  dest->z = x->z * y->z;
+  dest->w = x->w * y->w;
+}
+
+// https://stackoverflow.com/questions/19956555/how-to-multiply-two-quaternions
+void V4QuatMulV4(V4* dest, V4* x, V4* y) {
+  dest->x = x->w*y->x + x->x*y->w + x->y*y->z - x->z*y->y;
+  dest->y = x->w*y->y - x->x*y->z + x->y*y->w + x->z*y->x;
+  dest->z = x->w*y->z + x->x*y->y - x->y*y->x + x->z*y->w;
+  dest->w = x->w*y->w - x->x*y->x - x->y*y->y - x->z*y->z;
 }
 
 F32 V4InnerMultV4(V4* x, V4* y) {

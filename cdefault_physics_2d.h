@@ -15,19 +15,6 @@
 //   Collider2SubtypeHeader header;
 //   U32 is_ethereal;
 // }
-//
-// void PlayerRigidBodyResolver(DynamicArray* /*Collision2*/ collisions) {
-//   for (U32 i = 0; i < collisions->size; i++) {
-//     // NOTE: collision->a and collision->b subtypes will match what is registered via Physics2RegisterResolver.
-//     Collision2* collision = (Collision2*) DynamicArrayGet(collisions, i);
-//     PlayerCollider* player     = Collider2GetSubtype(collision->a, COLLIDER2_PLAYER_COLLIDER);
-//     PlayerCollider* rigid_body = Collider2GetSubtype(collision->b, COLLIDER2_RIGID_BODY);
-//     if (!player_collider->is_ethereal) { GotoGameOverState(); }
-//   }
-// }
-//
-// Physics2RegisterResolver(COLLIDER2_PLAYER_COLLIDER, COLLIDER2_RIGID_BODY, PlayerRigidBodyResolver);
-
 #define COLLIDER2_RIGID_BODY ((U32) ~0)
 typedef struct Collider2SubtypeHeader Collider2SubtypeHeader;
 struct Collider2SubtypeHeader {
@@ -35,6 +22,7 @@ struct Collider2SubtypeHeader {
   Collider2SubtypeHeader* next;
 };
 
+// TODO: support more collider types.
 // NOTE: All collider types *must* store the center as a V2 as the first member.
 typedef struct Collider2Circle Collider2Circle;
 struct Collider2Circle {
@@ -89,6 +77,7 @@ enum RigidBody2Type {
   RigidBody2Type_Static,  // NOTE: Immovable / not influenced by external forces.
 };
 
+// TODO: allow rigid bodies to sleep.
 typedef struct RigidBody2 RigidBody2;
 struct RigidBody2 {
   Collider2SubtypeHeader header;
@@ -106,7 +95,21 @@ struct RigidBody2 {
   Collider2* collider;
 };
 
-// NOTE: Resolvers define the behavior when 2 colliders of specific defined types collide.
+// NOTE: Resolvers define the behavior when 2 colliders of specific defined types collide. It is modeled as
+// a retained-mode callback invoked 1x per physics iteration (so it may be called multiple times per frame,
+// per user-provided configuration). All detected collisions are passed to the resolver for inspection.
+// The RigidBody2 x RigidBody2 resolver is registered automatically.
+//
+// void PlayerRigidBodyResolver(DynamicArray* /*Collision2*/ collisions) {
+//   for (U32 i = 0; i < collisions->size; i++) {
+//     // NOTE: collision->a and collision->b subtypes will match what is registered via Physics2RegisterResolver.
+//     Collision2* collision      = (Collision2*) DynamicArrayGet(collisions, i);
+//     PlayerCollider* player     = Collider2GetSubtype(collision->a, COLLIDER2_PLAYER_COLLIDER);
+//     PlayerCollider* rigid_body = Collider2GetSubtype(collision->b, COLLIDER2_RIGID_BODY);
+//     if (!player_collider->is_ethereal) { GotoGameOverState(); }
+//   }
+// }
+// Physics2RegisterResolver(COLLIDER2_PLAYER_COLLIDER, COLLIDER2_RIGID_BODY, PlayerRigidBodyResolver);
 typedef struct Collision2 Collision2;
 struct Collision2 {
   Collider2* a;
@@ -127,7 +130,7 @@ void Physics2Update(F32 dt_s);
 
 Collider2* Physics2RegisterColliderCircle(V2 center, F32 radius);
 Collider2* Physics2RegisterColliderRect(V2 center, V2 size);
-Collider2* Physics2RegisterColliderConvexHull(V2* points, U32 points_size); // NOTE: points is copied.
+Collider2* Physics2RegisterColliderConvexHull(V2* points, U32 points_size); // NOTE: points is copied. TODO: separate fn for w/ center?
 void Physics2DeregisterCollider(Collider2* collider); // NOTE: Must be called after all subtypes are deinitialized.
 void Collider2SetSubtype(Collider2* collider, Collider2SubtypeHeader* subtype);
 B32  Collider2RemoveSubtype(Collider2* colluder, U32 type);
@@ -186,7 +189,7 @@ struct Physics2Context {
   RigidBody2Internal* rigid_body_tail;
   V2                  rigid_body_gravity;
   Arena*              resolver_pool;
-  ResolverEntry*      resolvers;
+  ResolverEntry*      resolvers; // TODO: LRU for hot resolvers? or allow priority to be specified?
 };
 static Physics2Context _cdef_phys_2d_context;
 
@@ -513,6 +516,7 @@ void Physics2Update(F32 dt_s) {
         if ((a->group | b->group) == 0) { continue; }
 
         // TODO: separate? acceleration structure? maybe just presort along one axis?
+        // TODO: multithread?
         IntersectManifold2 manifold;
         if (!Collider2IntersectBroad(a, b, &manifold)) { continue; }
         if (!Collider2IntersectNarrow(a, b, &manifold)) { continue; }
@@ -527,10 +531,12 @@ void Physics2Update(F32 dt_s) {
             for (ResolverEntry* resolver = c->resolvers; resolver != NULL; resolver = resolver->next) {
               if (a_subtype->type == resolver->type_a && b_subtype->type == resolver->type_b) {
                 DynamicArrayPushBack(&resolver->collisions, (U8*) &collision);
+                break;
               } else if (a_subtype->type == resolver->type_b && b_subtype->type == resolver->type_a) {
                 SWAP(Collider2*, collision.a, collision.b);
                 V2MultF32(&collision.manifold.normal, &collision.manifold.normal, -1);
                 DynamicArrayPushBack(&resolver->collisions, (U8*) &collision);
+                break;
               }
             }
           }
@@ -539,7 +545,6 @@ void Physics2Update(F32 dt_s) {
     }
 
     for (ResolverEntry* resolver = c->resolvers; resolver != NULL; resolver = resolver->next) {
-      if (resolver->collisions.size == 0) { continue; }
       resolver->fn(&resolver->collisions);
       DynamicArrayClear(&resolver->collisions);
     }

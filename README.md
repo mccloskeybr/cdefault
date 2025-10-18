@@ -7,26 +7,26 @@ libraries are sufficiently modularized to plug and play for a variety of usecase
 
 NOTE: Windows is explicitly supported. Linux is partially supported. I'll get around to Mac eventually.
 
-*  `cdefault_audio.h`    - Unified API for playing audio on operating systems.
-*  `cdefault_geometry.h` - Structs and functions for 2/3D geometry, including some collision detection.
-*  `cdefault_image.h`    - Ingest various image file formats.
-*  `cdefault_io.h`       - Filesytem API.
-*  `cdefault_math.h`     - Math library, particularly 2/3/4D vectors and 3x3 / 4x4 Matrices for graphics.
-*  `cdefault_profile.h`  - Simple profiler.
-*  `cdefault_render.h`   - Unified API for basic rendering. Extensive support for 2D.
-*  `cdefault_sound.h`    - Ingest various sound file formats.
-*  `cdefault_std.h`      - Platform agnostic support for e.g. memory allocation (Arena), concurrency datastructures, strings, etc.
+*  `cdefault_audio.h`      - Unified API for playing audio on operating systems.
+*  `cdefault_geometry.h`   - Structs and functions for 2/3D geometry, with a focus on collision detection.
+*  `cdefault_image.h`      - Image file importer.
+*  `cdefault_io.h`         - Filesytem API.
+*  `cdefault_math.h`       - Math library, particularly 2/3/4D vectors and 2x2/3x3/4x4 matrices for graphics.
+*  `cdefault_mesh.h`       - Mesh file importer.
+*  `cdefault_physics_2d.h` - Simple and extendible 2D physics API with a basic rigid body resolver.
+*  `cdefault_profile.h`    - Simple profiler.
+*  `cdefault_render.h`     - Unified API for basic 2/3D rendering, focusing on prototypes.
+*  `cdefault_sound.h`      - Audio file importer.
+*  `cdefault_std.h`        - Platform agnostic support for e.g. memory allocation (Arena), concurrency, strings, etc.
 
 See `example/` for example integrations. Unit and visual / component tests are under `test/`.
 
 TODO:
 
 *  Complete independence from stdlib.
-*  Port basic physics library.
 *  Networking library.
 *  Platform-agnostic input (controllers) library.
 *  Font library.
-*  Refactor to be C89 compatible?
 
 Credits:
 

@@ -305,9 +305,8 @@ void  MemoryDecommit(void* ptr, U64 size);
     (curr_node)->next = NULL;                             \
   }                                                       \
   else {                                                  \
-    (head)->next = (curr_node);                           \
+    (curr_node)->next = (head);                           \
     (head) = (curr_node);                                 \
-    (curr_node)->next = NULL;                             \
   }
 #define SLL_QUEUE_PUSH_BACK(head, tail, curr_node, next) \
   if ((head) == NULL) {                                  \
@@ -316,7 +315,7 @@ void  MemoryDecommit(void* ptr, U64 size);
     (curr_node)->next = NULL;                            \
   }                                                      \
   else {                                                 \
-    (curr_node)->next = (tail);                          \
+    (tail)->next = (curr_node);                          \
     (tail) = (curr_node);                                \
   }
 #define SLL_QUEUE_POP(head, tail, next) \
@@ -325,7 +324,7 @@ void  MemoryDecommit(void* ptr, U64 size);
     (tail) = NULL;                      \
   }                                     \
   else {                                \
-    (tail) = (tail)->next;              \
+    (head) = (head)->next;              \
   }
 
 // NOTE: Doubly-linked list
@@ -457,7 +456,7 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...);
 
 #define PAGE_SIZE KB(4)
 #define CDEFAULT_ARENA_RESERVE_SIZE ALIGN_POW_2(MB(64), PAGE_SIZE)
-#define CDEFAULT_ARENA_COMMIT_SIZE  ALIGN_POW_2(KB(64), PAGE_SIZE)
+#define CDEFAULT_ARENA_COMMIT_SIZE  ALIGN_POW_2(PAGE_SIZE, PAGE_SIZE)
 
 typedef struct Arena Arena;
 struct Arena {
@@ -669,19 +668,21 @@ String8 String8CreateRange(U8* str, U8* one_past_last);
 String8 _String8CreateCString(U8* c_str);
 #define String8CreateCString(s) _String8CreateCString((U8*) s)
 #define String8CreateStatic(s) String8Create((U8*) s, sizeof(s) - 1)
-String8 String8Copy(Arena* arena, String8* string);
-String8 String8Substring(String8* s, U64 start, U64 end);
-String8 String8Trim(String8* s);
-B32     String8ReplaceAll(Arena* arena, String8* dest, String8* src, String8* a, String8* b);
-B32     String8ReplaceAllChar(String8* str, U8 a, U8 b);
-void String8ToUpper(String8* s);
-void String8ToLower(String8* s);
-B32  String8StartsWith(String8* a, String8* b); // NOTE: True iff a starts with b.
-B32  String8EndsWith(String8* a, String8* b); // NOTE: True iff a ends with b.
-B32  String8Equals(String8* a, String8* b);
-S64  String8Find(String8* string, S32 start_pos, String8* needle); // NOTE: Returns -1 on failure.
-S64  String8FindReverse(String8* string, S32 reverse_start_pos, String8* needle); // NOTE: Returns -1 on failure.
-String8 String8Concat(Arena* arena, String8* a, String8* b);
+String8 String8Copy(Arena* arena, String8 string);
+String8 String8Substring(String8 s, U64 start, U64 end);
+String8 String8Trim(String8 s);
+B32     String8ReplaceAll(Arena* arena, String8 dest, String8 src, String8 a, String8 b);
+B32     String8ReplaceAllChar(String8 str, U8 a, U8 b);
+void String8ToUpper(String8 s);
+void String8ToLower(String8 s);
+F32  String8ToF32(String8 s);
+S32  String8ToS32(String8 s);
+B32  String8StartsWith(String8 a, String8 b); // NOTE: True iff a starts with b.
+B32  String8EndsWith(String8 a, String8 b); // NOTE: True iff a ends with b.
+B32  String8Equals(String8 a, String8 b);
+S64  String8Find(String8 string, S32 start_pos, String8 needle); // NOTE: Returns -1 on failure.
+S64  String8FindReverse(String8 string, S32 reverse_start_pos, String8 needle); // NOTE: Returns -1 on failure.
+String8 String8Concat(Arena* arena, String8 a, String8 b);
 String8 String8FormatV(Arena* arena, U8* fmt, va_list args);
 String8 _String8Format(Arena* arena, U8* fmt, ...);
 #define String8Format(a, fmt, ...) _String8Format(a, (U8*) fmt, ##__VA_ARGS__)
@@ -689,9 +690,9 @@ String8 _String8Format(Arena* arena, U8* fmt, ...);
 void String8ListPrepend(String8List* list, String8ListNode* node);
 void String8ListAppend(String8List* list, String8ListNode* node);
 String8 String8ListJoin(Arena* arena, String8List* list);
-String8List String8Split(Arena* arena, String8* string, U8 c);
+String8List String8Split(Arena* arena, String8 string, U8 c);
 
-S32 String8Hash(String8* s);
+S32 String8Hash(String8 s);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Sort
@@ -945,20 +946,14 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...) {
 // NOTE: Arena implementation
 ///////////////////////////////////////////////////////////////////////////////
 
-STATIC_ASSERT(
-    sizeof(Arena) < CDEFAULT_ARENA_COMMIT_SIZE,
-    "sizeof(Arena) must be less than CDEFAULT_ARENA_COMMIT_SIZE.");
-STATIC_ASSERT(
-    CDEFAULT_ARENA_COMMIT_SIZE < CDEFAULT_ARENA_RESERVE_SIZE,
-    "CDEFAULT_ARENA_COMMIT_SIZE must be less than CDEFAULT_ARENA_RESERVE_SIZE.");
-
 Arena* _ArenaAllocate(U64 reserve_size, U64 commit_size) {
-  reserve_size = ALIGN_POW_2(reserve_size, PAGE_SIZE);
-  commit_size = ALIGN_POW_2(commit_size, PAGE_SIZE);
+  DEBUG_ASSERT(sizeof(Arena) < commit_size);
+  DEBUG_ASSERT(commit_size < reserve_size);
+  DEBUG_ASSERT(reserve_size % commit_size == 0);
 
-  void* base = MemoryReserve(CDEFAULT_ARENA_RESERVE_SIZE);
-  DEBUG_ASSERT(base != NULL); // TODO: should probably be a real assert.
-  MemoryCommit(base, CDEFAULT_ARENA_COMMIT_SIZE);
+  void* base = MemoryReserve(reserve_size);
+  ASSERT(base != NULL); // TODO: message box or some other kind of abortion.
+  MemoryCommit(base, commit_size);
 
   Arena* arena = (Arena*) base;
   MEMORY_ZERO_STRUCT(arena);
@@ -980,16 +975,16 @@ void* _ArenaPush(Arena* arena, U64 size, U64 align) {
 
   ASSERT(pos_after <= arena->reserve_size); // If hit, increase reserve size?
   if (arena->commit < pos_after) {
-    U64 commit = pos_after + arena->commit_size - 1;
-    commit -= commit % arena->commit;
-    U64 commit_clamped = CLAMP_TOP(commit, arena->reserve_size);
-    U64 commit_size = commit_clamped - arena->commit;
+    U64 commit_size = 0;
+    do {
+      commit_size += arena->commit_size;
+    } while (arena->commit + commit_size < pos_after);
     MemoryCommit((U8*) arena + arena->commit, commit_size);
-    arena->commit = commit_clamped;
+    arena->commit += commit_size;
   }
-  ASSERT(pos_after <= arena->commit);
+  DEBUG_ASSERT(pos_after <= arena->commit);
 
-  void* result = ((U8*)arena) + pos;
+  void* result = ((U8*) arena) + pos;
   arena->pos = pos_after;
   return result;
 }
@@ -1710,146 +1705,192 @@ String8 String8CreateRange(U8* str, U8* one_past_last) {
   return result;
 }
 
-String8 String8Copy(Arena* arena, String8* string) {
+String8 String8Copy(Arena* arena, String8 string) {
   String8 result;
   MEMORY_ZERO_STRUCT(&result);
-  result.size = string->size;
-  result.str = ARENA_PUSH_ARRAY(arena, U8, string->size);
-  MEMORY_COPY(result.str, string->str, string->size);
+  result.size = string.size;
+  result.str = ARENA_PUSH_ARRAY(arena, U8, string.size);
+  MEMORY_COPY(result.str, string.str, string.size);
   return result;
 }
 
-String8 String8Substring(String8* s, U64 start, U64 end) {
+String8 String8Substring(String8 s, U64 start, U64 end) {
   DEBUG_ASSERT(end >= start);
-  start = MIN(start, s->size - 1);
-  end = MIN(end, s->size - 1);
+  start = MIN(start, s.size - 1);
+  end = MIN(end, s.size - 1);
   String8 result;
   MEMORY_ZERO_STRUCT(&result);
-  result.str = s->str + start;
+  result.str = s.str + start;
   result.size = end - start + 1;
   return result;
 }
 
-String8 String8Trim(String8* s) {
+String8 String8Trim(String8 s) {
   U64 start = 0;
-  while (CharIsWhitespace(s->str[start])) { ++start; }
-  U64 end = s->size - 1;
-  while (CharIsWhitespace(s->str[end])) { --end; }
+  while (CharIsWhitespace(s.str[start])) { ++start; }
+  U64 end = s.size - 1;
+  while (CharIsWhitespace(s.str[end])) { --end; }
   return String8Substring(s, start, end);
 }
 
-B32 String8ReplaceAll(Arena* arena, String8* dest, String8* src, String8* a, String8* b) {
+B32 String8ReplaceAll(Arena* arena, String8 dest, String8 src, String8 a, String8 b) {
   B32 found = false;
   U32 i = 0;
   U32 dest_size = 0;
-  while (src->str[i] != '\0') {
-    String8 src_sub = String8Substring(src, i, src->size - 1);
-    if (String8StartsWith(&src_sub, a)) {
+  while (src.str[i] != '\0') {
+    String8 src_sub = String8Substring(src, i, src.size - 1);
+    if (String8StartsWith(src_sub, a)) {
       found = true;
-      i += a->size;
-      dest_size += b->size;
+      i += a.size;
+      dest_size += b.size;
       continue;
     }
     dest_size++;
     i++;
   }
   if (found) {
-    dest->str = ARENA_PUSH_ARRAY(arena, U8, dest_size + 1);
-    dest->size = dest_size;
+    dest.str = ARENA_PUSH_ARRAY(arena, U8, dest_size + 1);
+    dest.size = dest_size;
     i = 0;
     U32 k = 0;
-    while (src->str[i] != '\0') {
+    while (src.str[i] != '\0') {
       // SPEEDUP: don't really need to calculate this again.
-      String8 src_sub = String8Substring(src, i, src->size - 1);
-      if (String8StartsWith(&src_sub, a)) {
-        for (U32 j = 0; j < b->size; j++) {
-          dest->str[k++] = b->str[j];
+      String8 src_sub = String8Substring(src, i, src.size - 1);
+      if (String8StartsWith(src_sub, a)) {
+        for (U32 j = 0; j < b.size; j++) {
+          dest.str[k++] = b.str[j];
         }
-        i += a->size;
+        i += a.size;
         continue;
       }
-      dest->str[k++] = src->str[i++];
+      dest.str[k++] = src.str[i++];
     }
-    dest->str[k] = '\0';
+    dest.str[k] = '\0';
   }
   return found;
 }
 
-B32 String8ReplaceAllChar(String8* str, U8 a, U8 b) {
+B32 String8ReplaceAllChar(String8 str, U8 a, U8 b) {
   B32 result = false;
   U32 i = 0;
-  while (str->str[i] != '\0'){
-    if (str->str[i] == a) {
+  while (str.str[i] != '\0'){
+    if (str.str[i] == a) {
       result = true;
-      str->str[i] = b;
+      str.str[i] = b;
     }
     i++;
   }
   return result;
 }
 
-B32 String8StartsWith(String8* a, String8* b) {
-  if (a->size < b->size) { return false; }
-  for (U64 i = 0; i < b->size; ++i) {
-    if (a->str[i] != b->str[i]) { return false; }
+B32 String8StartsWith(String8 a, String8 b) {
+  if (a.size < b.size) { return false; }
+  for (U64 i = 0; i < b.size; ++i) {
+    if (a.str[i] != b.str[i]) { return false; }
   }
   return true;
 }
 
-B32 String8EndsWith(String8* a, String8* b) {
-  if (a->size < b->size) { return false; }
-  U64 a_offset = a->size - b->size;
-  for (U64 i = 0; i < b->size; ++i) {
-    if (a->str[a_offset + i] != b->str[i]) { return false; }
+B32 String8EndsWith(String8 a, String8 b) {
+  if (a.size < b.size) { return false; }
+  U64 a_offset = a.size - b.size;
+  for (U64 i = 0; i < b.size; ++i) {
+    if (a.str[a_offset + i] != b.str[i]) { return false; }
   }
   return true;
 }
 
-B32 String8Equals(String8* a, String8* b) {
-  if (a->size != b->size) { return false; }
+B32 String8Equals(String8 a, String8 b) {
+  if (a.size != b.size) { return false; }
   return String8StartsWith(a, b);
 }
 
-S64 String8Find(String8* string, S32 start_pos, String8* needle) {
+S64 String8Find(String8 string, S32 start_pos, String8 needle) {
   if (start_pos < 0) { return -1; }
-  if (string->size < start_pos + needle->size) { return -1; }
-  for (U64 i = 0; i < string->size - start_pos; ++i) {
+  if (string.size < start_pos + needle.size) { return -1; }
+  for (U64 i = 0; i < string.size - start_pos; ++i) {
     U64 offset = start_pos + i;
-    String8 substr = String8Create(string->str + offset, string->size - offset);
-    if (String8StartsWith(&substr, needle)) { return offset; }
+    String8 substr = String8Create(string.str + offset, string.size - offset);
+    if (String8StartsWith(substr, needle)) { return offset; }
   }
   return -1;
 }
 
-S64 String8FindReverse(String8* string, S32 reverse_start_pos, String8* needle) {
+S64 String8FindReverse(String8 string, S32 reverse_start_pos, String8 needle) {
   if (reverse_start_pos < 0) { return -1; }
-  if (string->size < reverse_start_pos + needle->size) { return -1; }
-  for (U64 i = string->size - reverse_start_pos - needle->size; i > 0; --i) {
-    String8 substr = String8Create(string->str, i + needle->size);
-    if (String8EndsWith(&substr, needle)) { return i; }
+  if (string.size < reverse_start_pos + needle.size) { return -1; }
+  for (U64 i = string.size - reverse_start_pos - needle.size; i > 0; --i) {
+    String8 substr = String8Create(string.str, i + needle.size);
+    if (String8EndsWith(substr, needle)) { return i; }
   }
   return -1;
 }
 
-void String8ToUpper(String8* s) {
-  for (U64 i = 0; i < s->size; ++i) {
-    s->str[i] = CharToUpper(s->str[i]);
+void String8ToUpper(String8 s) {
+  for (U64 i = 0; i < s.size; ++i) {
+    s.str[i] = CharToUpper(s.str[i]);
   }
 }
 
-void String8ToLower(String8* s) {
-  for (U64 i = 0; i < s->size; ++i) {
-    s->str[i] = CharToLower(s->str[i]);
+void String8ToLower(String8 s) {
+  for (U64 i = 0; i < s.size; ++i) {
+    s.str[i] = CharToLower(s.str[i]);
   }
 }
 
-String8 String8Concat(Arena* arena, String8* a, String8* b) {
+F32 String8ToF32(String8 s) {
+  U32 i = 0;
+  F32 result = 0.0f;
+
+  S32 sign = 1;
+  if (s.str[i] == '+')      { sign = +1; i++; }
+  else if (s.str[i] == '-') { sign = -1; i++; }
+
+  while (i < s.size && CharIsDigit(s.str[i], 10)) {
+    result *= 10;
+    result += s.str[i] - '0';
+    i++;
+  }
+  if (s.str[i] != '.') { return sign * result; }
+  i++;
+
+  U32 exp = 0;
+  while (i < s.size && CharIsDigit(s.str[i], 10)) {
+    result *= 10;
+    result += s.str[i] - '0';
+    i++;
+    exp++;
+  }
+  while (exp > 0) {
+    result /= 10;
+    exp--;
+  }
+  return sign * result;
+}
+
+S32 String8ToS32(String8 s) {
+  S32 i = 0;
+  S32 result = 0;
+
+  S32 sign = 1;
+  if (s.str[i] == '+')      { sign = +1; i++; }
+  else if (s.str[i] == '-') { sign = -1; i++; }
+
+  while (i < s.size && CharIsDigit(s.str[i], 10)) {
+    result *= 10;
+    result += s.str[i] - '0';
+    i++;
+  }
+  return sign * result;
+}
+
+String8 String8Concat(Arena* arena, String8 a, String8 b) {
   String8 result;
   MEMORY_ZERO_STRUCT(&result);
-  result.size = a->size + b->size;
-  result.str = ARENA_PUSH_ARRAY(arena, U8, a->size + b->size);
-  MEMORY_COPY(result.str, a->str, a->size);
-  MEMORY_COPY(result.str + a->size, b->str, b->size);
+  result.size = a.size + b.size;
+  result.str = ARENA_PUSH_ARRAY(arena, U8, a.size + b.size);
+  MEMORY_COPY(result.str, a.str, a.size);
+  MEMORY_COPY(result.str + a.size, b.str, b.size);
   return result;
 }
 
@@ -1878,11 +1919,11 @@ String8 _String8Format(Arena* arena, U8* fmt, ...) {
 }
 
 void String8ListPrepend(String8List* list, String8ListNode* node) {
-  SLL_QUEUE_PUSH_BACK(list->head, list->tail, node, next);
+  SLL_QUEUE_PUSH_FRONT(list->head, list->tail, node, next);
 }
 
 void String8ListAppend(String8List* list, String8ListNode* node) {
-  SLL_QUEUE_PUSH_FRONT(list->head, list->tail, node, next);
+  SLL_QUEUE_PUSH_BACK(list->head, list->tail, node, next);
 }
 
 String8 String8ListJoin(Arena* arena, String8List* list) {
@@ -1902,30 +1943,30 @@ String8 String8ListJoin(Arena* arena, String8List* list) {
   return result;
 }
 
-String8List String8Split(Arena* arena, String8* string, U8 c) {
+String8List String8Split(Arena* arena, String8 string, U8 c) {
   String8List list;
   MEMORY_ZERO_STRUCT(&list);
-  U8* substring_start = string->str;
-  for (U64 i = 0; i < string->size; ++i) {
-    if (string->str[i] == c) {
+  U8* substring_start = string.str;
+  for (U64 i = 0; i < string.size; ++i) {
+    if (string.str[i] == c) {
       String8ListNode* node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-      node->string = String8CreateRange(substring_start, &string->str[i]);
+      node->string = String8CreateRange(substring_start, &string.str[i]);
       String8ListAppend(&list, node);
-      substring_start = &string->str[++i];
+      substring_start = &string.str[++i];
     }
   }
-  if (substring_start < string->str + string->size) {
+  if (substring_start < string.str + string.size) {
     String8ListNode* node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-    node->string = String8CreateRange(substring_start, string->str + string->size);
+    node->string = String8CreateRange(substring_start, string.str + string.size);
     String8ListAppend(&list, node);
   }
   return list;
 }
 
-S32 String8Hash(String8* s) {
+S32 String8Hash(String8 s) {
   S32 hash = 0;
-  for (S32 i = 0; i < s->size; i++) {
-    hash += s->str[i];
+  for (S32 i = 0; i < s.size; i++) {
+    hash += s.str[i];
     hash += hash << 10;
     hash ^= hash >> 6;
   }
