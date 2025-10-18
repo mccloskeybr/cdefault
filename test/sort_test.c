@@ -40,7 +40,7 @@ B32 SortString8AscTest(void) {
   expected_arr[3] = String8CreateStatic("banana");
   expected_arr[4] = String8CreateStatic("cherry");
   for (U32 i = 0; i < 5; i++) {
-    TEST_EXPECT(String8Equals(&arr[i], &expected_arr[i]));
+    TEST_EXPECT(String8Equals(arr[i], expected_arr[i]));
   }
   return true;
 }
@@ -84,7 +84,7 @@ B32 SortString8DescTest(void) {
   expected_arr[3] = String8CreateStatic("apple");
   expected_arr[4] = String8CreateStatic("apple");
   for (U32 i = 0; i < 5; i++) {
-    TEST_EXPECT(String8Equals(&arr[i], &expected_arr[i]));
+    TEST_EXPECT(String8Equals(arr[i], expected_arr[i]));
   }
   return true;
 }

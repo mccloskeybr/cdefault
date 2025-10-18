@@ -78,11 +78,11 @@ B32 SllQueuePushBackTest(void) {
   SLL_QUEUE_PUSH_BACK(queue.head, queue.tail, &node_2, next);
   TEST_EXPECT(queue.head == &node_1);
   TEST_EXPECT(queue.tail == &node_2);
-  test = queue.tail;
-  TEST_EXPECT(test == &node_2);
-  TEST_EXPECT(test->next == &node_1);
-  test = test->next;
+  test = queue.head;
   TEST_EXPECT(test == &node_1);
+  TEST_EXPECT(test->next == &node_2);
+  test = test->next;
+  TEST_EXPECT(test == &node_2);
   TEST_EXPECT(test->next == NULL);
 
   return true;
@@ -101,11 +101,11 @@ B32 SllQueuePushFrontTest(void) {
   TEST_EXPECT(test->next == NULL);
 
   SLL_QUEUE_PUSH_FRONT(queue.head, queue.tail, &node_2, next);
-  test = queue.tail;
-  TEST_EXPECT(test == &node_1);
-  TEST_EXPECT(test->next == &node_2);
-  test = test->next;
+  test = queue.head;
   TEST_EXPECT(test == &node_2);
+  TEST_EXPECT(test->next == &node_1);
+  test = test->next;
+  TEST_EXPECT(test == &node_1);
   TEST_EXPECT(test->next == NULL);
 
   return true;
@@ -119,14 +119,14 @@ B32 SllQueuePopTest(void) {
 
   SLL_QUEUE_PUSH_BACK(queue.head, queue.tail, &node_1, next);
   SLL_QUEUE_PUSH_BACK(queue.head, queue.tail, &node_2, next);
-  test = queue.tail;
-  TEST_EXPECT(test == &node_2);
-  TEST_EXPECT(test->next == &node_1);
+  test = queue.head;
+  TEST_EXPECT(test == &node_1);
+  TEST_EXPECT(test->next == &node_2);
   TEST_EXPECT(test->next->next == NULL);
 
   SLL_QUEUE_POP(queue.head, queue.tail, next);
-  test = queue.tail;
-  TEST_EXPECT(test == &node_1);
+  test = queue.head;
+  TEST_EXPECT(test == &node_2);
   TEST_EXPECT(test->next == NULL);
 
   SLL_QUEUE_POP(queue.head, queue.tail, next);

@@ -671,7 +671,7 @@ String8 _String8CreateCString(U8* c_str);
 String8 String8Copy(Arena* arena, String8 string);
 String8 String8Substring(String8 s, U64 start, U64 end);
 String8 String8Trim(String8 s);
-B32     String8ReplaceAll(Arena* arena, String8 dest, String8 src, String8 a, String8 b);
+B32     String8ReplaceAll(Arena* arena, String8* dest, String8 src, String8 a, String8 b);
 B32     String8ReplaceAllChar(String8 str, U8 a, U8 b);
 void String8ToUpper(String8 s);
 void String8ToLower(String8 s);
@@ -1733,7 +1733,7 @@ String8 String8Trim(String8 s) {
   return String8Substring(s, start, end);
 }
 
-B32 String8ReplaceAll(Arena* arena, String8 dest, String8 src, String8 a, String8 b) {
+B32 String8ReplaceAll(Arena* arena, String8* dest, String8 src, String8 a, String8 b) {
   B32 found = false;
   U32 i = 0;
   U32 dest_size = 0;
@@ -1749,8 +1749,8 @@ B32 String8ReplaceAll(Arena* arena, String8 dest, String8 src, String8 a, String
     i++;
   }
   if (found) {
-    dest.str = ARENA_PUSH_ARRAY(arena, U8, dest_size + 1);
-    dest.size = dest_size;
+    dest->str = ARENA_PUSH_ARRAY(arena, U8, dest_size + 1);
+    dest->size = dest_size;
     i = 0;
     U32 k = 0;
     while (src.str[i] != '\0') {
@@ -1758,14 +1758,14 @@ B32 String8ReplaceAll(Arena* arena, String8 dest, String8 src, String8 a, String
       String8 src_sub = String8Substring(src, i, src.size - 1);
       if (String8StartsWith(src_sub, a)) {
         for (U32 j = 0; j < b.size; j++) {
-          dest.str[k++] = b.str[j];
+          dest->str[k++] = b.str[j];
         }
         i += a.size;
         continue;
       }
-      dest.str[k++] = src.str[i++];
+      dest->str[k++] = src.str[i++];
     }
-    dest.str[k] = '\0';
+    dest->str[k] = '\0';
   }
   return found;
 }
@@ -1928,7 +1928,7 @@ void String8ListAppend(String8List* list, String8ListNode* node) {
 
 String8 String8ListJoin(Arena* arena, String8List* list) {
   U64 size = 0;
-  for (String8ListNode* node = list->tail; node != NULL; node = node->next) {
+  for (String8ListNode* node = list->head; node != NULL; node = node->next) {
     size += node->string.size;
   }
   String8 result;
@@ -1936,7 +1936,7 @@ String8 String8ListJoin(Arena* arena, String8List* list) {
   result.size = size;
   result.str = ARENA_PUSH_ARRAY(arena, U8, size);
   size = 0;
-  for (String8ListNode* node = list->tail; node != NULL; node = node->next) {
+  for (String8ListNode* node = list->head; node != NULL; node = node->next) {
     MEMORY_COPY(result.str + size, node->string.str, node->string.size);
     size += node->string.size;
   }
