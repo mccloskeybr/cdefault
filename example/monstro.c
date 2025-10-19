@@ -109,14 +109,7 @@ int main(void) {
 
     for (U32 i = 0; i < STATIC_ARRAY_SIZE(enemies); i++) {
       if (V2LengthSq(&enemies[i]) == 0) { continue; }
-      Circle2 enemy;
-      enemy.center_point = enemies[i];
-      enemy.radius = 50;
-
-      Circle2 hero;
-      hero.center_point = pos;
-      hero.radius = 50;
-      if (Circle2IntersectCircle2(&hero, &enemy, NULL)) {
+      if (Circle2IntersectCircle2(&pos, 50, &enemies[i], 50, NULL)) {
         enemies[i] = (V2) { 0, 0 };
         continue;
       }
@@ -124,10 +117,7 @@ int main(void) {
       B32 deleted = false;
       for (U32 j = 0; j < STATIC_ARRAY_SIZE(bullets_pos); j++) {
         if (V2LengthSq(&bullets_pos[j]) == 0) { continue; }
-        Circle2 bullet;
-        bullet.center_point = bullets_pos[j];
-        bullet.radius = 10;
-        if (Circle2IntersectCircle2(&enemy, &bullet, NULL)) {
+        if (Circle2IntersectCircle2(&enemies[i], 50, &bullets_pos[j], 10, NULL)) {
           bullets_pos[j] = (V2) { 0, 0 };
           enemies[i] = (V2) { 0, 0 };
           deleted = true;

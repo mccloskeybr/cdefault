@@ -28,11 +28,8 @@ static void SidebarItemComponent() {
 }
 
 int main(void) {
-  WindowInitOpts opts;
-  MEMORY_ZERO_STRUCT(&opts);
-  opts.title = "render clay example";
-  opts.clear_rgb = 0x6495ed;
-  ASSERT(WindowInit(opts));
+  ASSERT(WindowInit(1080, 720, "render clay example"));
+  RendererSetClearColor(0, 0, 0, 1);
 
   S32 width, height;
   WindowGetDims(NULL, NULL, &width, &height);
@@ -41,7 +38,6 @@ int main(void) {
   Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(clay_mem_size, malloc(clay_mem_size));
   Clay_Initialize(arena, (Clay_Dimensions) { width, height }, (Clay_ErrorHandler) { HandleClayErrors });
 
-  F32 x = 0;
   while (true) {
     Clay_BeginLayout();
 
@@ -76,7 +72,6 @@ int main(void) {
             height - cmd->boundingBox.y - cmd->boundingBox.height / 2,
             cmd->boundingBox.width,
             cmd->boundingBox.height,
-            0,
             cmd->renderData.rectangle.backgroundColor.r / 255.0f,
             cmd->renderData.rectangle.backgroundColor.g / 255.0f,
             cmd->renderData.rectangle.backgroundColor.b / 255.0f);

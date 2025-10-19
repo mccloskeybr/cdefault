@@ -96,10 +96,7 @@ F64 F64Round(F64 x);
 #define V2_X_NEG (V2) {-1,  0}
 #define V2_Y_NEG (V2) { 0, -1}
 
-#define V2_SWIZZLE(dest, src, a, b) \
-  (dest)->x = (src)->a;             \
-  (dest)->y = (src)->b;
-
+V2   V2Lit(F32 x, F32 y);
 void V2Splat(V2* dest, F32 c);
 void V2AddF32(V2* dest, V2* x, F32 c);
 void V2SubF32(V2* dest, V2* x, F32 c);
@@ -140,11 +137,7 @@ void V2Lerp(V2* dest, V2* x, V2* y, F32 t);
 #define V3_GREEN (V3) {0, 1, 0}
 #define V3_BLUE  (V3) {0, 0, 1}
 
-#define V3_SWIZZLE(dest, src, a, b, c) \
-  (dest)->x = (src)->a;                \
-  (dest)->y = (src)->b;                \
-  (dest)->z = (src)->c;
-
+V3   V3Lit(F32 x, F32 y, F32 z);
 void V3Splat(V3* dest, F32 c);
 void V3FromV2(V3* dest, V2* src);
 void V3AddF32(V3* dest, V3* x, F32 c);
@@ -193,12 +186,7 @@ void V3RotateAroundAxis(V3* dest, V3* x, V3* axis, F32 angle_rad);
 #define V4_GREEN (V4) {0, 1, 0, 1}
 #define V4_BLUE  (V4) {0, 0, 1, 1}
 
-#define V4_SWIZZLE(dest, src, a, b, c, d) \
-  (dest)->x = (src)->a;                   \
-  (dest)->y = (src)->b;                   \
-  (dest)->z = (src)->c;                   \
-  (dest)->w = (src)->d;
-
+V4   V4Lit(F32 x, F32 y, F32 z, F32 w);
 void V4Splat(V4* dest, F32 c);
 void V4FromV2(V4* dest, V2* src);
 void V4FromV3(V4* dest, V3* src);
@@ -336,6 +324,13 @@ F64 F64Round(F64 x) { return F64Floor(x + 0.5); }
 // NOTE: V2 implementation
 ///////////////////////////////////////////////////////////////////////////////
 
+V2 V2Lit(F32 x, F32 y) {
+  V2 result;
+  result.x = x;
+  result.y = y;
+  return result;
+}
+
 void V2Splat(V2* dest, F32 c) {
   dest->x = c;
   dest->y = c;
@@ -445,6 +440,14 @@ void V2Lerp(V2* dest, V2* x, V2* y, F32 t) {
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: V3 implementation
 ///////////////////////////////////////////////////////////////////////////////
+
+V3 V3Lit(F32 x, F32 y, F32 z) {
+  V3 result;
+  result.x = x;
+  result.y = y;
+  result.z = z;
+  return result;
+}
 
 void V3Splat(V3* dest, F32 c) {
   dest->x = c;
@@ -609,6 +612,15 @@ void V3RotateAroundAxis(V3* dest, V3* v, V3* axis, F32 angle_rad) {
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: V4 implementation
 ///////////////////////////////////////////////////////////////////////////////
+
+V4 V4Lit(F32 x, F32 y, F32 z, F32 w) {
+  V4 result;
+  result.x = x;
+  result.y = y;
+  result.z = z;
+  result.w = w;
+  return result;
+}
 
 void V4Splat(V4* dest, F32 c) {
   dest->x = c;

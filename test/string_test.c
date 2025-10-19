@@ -1,310 +1,276 @@
 #define CDEFAULT_STD_IMPLEMENTATION
 #include "../cdefault_std.h"
+#define CDEFAULT_MATH_IMPLEMENTATION
+#include "../cdefault_math.h"
+#define CDEFAULT_TEST_IMPLEMENTATION
+#include "../cdefault_test.h"
 
-B32 CharTest(void) {
-  TEST_EXPECT(CharIsUpper('A'));
-  TEST_EXPECT(CharIsUpper('Z'));
-  TEST_EXPECT(!CharIsUpper('a'));
-  TEST_EXPECT(!CharIsUpper('z'));
-  TEST_EXPECT(!CharIsUpper('7'));
+void CharTest(void) {
+  EXPECT_TRUE(CharIsUpper('A'));
+  EXPECT_TRUE(CharIsUpper('Z'));
+  EXPECT_FALSE(CharIsUpper('a'));
+  EXPECT_FALSE(CharIsUpper('z'));
+  EXPECT_FALSE(CharIsUpper('7'));
 
-  TEST_EXPECT(CharIsLower('a'));
-  TEST_EXPECT(CharIsLower('z'));
-  TEST_EXPECT(!CharIsLower('A'));
-  TEST_EXPECT(!CharIsLower('Z'));
-  TEST_EXPECT(!CharIsLower('7'));
+  EXPECT_TRUE(CharIsLower('a'));
+  EXPECT_TRUE(CharIsLower('z'));
+  EXPECT_FALSE(CharIsLower('A'));
+  EXPECT_FALSE(CharIsLower('Z'));
+  EXPECT_FALSE(CharIsLower('7'));
 
-  TEST_EXPECT(CharIsAlpha('a'));
-  TEST_EXPECT(CharIsAlpha('A'));
-  TEST_EXPECT(!CharIsAlpha('7'));
+  EXPECT_TRUE(CharIsAlpha('a'));
+  EXPECT_TRUE(CharIsAlpha('A'));
+  EXPECT_FALSE(CharIsAlpha('7'));
 
-  TEST_EXPECT(CharIsDigit('7', 10));
-  TEST_EXPECT(!CharIsDigit('a', 10));
-  TEST_EXPECT(CharIsDigit('a', 11));
-  TEST_EXPECT(!CharIsDigit('A', 10));
-  TEST_EXPECT(CharIsDigit('A', 11));
+  EXPECT_TRUE(CharIsDigitEx('7', 10));
+  EXPECT_FALSE(CharIsDigitEx('a', 10));
+  EXPECT_TRUE(CharIsDigitEx('a', 11));
+  EXPECT_FALSE(CharIsDigitEx('A', 10));
+  EXPECT_TRUE(CharIsDigitEx('A', 11));
 
-  TEST_EXPECT(CharToLower('A') == 'a');
-  TEST_EXPECT(CharToLower('a') == 'a');
-  TEST_EXPECT(CharToLower('7') == '7');
-  TEST_EXPECT(CharToUpper('A') == 'A');
-  TEST_EXPECT(CharToUpper('a') == 'A');
-  TEST_EXPECT(CharToUpper('7') == '7');
-
-  return true;
+  EXPECT_U8_EQ(CharToLower('A'), 'a');
+  EXPECT_U8_EQ(CharToLower('a'), 'a');
+  EXPECT_U8_EQ(CharToLower('7'), '7');
+  EXPECT_U8_EQ(CharToUpper('A'), 'A');
+  EXPECT_U8_EQ(CharToUpper('a'), 'A');
+  EXPECT_U8_EQ(CharToUpper('7'), '7');
 }
 
-B32 CStringCopyTest(void) {
+void CStrCopyTest(void) {
   Arena* arena = ArenaAllocate();
   U8 base[6] = "apple";
-  U8* copy = CStringCopy(arena, base);
-  TEST_EXPECT(CStringEquals(base, copy));
-  TEST_EXPECT(CStringSize(copy) == 5);
-  return true;
+  U8* copy = CStrCopy(arena, base);
+  EXPECT_CSTR_EQ(base, copy);
+  EXPECT_U32_EQ(CStrSize(copy), 5);
 }
 
-B32 CStringSubstringTest(void) {
+void CStrSubstringTest(void) {
   Arena* arena = ArenaAllocate();
   U8 base[19] = "prefix test suffix";
-  U8 expected[5] = "test";
-  U8* substring = CStringSubstring(arena, base, 7, 10);
-  TEST_EXPECT(CStringEquals(substring, expected));
-  return true;
+  U8* substring = CStrSubstring(arena, base, 7, 10);
+  EXPECT_CSTR_EQ(substring, "test");
 }
 
-B32 CStringConcatTest(void) {
+void CStrConcatTest(void) {
   Arena* arena = ArenaAllocate();
-  U8 a[7] = "hello ";
-  U8 b[6] = "world";
-  U8 expected[12] = "hello world";
-  U8* concat = CStringConcat(arena, a, b);
-  TEST_EXPECT(CStringEquals(concat, expected));
-  return true;
+  U8* actual = CStrConcat(arena, (U8*) "hello ", (U8*) "world");
+  EXPECT_CSTR_EQ(actual, "hello world");
 }
 
-B32 CStringTrimTest(void) {
+void CStrTrimTest(void) {
   Arena* arena = ArenaAllocate();
-  U8 a[9] = "  test  ";
-  U8 expected[5] = "test";
-  U8* trimmed = CStringTrim(arena, a);
-  TEST_EXPECT(CStringEquals(trimmed, expected));
-  return true;
+  U8* trimmed = CStrTrim(arena, (U8*) "  test  ");
+  EXPECT_CSTR_EQ(trimmed, "test");
 }
 
-B32 CStringReplaceAllTest(void) {
+void CStrReplaceAllTest(void) {
   Arena* arena = ArenaAllocate();
-  U8* src = (U8*) "hello hi hello";
-  U8* a = (U8*) "hi";
-  U8* b = (U8*) "world";
-  U8* dest = NULL;
-  U8* expected = (U8*) "hello world hello";
-  TEST_EXPECT(CStringReplaceAll(arena, &dest, src, a, b));
-  TEST_EXPECT(CStringEquals(dest, expected));
-  return true;
+  U8* dest = CStrReplaceAll(arena, (U8*) "hello hi hello", (U8*) "hi", (U8*) "world");
+  EXPECT_CSTR_EQ(dest, "hello world hello");
 }
 
-B32 CStringFindTest(void) {
+void CStrFindTest(void) {
+  EXPECT_S32_EQ(CStrFind((U8*) "hello world world hello", 0, (U8*) "world"), 6);
+}
+
+void CStrFindReverseTest(void) {
   U8 haystack[24] = "hello world world hello";
-  U8 needle[6] = "world";
-  S32 pos = CStringFind(haystack, 0, needle);
-  TEST_EXPECT(pos == 6);
-  return true;
+  EXPECT_S32_EQ(CStrFindReverse(haystack, CStrSize(haystack) - 1, (U8*) "world"), 12);
 }
 
-B32 CStringFindReverseTest(void) {
+void CStrStartsWithTest(void) {
   U8 haystack[24] = "hello world world hello";
-  U8 needle[6] = "world";
-  S32 pos = CStringFindReverse(haystack, CStringSize(haystack) - 1, needle);
-  TEST_EXPECT(pos == 12);
-  return true;
+  EXPECT_TRUE(CStrStartsWith(haystack, (U8*) "hello"));
+  EXPECT_FALSE(CStrStartsWith(haystack, (U8*) "world"));
 }
 
-B32 CStringStartsWithTest(void) {
+void CStrEndsWithTest(void) {
   U8 haystack[24] = "hello world world hello";
-  TEST_EXPECT(CStringStartsWith(haystack, (U8*) "hello"));
-  TEST_EXPECT(!CStringStartsWith(haystack, (U8*) "world"));
-  return true;
+  EXPECT_TRUE(CStrEndsWith(haystack, (U8*) "hello"));
+  EXPECT_FALSE(CStrEndsWith(haystack, (U8*) "world"));
 }
 
-B32 CStringEndsWithTest(void) {
-  U8 haystack[24] = "hello world world hello";
-  TEST_EXPECT(CStringEndsWith(haystack, (U8*) "hello"));
-  TEST_EXPECT(!CStringEndsWith(haystack, (U8*) "world"));
-  return true;
-}
-
-B32 CStringToUpperTest(void) {
+void CStrToUpperTest(void) {
   U8 a[6] = "hello";
-  U8 expected[6] = "HELLO";
-  CStringToUpper(a);
-  TEST_EXPECT(CStringEquals(a, expected));
-  return true;
+  CStrToUpper(a);
+  EXPECT_CSTR_EQ(a, "HELLO");
 }
 
-B32 CStringToLowerTest(void) {
+void CStrToLowerTest(void) {
   U8 a[6] = "HELLO";
-  U8 expected[6] = "hello";
-  CStringToLower(a);
-  TEST_EXPECT(CStringEquals(a, expected));
-  return true;
+  CStrToLower(a);
+  EXPECT_CSTR_EQ(a, "hello");
 }
 
-B32 String8CreateTest(void) {
-  String8 literal = String8CreateStatic("hello");
-  TEST_EXPECT(literal.size == 5);
-  TEST_EXPECT(IS_MEMORY_EQUAL(literal.str, "hello", 5));
-  literal = String8CreateCString("hello");
-  TEST_EXPECT(literal.size == 5);
-  TEST_EXPECT(IS_MEMORY_EQUAL(literal.str, "hello", 5));
-  return true;
+void Str8CreateTest(void) {
+  String8 literal = Str8Lit("hello");
+  EXPECT_U32_EQ(literal.size, 5);
+  EXPECT_TRUE(IS_MEMORY_EQUAL(literal.str, "hello", 5));
+
+  literal = Str8CStr("hello");
+  EXPECT_U32_EQ(literal.size, 5);
+  EXPECT_TRUE(IS_MEMORY_EQUAL(literal.str, "hello", 5));
 }
 
-B32 String8TrimTest(void) {
-  String8 literal = String8CreateStatic("  test  ");
-  String8 trimmed = String8Trim(literal);
-  String8 expected = String8CreateStatic("test");
-  TEST_EXPECT(String8Equals(trimmed, expected));
-  return true;
+void Str8TrimTest(void) {
+  EXPECT_STR8_EQ(Str8Trim(Str8Lit("  test  ")), Str8Lit("test"));
 }
 
-B32 String8ReplaceAllTest(void) {
+void Str8ReplaceAllTest(void) {
   Arena* arena = ArenaAllocate();
-  String8 src = String8CreateStatic("hello hi hello");
-  String8 a = String8CreateStatic("hi");
-  String8 b = String8CreateStatic("world");
-  String8 dest;
-  String8 expected = String8CreateStatic("hello world hello");
-  TEST_EXPECT(String8ReplaceAll(arena, &dest, src, a, b));
-  TEST_EXPECT(String8Equals(dest, expected));
-  return true;
+  String8 actual = Str8ReplaceAll(arena, Str8Lit("hello hi hello"), Str8Lit("hi"), Str8Lit("world"));
+  EXPECT_STR8_EQ(actual, Str8Lit("hello world hello"));
 }
 
-B32 String8StartsWithTest(void) {
-  String8 literal = String8CreateStatic("hello world");
-  String8 prefix = String8CreateStatic("hello");
-  String8 not_prefix = String8CreateStatic("world");
-  TEST_EXPECT(String8StartsWith(literal, prefix));
-  TEST_EXPECT(!String8StartsWith(literal, not_prefix));
-  return true;
+void Str8ReplaceAllCharTest(void) {
+  String8 str = Str8Lit("abba");
+  EXPECT_TRUE(Str8ReplaceAllChar(&str, 'b', 'c'));
+  EXPECT_STR8_EQ(str, Str8Lit("acca"));
 }
 
-B32 String8EndsWithTest(void) {
-  String8 literal = String8CreateStatic("hello world");
-  String8 suffix = String8CreateStatic("world");
-  String8 not_suffix = String8CreateStatic("hello");
-  TEST_EXPECT(String8EndsWith(literal, suffix));
-  TEST_EXPECT(!String8EndsWith(literal, not_suffix));
-  return true;
+void Str8ToF32Test(void) {
+  EXPECT_F32_APPROX_EQ(Str8ToF32(Str8Lit("1.2345")), 1.2345f);
+  EXPECT_F32_APPROX_EQ(Str8ToF32(Str8Lit("+1")), 1.0f);
+  EXPECT_F32_APPROX_EQ(Str8ToF32(Str8Lit("-502")), -502.0f);
+  EXPECT_F32_APPROX_EQ(Str8ToF32(Str8Lit("1x0")), 1);
+  EXPECT_F32_APPROX_EQ(Str8ToF32(Str8Lit("abc1.2")), 0);
 }
 
-B32 String8EqualsTest(void) {
-  String8 literal = String8CreateStatic("hello world");
-  String8 same = String8CreateStatic("hello world");
-  String8 not_same = String8CreateStatic("world");
-  TEST_EXPECT(String8Equals(literal, same));
-  TEST_EXPECT(!String8Equals(literal, not_same));
-  return true;
+void Str8ToS32Test(void) {
+  EXPECT_S32_EQ(Str8ToS32(Str8Lit("123")), 123);
+  EXPECT_S32_EQ(Str8ToS32(Str8Lit("-456")), -456);
+  EXPECT_S32_EQ(Str8ToS32(Str8Lit("1x2")), 1);
+  EXPECT_S32_EQ(Str8ToS32(Str8Lit("x2")), 0);
 }
 
-B32 String8FindTest(void) {
-  String8 literal = String8CreateStatic("hello world");
-  String8 needle = String8CreateStatic("world");
-  String8 needle_2 = String8CreateStatic("o");
-  String8 not_present = String8CreateStatic("worlda");
-  TEST_EXPECT(String8Find(literal, 0, needle) == 6);
-  TEST_EXPECT(String8Find(literal, 0, needle_2) == 4);
-  TEST_EXPECT(String8Find(literal, 0, not_present) == -1);
-  TEST_EXPECT(String8Find(literal, 7, needle) == -1);
-  TEST_EXPECT(String8Find(literal, 100, needle) == -1);
-  return true;
+void Str8StartsWithTest(void) {
+  String8 literal = Str8Lit("hello world");
+  EXPECT_TRUE(Str8StartsWith(literal, Str8Lit("hello")));
+  EXPECT_FALSE(Str8StartsWith(literal, Str8Lit("world")));
 }
 
-B32 String8FindReverseTest(void) {
-  String8 literal = String8CreateStatic("hello world");
-  String8 needle = String8CreateStatic("world");
-  String8 needle_2 = String8CreateStatic("o");
-  String8 not_present = String8CreateStatic("worlda");
-  TEST_EXPECT(String8FindReverse(literal, 0, needle) == 6);
-  TEST_EXPECT(String8FindReverse(literal, 0, needle_2) == 7);
-  TEST_EXPECT(String8FindReverse(literal, 0, not_present) == -1);
-  TEST_EXPECT(String8FindReverse(literal, 7, needle) == -1);
-  TEST_EXPECT(String8FindReverse(literal, 100, needle) == -1);
-  return true;
+void Str8EndsWithTest(void) {
+  String8 literal = Str8Lit("hello world");
+  EXPECT_FALSE(Str8EndsWith(literal, Str8Lit("hello")));
+  EXPECT_TRUE(Str8EndsWith(literal, Str8Lit("world")));
 }
 
-B32 String8ConcatTest(void) {
+void Str8EqTest(void) {
+  String8 literal = Str8Lit("hello world");
+  EXPECT_STR8_EQ(literal, Str8Lit("hello world"));
+  EXPECT_FALSE(Str8Eq(literal, Str8Lit("world"))); // TODO: NEQ test expects?
+}
+
+void Str8FindTest(void) {
+  String8 literal = Str8Lit("hello world");
+  String8 needle = Str8Lit("world");
+  String8 needle_2 = Str8Lit("o");
+  String8 not_present = Str8Lit("worlda");
+  EXPECT_S32_EQ(Str8Find(literal, 0, needle), 6);
+  EXPECT_S32_EQ(Str8Find(literal, 0, needle_2), 4);
+  EXPECT_S32_EQ(Str8Find(literal, 0, not_present), -1);
+  EXPECT_S32_EQ(Str8Find(literal, 7, needle), -1);
+  EXPECT_S32_EQ(Str8Find(literal, 100, needle), -1);
+}
+
+void Str8FindReverseTest(void) {
+  String8 literal = Str8Lit("hello world");
+  String8 needle = Str8Lit("world");
+  String8 needle_2 = Str8Lit("o");
+  String8 not_present = Str8Lit("worlda");
+  EXPECT_S32_EQ(Str8FindReverse(literal, 0, needle), 6);
+  EXPECT_S32_EQ(Str8FindReverse(literal, 0, needle_2), 7);
+  EXPECT_S32_EQ(Str8FindReverse(literal, 0, not_present), -1);
+  EXPECT_S32_EQ(Str8FindReverse(literal, 7, needle), -1);
+  EXPECT_S32_EQ(Str8FindReverse(literal, 100, needle), -1);
+}
+
+void Str8ConcatTest(void) {
   Arena* arena = ArenaAllocate();
-  String8 a = String8CreateStatic("hello ");
-  String8 b = String8CreateStatic("world");
-  String8 c = String8Concat(arena, a, b);
-  String8 expected = String8CreateStatic("hello world");
-  TEST_EXPECT(String8Equals(c, expected));
-  ArenaRelease(arena);
-  return true;
+  EXPECT_STR8_EQ(Str8Concat(arena, Str8Lit("hello "), Str8Lit("world")), Str8Lit("hello world"));
 }
 
-B32 String8FormatTest(void) {
+void Str8FormatTest(void) {
   Arena* arena = ArenaAllocate();
-  String8 str = String8Format(arena, "hello %s %d", "world", 100);
-  String8 expected = String8CreateStatic("hello world 100");
-  TEST_EXPECT(String8Equals(str, expected));
-  ArenaRelease(arena);
-  return true;
+  String8 str = Str8Format(arena, "hello %s %d", "world", 100);
+  String8 expected = Str8Lit("hello world 100");
+  EXPECT_STR8_EQ(str, expected);
 }
 
-B32 String8ListBuildTest(void) {
+void Str8ListBuildTest(void) {
   String8ListNode* test = NULL;
   String8List list = {0};
   String8ListNode a = {0};
-  a.string = String8CreateStatic("hello");
+  a.string = Str8Lit("hello");
   String8ListNode b = {0};
-  b.string = String8CreateStatic(" ");
+  b.string = Str8Lit(" ");
   String8ListNode c = {0};
-  c.string = String8CreateStatic("world");
-  String8ListAppend(&list, &b);
-  String8ListPrepend(&list, &a);
-  String8ListAppend(&list, &c);
+  c.string = Str8Lit("world");
+  Str8ListAppend(&list, &b);
+  Str8ListPrepend(&list, &a);
+  Str8ListAppend(&list, &c);
+
   test = list.head;
-  TEST_EXPECT(IS_MEMORY_EQUAL(test, &a, sizeof(String8ListNode)));
+  EXPECT_TRUE(IS_MEMORY_EQUAL(test, &a, sizeof(String8ListNode)));
+
   test = test->next;
-  TEST_EXPECT(IS_MEMORY_EQUAL(test, &b, sizeof(String8ListNode)));
+  EXPECT_TRUE(IS_MEMORY_EQUAL(test, &b, sizeof(String8ListNode)));
+
   test = test->next;
-  TEST_EXPECT(IS_MEMORY_EQUAL(test, &c, sizeof(String8ListNode)));
+  EXPECT_TRUE(IS_MEMORY_EQUAL(test, &c, sizeof(String8ListNode)));
+
   Arena* arena = ArenaAllocate();
-  String8 combined = String8ListJoin(arena, &list);
-  String8 expected = String8CreateStatic("hello world");
-  TEST_EXPECT(String8Equals(combined, expected));
-  ArenaRelease(arena);
-  return true;
+  EXPECT_TRUE(Str8Eq(Str8ListJoin(arena, &list), Str8Lit("hello world")));
 }
 
-B32 String8SplitTest(void) {
-  String8 original = String8CreateStatic("hi hello world ");
+void Str8SplitTest(void) {
+  String8 original = Str8Lit("hi hello world ");
   String8 expected = {0};
   String8ListNode* test = NULL;
   Arena* arena = ArenaAllocate();
-  String8List list = String8Split(arena, original, ' ');
+  String8List list = Str8Split(arena, original, ' ');
 
   test = list.head;
-  expected = String8CreateStatic("hi");
-  TEST_EXPECT(String8Equals(test->string, expected));
+  expected = Str8Lit("hi");
+  EXPECT_STR8_EQ(test->string, expected);
 
   test = test->next;
-  expected = String8CreateStatic("hello");
-  TEST_EXPECT(String8Equals(test->string, expected));
+  expected = Str8Lit("hello");
+  EXPECT_STR8_EQ(test->string, expected);
 
   test = test->next;
-  expected = String8CreateStatic("world");
-  TEST_EXPECT(String8Equals(test->string, expected));
-
-  ArenaRelease(arena);
-  return true;
+  expected = Str8Lit("world");
+  EXPECT_STR8_EQ(test->string, expected);
 }
 
 int main(void) {
-  TEST(CharTest());
-  TEST(CStringCopyTest());
-  TEST(CStringSubstringTest());
-  TEST(CStringConcatTest());
-  TEST(CStringTrimTest());
-  TEST(CStringReplaceAllTest());
-  TEST(CStringFindTest());
-  TEST(CStringFindReverseTest());
-  TEST(CStringStartsWithTest());
-  TEST(CStringEndsWithTest());
-  TEST(CStringToUpperTest());
-  TEST(CStringToLowerTest());
-  TEST(String8CreateTest());
-  TEST(String8TrimTest());
-  TEST(String8ReplaceAllTest());
-  TEST(String8StartsWithTest());
-  TEST(String8EndsWithTest());
-  TEST(String8EqualsTest());
-  TEST(String8FindTest());
-  TEST(String8FindReverseTest());
-  TEST(String8ConcatTest());
-  TEST(String8FormatTest());
-  TEST(String8ListBuildTest());
-  TEST(String8SplitTest());
+  RUN_TEST(CharTest);
+  RUN_TEST(CStrCopyTest);
+  RUN_TEST(CStrSubstringTest);
+  RUN_TEST(CStrConcatTest);
+  RUN_TEST(CStrTrimTest);
+  RUN_TEST(CStrReplaceAllTest);
+  RUN_TEST(CStrFindTest);
+  RUN_TEST(CStrFindReverseTest);
+  RUN_TEST(CStrStartsWithTest);
+  RUN_TEST(CStrEndsWithTest);
+  RUN_TEST(CStrToUpperTest);
+  RUN_TEST(CStrToLowerTest);
+  RUN_TEST(Str8CreateTest);
+  RUN_TEST(Str8TrimTest);
+  RUN_TEST(Str8ReplaceAllTest);
+  RUN_TEST(Str8ReplaceAllCharTest);
+  RUN_TEST(Str8ToF32Test);
+  RUN_TEST(Str8ToS32Test);
+  RUN_TEST(Str8StartsWithTest);
+  RUN_TEST(Str8EndsWithTest);
+  RUN_TEST(Str8EqTest);
+  RUN_TEST(Str8FindTest);
+  RUN_TEST(Str8FindReverseTest);
+  RUN_TEST(Str8ConcatTest);
+  RUN_TEST(Str8FormatTest);
+  RUN_TEST(Str8ListBuildTest);
+  RUN_TEST(Str8SplitTest);
+  LogTestReport();
   return 0;
 }

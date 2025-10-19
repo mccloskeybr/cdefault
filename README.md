@@ -18,6 +18,7 @@ NOTE: Windows is explicitly supported. Linux is partially supported. I'll get ar
 *  `cdefault_render.h`     - Unified API for basic 2/3D rendering, focusing on prototypes.
 *  `cdefault_sound.h`      - Audio file importer.
 *  `cdefault_std.h`        - Platform agnostic support for e.g. memory allocation (Arena), concurrency, strings, etc.
+*  `cdefault_test.h`       - Basic unit test framework.
 
 See `example/` for example integrations. Unit and visual / component tests are under `test/`.
 

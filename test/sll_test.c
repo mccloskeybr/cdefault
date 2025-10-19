@@ -1,5 +1,7 @@
 #define CDEFAULT_STD_IMPLEMENTATION
 #include "../cdefault_std.h"
+#define CDEFAULT_TEST_IMPLEMENTATION
+#include "../cdefault_test.h"
 
 typedef struct Node Node;
 struct Node {
@@ -17,28 +19,26 @@ struct Queue {
   Node* tail;
 };
 
-B32 SllStackPushTest(void) {
+void SllStackPushTest(void) {
   Stack stack = {0};
   Node node_1 = {0};
   Node node_2 = {0};
   Node* test = NULL;
 
   SLL_STACK_PUSH(stack.head, &node_1, next);
-  TEST_EXPECT(stack.head == &node_1);
+  EXPECT_PTR_EQ(stack.head, &node_1);
   test = stack.head;
-  TEST_EXPECT(test->next == NULL);
+  EXPECT_PTR_NULL(test->next);
 
   SLL_STACK_PUSH(stack.head, &node_2, next);
-  TEST_EXPECT(stack.head == &node_2);
+  EXPECT_PTR_EQ(stack.head, &node_2);
   test = stack.head;
-  TEST_EXPECT(test->next == &node_1);
+  EXPECT_PTR_EQ(test->next, &node_1);
   test = test->next;
-  TEST_EXPECT(test->next == NULL);
-
-  return true;
+  EXPECT_PTR_NULL(test->next);
 }
 
-B32 SllStackPopTest(void) {
+void SllStackPopTest(void) {
   Stack stack = {0};
   Node node_1 = {0};
   Node node_2 = {0};
@@ -46,72 +46,66 @@ B32 SllStackPopTest(void) {
 
   SLL_STACK_PUSH(stack.head, &node_1, next);
   SLL_STACK_PUSH(stack.head, &node_2, next);
-  TEST_EXPECT(stack.head == &node_2);
+  EXPECT_PTR_EQ(stack.head, &node_2);
   test = stack.head;
-  TEST_EXPECT(test->next == &node_1);
+  EXPECT_PTR_EQ(test->next, &node_1);
   test = test->next;
-  TEST_EXPECT(test->next == NULL);
+  EXPECT_PTR_NULL(test->next);
 
   SLL_STACK_POP(stack.head, next);
-  TEST_EXPECT(stack.head == &node_1);
+  EXPECT_PTR_EQ(stack.head, &node_1);
   test = stack.head;
-  TEST_EXPECT(test->next == NULL);
+  EXPECT_PTR_NULL(test->next);
 
   SLL_STACK_POP(stack.head, next);
-  TEST_EXPECT(stack.head == NULL);
-
-  return true;
+  EXPECT_PTR_NULL(stack.head);
 }
 
-B32 SllQueuePushBackTest(void) {
+void SllQueuePushBackTest(void) {
   Queue queue = {0};
   Node node_1 = {0};
   Node node_2 = {0};
   Node* test = NULL;
 
   SLL_QUEUE_PUSH_BACK(queue.head, queue.tail, &node_1, next);
-  TEST_EXPECT(queue.head == &node_1);
-  TEST_EXPECT(queue.tail == &node_1);
+  EXPECT_PTR_EQ(queue.head, &node_1);
+  EXPECT_PTR_EQ(queue.tail, &node_1);
   test = queue.head;
-  TEST_EXPECT(test->next == NULL);
+  EXPECT_PTR_NULL(test->next);
 
   SLL_QUEUE_PUSH_BACK(queue.head, queue.tail, &node_2, next);
-  TEST_EXPECT(queue.head == &node_1);
-  TEST_EXPECT(queue.tail == &node_2);
+  EXPECT_PTR_EQ(queue.head, &node_1);
+  EXPECT_PTR_EQ(queue.tail, &node_2);
   test = queue.head;
-  TEST_EXPECT(test == &node_1);
-  TEST_EXPECT(test->next == &node_2);
+  EXPECT_PTR_EQ(test, &node_1);
+  EXPECT_PTR_EQ(test->next, &node_2);
   test = test->next;
-  TEST_EXPECT(test == &node_2);
-  TEST_EXPECT(test->next == NULL);
-
-  return true;
+  EXPECT_PTR_EQ(test, &node_2);
+  EXPECT_PTR_NULL(test->next);
 }
 
-B32 SllQueuePushFrontTest(void) {
+void SllQueuePushFrontTest(void) {
   Queue queue = {0};
   Node node_1 = {0};
   Node node_2 = {0};
   Node* test = NULL;
 
   SLL_QUEUE_PUSH_FRONT(queue.head, queue.tail, &node_1, next);
-  TEST_EXPECT(queue.head == &node_1);
-  TEST_EXPECT(queue.tail == &node_1);
+  EXPECT_PTR_EQ(queue.head, &node_1);
+  EXPECT_PTR_EQ(queue.tail, &node_1);
   test = queue.head;
-  TEST_EXPECT(test->next == NULL);
+  EXPECT_PTR_NULL(test->next);
 
   SLL_QUEUE_PUSH_FRONT(queue.head, queue.tail, &node_2, next);
   test = queue.head;
-  TEST_EXPECT(test == &node_2);
-  TEST_EXPECT(test->next == &node_1);
+  EXPECT_PTR_EQ(test, &node_2);
+  EXPECT_PTR_EQ(test->next, &node_1);
   test = test->next;
-  TEST_EXPECT(test == &node_1);
-  TEST_EXPECT(test->next == NULL);
-
-  return true;
+  EXPECT_PTR_EQ(test, &node_1);
+  EXPECT_PTR_NULL(test->next);
 }
 
-B32 SllQueuePopTest(void) {
+void SllQueuePopTest(void) {
   Queue queue = {0};
   Node node_1 = {0};
   Node node_2 = {0};
@@ -120,27 +114,26 @@ B32 SllQueuePopTest(void) {
   SLL_QUEUE_PUSH_BACK(queue.head, queue.tail, &node_1, next);
   SLL_QUEUE_PUSH_BACK(queue.head, queue.tail, &node_2, next);
   test = queue.head;
-  TEST_EXPECT(test == &node_1);
-  TEST_EXPECT(test->next == &node_2);
-  TEST_EXPECT(test->next->next == NULL);
+  EXPECT_PTR_EQ(test, &node_1);
+  EXPECT_PTR_EQ(test->next, &node_2);
+  EXPECT_PTR_NULL(test->next->next);
 
   SLL_QUEUE_POP(queue.head, queue.tail, next);
   test = queue.head;
-  TEST_EXPECT(test == &node_2);
-  TEST_EXPECT(test->next == NULL);
+  EXPECT_PTR_EQ(test, &node_2);
+  EXPECT_PTR_NULL(test->next);
 
   SLL_QUEUE_POP(queue.head, queue.tail, next);
   test = queue.tail;
-  TEST_EXPECT(test == NULL);
-
-  return true;
+  EXPECT_PTR_NULL(test);
 }
 
 int main(void) {
-  TEST(SllStackPushTest());
-  TEST(SllStackPopTest());
-  TEST(SllQueuePushBackTest());
-  TEST(SllQueuePushFrontTest());
-  TEST(SllQueuePopTest());
+  RUN_TEST(SllStackPushTest);
+  RUN_TEST(SllStackPopTest);
+  RUN_TEST(SllQueuePushBackTest);
+  RUN_TEST(SllQueuePushFrontTest);
+  RUN_TEST(SllQueuePopTest);
+  LogTestReport();
   return 0;
 }

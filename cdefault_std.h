@@ -287,7 +287,7 @@ void  MemoryDecommit(void* ptr, U64 size);
 //
 //        ->next
 //   o - o - o
-// tail     head
+// head     tail
 //
 // E.g.
 // struct Node { Node* next; }
@@ -331,7 +331,7 @@ void  MemoryDecommit(void* ptr, U64 size);
 //
 // prev<- ->next
 //   o - o - o
-// tail     head
+// head     tail
 //
 // E.g.
 // struct Node { Node* prev, next; }
@@ -436,19 +436,6 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...);
 #else
 #  define LOG_DEBUG(fmt, ...)
 #endif
-
-///////////////////////////////////////////////////////////////////////////////
-// NOTE: Test
-///////////////////////////////////////////////////////////////////////////////
-
-// NOTE: Test functions should return a B32, true on success.
-// NOTE: Wrap test functions in TEST() from main, expectations in TEST_EXPECT().
-
-#define TEST(func) \
-  if ((func))  { LOG_INFO ("\t[" ANSI_COLOR_GREEN "SUCCESS" ANSI_COLOR_RESET "]: "#func); } \
-  else         { LOG_ERROR("\t[" ANSI_COLOR_RED   "FAILURE" ANSI_COLOR_RESET "]: "#func); }
-#define TEST_EXPECT(expr) \
-  if (!(expr)) { LOG_ERROR("\t" ANSI_COLOR_RED "Expectation failed: " ANSI_COLOR_RESET #expr ); return false; }
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Arena
@@ -641,58 +628,59 @@ B32  CharIsWhitespace(U8 c);
 B32  CharIsLower(U8 c);
 B32  CharIsUpper(U8 c);
 B32  CharIsAlpha(U8 c);
-B32  CharIsDigit(U8 c, U32 base);
+B32  CharIsDigit(U8 c);
+B32  CharIsDigitEx(U8 c, U32 base);
 U8   CharToLower(U8 c);
 U8   CharToUpper(U8 c);
 
-U32  CStringSize(U8* str);
-U8*  CStringCopy(Arena* arena, U8* src); // TODO: Copy with sized buffer
-U8*  CStringSubstring(Arena* arena, U8* s, U64 start, U64 end);
-U8*  CStringConcat(Arena* arena, U8* a, U8* b);
-U8*  CStringTrim(Arena* arena, U8* s);
-B32  CStringReplaceAll(Arena* arena, U8** dest, U8* src, U8* a, U8* b); // NOTE: Replaces occurrences of a with b in src, and places the result in dest.
-B32  CStringReplaceAllChar(U8* str, U8 a, U8 b); // NOTE: Replaces occurrences of a with b inplace in str.
-B32  CStringEquals(U8* a, U8* b);
-S32  CStringFind(U8* str, S32 start_pos, U8* needle); // NOTE: Returns -1 on failure.
-S32  CStringFindReverse(U8* str, S32 start_pos, U8* needle); // NOTE: Returns -1 on failure.
-B32  CStringStartsWith(U8* a, U8* b);
-B32  CStringEndsWith(U8* a, U8* b);
-void CStringToUpper(U8* s);
-void CStringToLower(U8* s);
-U8*  CStringFormatV(Arena* arena, U8* fmt, va_list args);
-U8*  _CStringFormat(Arena* arena, U8* fmt, ...);
-#define CStringFormat(a, fmt, ...) _CStringFormat(a, (U8) fmt, ##__VA_ARGS__)
+U32  CStrSize(U8* str);
+U8*  CStrCopy(Arena* arena, U8* src); // TODO: Copy with sized buffer
+U8*  CStrSubstring(Arena* arena, U8* s, U64 start, U64 end);
+U8*  CStrConcat(Arena* arena, U8* a, U8* b);
+U8*  CStrTrim(Arena* arena, U8* s);
+U8*  CStrReplaceAll(Arena* arena, U8* src, U8* from, U8* to); // NOTE: Replaces occurrences of a with b in src, and places the result in dest.
+B32  CStrReplaceAllChar(U8* str, U8 from, U8 to); // NOTE: Replaces occurrences of a with b inplace in str.
+B32  CStrEq(U8* a, U8* b);
+S32  CStrFind(U8* str, S32 start_pos, U8* needle); // NOTE: Returns -1 on failure.
+S32  CStrFindReverse(U8* str, S32 start_pos, U8* needle); // NOTE: Returns -1 on failure.
+B32  CStrStartsWith(U8* a, U8* b);
+B32  CStrEndsWith(U8* a, U8* b);
+void CStrToUpper(U8* s);
+void CStrToLower(U8* s);
+U8*  CStrFormatV(Arena* arena, U8* fmt, va_list args);
+U8*  _CStrFormat(Arena* arena, U8* fmt, ...);
+#define CStrFormat(a, fmt, ...) _CStrFormat(a, (U8) fmt, ##__VA_ARGS__)
 
-String8 String8Create(U8* str, U64 size);
-String8 String8CreateRange(U8* str, U8* one_past_last);
-String8 _String8CreateCString(U8* c_str);
-#define String8CreateCString(s) _String8CreateCString((U8*) s)
-#define String8CreateStatic(s) String8Create((U8*) s, sizeof(s) - 1)
-String8 String8Copy(Arena* arena, String8 string);
-String8 String8Substring(String8 s, U64 start, U64 end);
-String8 String8Trim(String8 s);
-B32     String8ReplaceAll(Arena* arena, String8* dest, String8 src, String8 a, String8 b);
-B32     String8ReplaceAllChar(String8 str, U8 a, U8 b);
-void String8ToUpper(String8 s);
-void String8ToLower(String8 s);
-F32  String8ToF32(String8 s);
-S32  String8ToS32(String8 s);
-B32  String8StartsWith(String8 a, String8 b); // NOTE: True iff a starts with b.
-B32  String8EndsWith(String8 a, String8 b); // NOTE: True iff a ends with b.
-B32  String8Equals(String8 a, String8 b);
-S64  String8Find(String8 string, S32 start_pos, String8 needle); // NOTE: Returns -1 on failure.
-S64  String8FindReverse(String8 string, S32 reverse_start_pos, String8 needle); // NOTE: Returns -1 on failure.
-String8 String8Concat(Arena* arena, String8 a, String8 b);
-String8 String8FormatV(Arena* arena, U8* fmt, va_list args);
-String8 _String8Format(Arena* arena, U8* fmt, ...);
-#define String8Format(a, fmt, ...) _String8Format(a, (U8*) fmt, ##__VA_ARGS__)
+String8 Str8(U8* str, U64 size);
+String8 Str8Range(U8* str, U8* one_past_last);
+String8 _Str8CStr(U8* c_str);
+#define Str8CStr(s) _Str8CStr((U8*) s)
+#define Str8Lit(s) Str8((U8*) s, sizeof(s) - 1)
+String8 Str8Copy(Arena* arena, String8 string);
+String8 Str8Substring(String8 s, U64 start, U64 end);
+String8 Str8Trim(String8 s);
+String8 Str8ReplaceAll(Arena* arena, String8 src, String8 from, String8 to);
+B32     Str8ReplaceAllChar(String8* str, U8 from, U8 to);
+void    Str8ToUpper(String8 s);
+void    Str8ToLower(String8 s);
+F32     Str8ToF32(String8 s);
+S32     Str8ToS32(String8 s);
+B32     Str8StartsWith(String8 a, String8 b); // NOTE: True iff a starts with b.
+B32     Str8EndsWith(String8 a, String8 b); // NOTE: True iff a ends with b.
+B32     Str8Eq(String8 a, String8 b);
+S64     Str8Find(String8 string, S32 start_pos, String8 needle); // NOTE: Returns -1 on failure.
+S64     Str8FindReverse(String8 string, S32 reverse_start_pos, String8 needle); // NOTE: Returns -1 on failure.
+String8 Str8Concat(Arena* arena, String8 a, String8 b);
+String8 Str8FormatV(Arena* arena, U8* fmt, va_list args);
+String8 _Str8Format(Arena* arena, U8* fmt, ...);
+#define Str8Format(a, fmt, ...) _Str8Format(a, (U8*) fmt, ##__VA_ARGS__)
 
-void String8ListPrepend(String8List* list, String8ListNode* node);
-void String8ListAppend(String8List* list, String8ListNode* node);
-String8 String8ListJoin(Arena* arena, String8List* list);
-String8List String8Split(Arena* arena, String8 string, U8 c);
+void    Str8ListPrepend(String8List* list, String8ListNode* node);
+void    Str8ListAppend(String8List* list, String8ListNode* node);
+String8 Str8ListJoin(Arena* arena, String8List* list);
+String8List Str8Split(Arena* arena, String8 string, U8 c);
 
-S32 String8Hash(String8 s);
+S32 Str8Hash(String8 s);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Sort
@@ -1485,7 +1473,11 @@ B32 CharIsAlpha(U8 c) {
   return CharIsLower(c) || CharIsUpper(c);
 }
 
-B32 CharIsDigit(U8 c, U32 base) {
+B32 CharIsDigit(U8 c) {
+  return CharIsDigitEx(c, 10);
+}
+
+B32 CharIsDigitEx(U8 c, U32 base) {
   if (UNLIKELY(base == 0 || base > 16)) { return false; }
   if      ('0' <= c && c <= '9') { c -= '0'; }
   else if (CharIsLower(c))       { c -= 'a'; c += 10; }
@@ -1503,20 +1495,20 @@ U8 CharToUpper(U8 c) {
   return c;
 }
 
-U32 CStringSize(U8* str) {
+U32 CStrSize(U8* str) {
   U8* end = str;
   while (*end != '\0') { end++; }
   return (U32) (end - str);
 }
 
-U8* CStringCopy(Arena* arena, U8* src) {
-  U32 size_with_null_terminator = CStringSize(src) + 1;
+U8* CStrCopy(Arena* arena, U8* src) {
+  U32 size_with_null_terminator = CStrSize(src) + 1;
   U8* result = ARENA_PUSH_ARRAY(arena, U8, size_with_null_terminator);
   MEMORY_COPY(result, src, size_with_null_terminator * sizeof(U8));
   return result;
 }
 
-U8* CStringSubstring(Arena* arena, U8* s, U64 start, U64 end) {
+U8* CStrSubstring(Arena* arena, U8* s, U64 start, U64 end) {
   U64 size = end - start + 1;
   U8* result = ARENA_PUSH_ARRAY(arena, U8, size + 1);
   MEMORY_COPY(result, (s + start), size * sizeof(U8));
@@ -1524,9 +1516,9 @@ U8* CStringSubstring(Arena* arena, U8* s, U64 start, U64 end) {
   return result;
 }
 
-U8* CStringConcat(Arena* arena, U8* a, U8* b) {
-  U32 a_size = CStringSize(a);
-  U32 b_size = CStringSize(b);
+U8* CStrConcat(Arena* arena, U8* a, U8* b) {
+  U32 a_size = CStrSize(a);
+  U32 b_size = CStrSize(b);
   U32 size = a_size + b_size + 1;
   U8* result = ARENA_PUSH_ARRAY(arena, U8, size * sizeof(U8));
   MEMORY_COPY(result, a, a_size * sizeof(U8));
@@ -1535,19 +1527,19 @@ U8* CStringConcat(Arena* arena, U8* a, U8* b) {
   return result;
 }
 
-U8* CStringTrim(Arena* arena, U8* s) {
+U8* CStrTrim(Arena* arena, U8* s) {
   U64 start = 0;
-  U64 end = CStringSize(s) - 1;
+  U64 end = CStrSize(s) - 1;
   while (CharIsWhitespace(s[start])) { start++; }
   while (CharIsWhitespace(s[end]))   { end--;   }
-  return CStringSubstring(arena, s, start, end);
+  return CStrSubstring(arena, s, start, end);
 }
 
-B32 CStringEquals(U8* a, U8* b) {
-  return CStringStartsWith(a, b);
+B32 CStrEq(U8* a, U8* b) {
+  return CStrStartsWith(a, b);
 }
 
-S32 CStringFind(U8* str, S32 start_pos, U8* needle) {
+S32 CStrFind(U8* str, S32 start_pos, U8* needle) {
   if (start_pos < 0) { return -1; }
   U32 i = start_pos;
   while (true) {
@@ -1565,7 +1557,7 @@ S32 CStringFind(U8* str, S32 start_pos, U8* needle) {
   return -1;
 }
 
-S32 CStringFindReverse(U8* str, S32 start_pos, U8* needle) {
+S32 CStrFindReverse(U8* str, S32 start_pos, U8* needle) {
   if (start_pos < 0) { return -1; }
   U32 i = start_pos;
   while (true) {
@@ -1583,56 +1575,51 @@ S32 CStringFindReverse(U8* str, S32 start_pos, U8* needle) {
   return -1;
 }
 
-B32 CStringReplaceAll(Arena* arena, U8** dest, U8* src, U8* a, U8* b) {
-  B32 found = false;
+U8* CStrReplaceAll(Arena* arena, U8* src, U8* from, U8* to) {
   U32 i = 0;
-  U32 a_size = CStringSize(a);
-  U32 b_size = CStringSize(b);
-  U32 dest_size = 0;
+  U32 from_size = CStrSize(from);
+  U32 to_size = CStrSize(to);
+  U32 result_size = 0;
   while (src[i] != '\0') {
-    if (CStringStartsWith(&src[i], a)) {
-      found = true;
-      i += a_size;
-      dest_size += b_size;
+    if (CStrStartsWith(&src[i], from)) {
+      i += from_size;
+      result_size += to_size;
       continue;
     }
-    dest_size++;
+    result_size++;
     i++;
   }
-  if (found) {
-    *dest = ARENA_PUSH_ARRAY(arena, U8, dest_size + 1);
-    i = 0;
-    U32 k = 0;
-    while (src[i] != '\0') {
-      // SPEEDUP: don't really need to calculate this again.
-      if (CStringStartsWith(&src[i], a)) {
-        for (U32 j = 0; j < b_size; j++) {
-          (*dest)[k++] = b[j];
-        }
-        i += a_size;
-        continue;
+  U8* result = ARENA_PUSH_ARRAY(arena, U8, result_size + 1);
+  i = 0;
+  U32 k = 0;
+  while (src[i] != '\0') {
+    if (CStrStartsWith(&src[i], from)) {
+      for (U32 j = 0; j < to_size; j++) {
+        result[k++] = to[j];
       }
-      (*dest)[k++] = src[i++];
+      i += from_size;
+      continue;
     }
-    (*dest)[k] = '\0';
+    result[k++] = src[i++];
   }
-  return found;
+  result[k] = '\0';
+  return result;
 }
 
-B32 CStringReplaceAllChar(U8* str, U8 a, U8 b) {
+B32 CStrReplaceAllChar(U8* str, U8 from, U8 to) {
   B32 result = false;
   U32 i = 0;
   while (str[i] != '\0'){
-    if (str[i] == a) {
+    if (str[i] == from) {
       result = true;
-      str[i] = b;
+      str[i] = to;
     }
     i++;
   }
   return result;
 }
 
-B32 CStringStartsWith(U8* a, U8* b) {
+B32 CStrStartsWith(U8* a, U8* b) {
   U32 i = 0;
   while (true) {
     if (b[i] == '\0') { return true;  }
@@ -1642,9 +1629,9 @@ B32 CStringStartsWith(U8* a, U8* b) {
   }
 }
 
-B32 CStringEndsWith(U8* a, U8* b) {
-  U32 a_idx = CStringSize(a) - 1;
-  U32 b_idx = CStringSize(b) - 1;
+B32 CStrEndsWith(U8* a, U8* b) {
+  U32 a_idx = CStrSize(a) - 1;
+  U32 b_idx = CStrSize(b) - 1;
   U32 i = 0;
   while (true) {
     if (i > b_idx) { return true;  }
@@ -1653,17 +1640,17 @@ B32 CStringEndsWith(U8* a, U8* b) {
     i++;
   }
 }
-void CStringToUpper(U8* s) {
+void CStrToUpper(U8* s) {
   U32 i = 0;
   while (s[i] != '\0') { s[i] = CharToUpper(s[i]); i++; }
 }
 
-void CStringToLower(U8* s) {
+void CStrToLower(U8* s) {
   U32 i = 0;
   while (s[i] != '\0') { s[i] = CharToLower(s[i]); i++; }
 }
 
-U8* CStringFormatV(Arena* arena, U8* fmt, va_list args) {
+U8* CStrFormatV(Arena* arena, U8* fmt, va_list args) {
   va_list args_copy;
   va_copy(args_copy, args);
   U32 size = vsnprintf(NULL, 0, (const char* const) fmt, args_copy) + 1;
@@ -1675,15 +1662,15 @@ U8* CStringFormatV(Arena* arena, U8* fmt, va_list args) {
   return result;
 }
 
-U8* _CStringFormat(Arena* arena, U8* fmt, ...) {
+U8* _CStrFormat(Arena* arena, U8* fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  U8* result = CStringFormatV(arena, fmt, args);
+  U8* result = CStrFormatV(arena, fmt, args);
   va_end(args);
   return result;
 }
 
-String8 String8Create(U8* str, U64 size) {
+String8 Str8(U8* str, U64 size) {
   String8 result;
   MEMORY_ZERO_STRUCT(&result);
   result.str = str;
@@ -1691,13 +1678,13 @@ String8 String8Create(U8* str, U64 size) {
   return result;
 }
 
-String8 _String8CreateCString(U8* c_str) {
+String8 _Str8CStr(U8* c_str) {
   U8* c = c_str;
   while (*c != '\0') { c += 1; }
-  return String8CreateRange(c_str, c);
+  return Str8Range(c_str, c);
 }
 
-String8 String8CreateRange(U8* str, U8* one_past_last) {
+String8 Str8Range(U8* str, U8* one_past_last) {
   String8 result;
   MEMORY_ZERO_STRUCT(&result);
   result.str = str;
@@ -1705,7 +1692,7 @@ String8 String8CreateRange(U8* str, U8* one_past_last) {
   return result;
 }
 
-String8 String8Copy(Arena* arena, String8 string) {
+String8 Str8Copy(Arena* arena, String8 string) {
   String8 result;
   MEMORY_ZERO_STRUCT(&result);
   result.size = string.size;
@@ -1714,7 +1701,7 @@ String8 String8Copy(Arena* arena, String8 string) {
   return result;
 }
 
-String8 String8Substring(String8 s, U64 start, U64 end) {
+String8 Str8Substring(String8 s, U64 start, U64 end) {
   DEBUG_ASSERT(end >= start);
   start = MIN(start, s.size - 1);
   end = MIN(end, s.size - 1);
@@ -1725,65 +1712,58 @@ String8 String8Substring(String8 s, U64 start, U64 end) {
   return result;
 }
 
-String8 String8Trim(String8 s) {
+String8 Str8Trim(String8 s) {
   U64 start = 0;
   while (CharIsWhitespace(s.str[start])) { ++start; }
   U64 end = s.size - 1;
   while (CharIsWhitespace(s.str[end])) { --end; }
-  return String8Substring(s, start, end);
+  return Str8Substring(s, start, end);
 }
 
-B32 String8ReplaceAll(Arena* arena, String8* dest, String8 src, String8 a, String8 b) {
-  B32 found = false;
+String8 Str8ReplaceAll(Arena* arena, String8 src, String8 from, String8 to) {
+  U32 result_size = 0;
   U32 i = 0;
-  U32 dest_size = 0;
-  while (src.str[i] != '\0') {
-    String8 src_sub = String8Substring(src, i, src.size - 1);
-    if (String8StartsWith(src_sub, a)) {
-      found = true;
-      i += a.size;
-      dest_size += b.size;
+  while (i < src.size) {
+    String8 sub = Str8Substring(src, i, src.size - 1);
+    if (Str8StartsWith(sub, from)) {
+      i += from.size;
+      result_size += to.size;
       continue;
     }
-    dest_size++;
+    result_size++;
     i++;
   }
-  if (found) {
-    dest->str = ARENA_PUSH_ARRAY(arena, U8, dest_size + 1);
-    dest->size = dest_size;
-    i = 0;
-    U32 k = 0;
-    while (src.str[i] != '\0') {
-      // SPEEDUP: don't really need to calculate this again.
-      String8 src_sub = String8Substring(src, i, src.size - 1);
-      if (String8StartsWith(src_sub, a)) {
-        for (U32 j = 0; j < b.size; j++) {
-          dest->str[k++] = b.str[j];
-        }
-        i += a.size;
-        continue;
+  String8 result;
+  result.str = ARENA_PUSH_ARRAY(arena, U8, result_size);
+  result.size = result_size;
+  i = 0;
+  U32 k = 0;
+  while (i < src.size) {
+    String8 sub = Str8Substring(src, i, src.size - 1);
+    if (Str8StartsWith(sub, from)) {
+      for (U32 j = 0; j < to.size; j++) {
+        result.str[k++] = to.str[j];
       }
-      dest->str[k++] = src.str[i++];
+      i += from.size;
+      continue;
     }
-    dest->str[k] = '\0';
-  }
-  return found;
-}
-
-B32 String8ReplaceAllChar(String8 str, U8 a, U8 b) {
-  B32 result = false;
-  U32 i = 0;
-  while (str.str[i] != '\0'){
-    if (str.str[i] == a) {
-      result = true;
-      str.str[i] = b;
-    }
-    i++;
+    result.str[k++] = src.str[i++];
   }
   return result;
 }
 
-B32 String8StartsWith(String8 a, String8 b) {
+B32 Str8ReplaceAllChar(String8* str, U8 from, U8 to) {
+  B32 result = false;
+  for (U32 i = 0; i < str->size; i++) {
+    if (str->str[i] == from) {
+      result = true;
+      str->str[i] = to;
+    }
+  }
+  return result;
+}
+
+B32 Str8StartsWith(String8 a, String8 b) {
   if (a.size < b.size) { return false; }
   for (U64 i = 0; i < b.size; ++i) {
     if (a.str[i] != b.str[i]) { return false; }
@@ -1791,7 +1771,7 @@ B32 String8StartsWith(String8 a, String8 b) {
   return true;
 }
 
-B32 String8EndsWith(String8 a, String8 b) {
+B32 Str8EndsWith(String8 a, String8 b) {
   if (a.size < b.size) { return false; }
   U64 a_offset = a.size - b.size;
   for (U64 i = 0; i < b.size; ++i) {
@@ -1800,45 +1780,45 @@ B32 String8EndsWith(String8 a, String8 b) {
   return true;
 }
 
-B32 String8Equals(String8 a, String8 b) {
+B32 Str8Eq(String8 a, String8 b) {
   if (a.size != b.size) { return false; }
-  return String8StartsWith(a, b);
+  return Str8StartsWith(a, b);
 }
 
-S64 String8Find(String8 string, S32 start_pos, String8 needle) {
+S64 Str8Find(String8 string, S32 start_pos, String8 needle) {
   if (start_pos < 0) { return -1; }
   if (string.size < start_pos + needle.size) { return -1; }
   for (U64 i = 0; i < string.size - start_pos; ++i) {
     U64 offset = start_pos + i;
-    String8 substr = String8Create(string.str + offset, string.size - offset);
-    if (String8StartsWith(substr, needle)) { return offset; }
+    String8 substr = Str8(string.str + offset, string.size - offset);
+    if (Str8StartsWith(substr, needle)) { return offset; }
   }
   return -1;
 }
 
-S64 String8FindReverse(String8 string, S32 reverse_start_pos, String8 needle) {
+S64 Str8FindReverse(String8 string, S32 reverse_start_pos, String8 needle) {
   if (reverse_start_pos < 0) { return -1; }
   if (string.size < reverse_start_pos + needle.size) { return -1; }
   for (U64 i = string.size - reverse_start_pos - needle.size; i > 0; --i) {
-    String8 substr = String8Create(string.str, i + needle.size);
-    if (String8EndsWith(substr, needle)) { return i; }
+    String8 substr = Str8(string.str, i + needle.size);
+    if (Str8EndsWith(substr, needle)) { return i; }
   }
   return -1;
 }
 
-void String8ToUpper(String8 s) {
+void Str8ToUpper(String8 s) {
   for (U64 i = 0; i < s.size; ++i) {
     s.str[i] = CharToUpper(s.str[i]);
   }
 }
 
-void String8ToLower(String8 s) {
+void Str8ToLower(String8 s) {
   for (U64 i = 0; i < s.size; ++i) {
     s.str[i] = CharToLower(s.str[i]);
   }
 }
 
-F32 String8ToF32(String8 s) {
+F32 Str8ToF32(String8 s) {
   U32 i = 0;
   F32 result = 0.0f;
 
@@ -1846,7 +1826,7 @@ F32 String8ToF32(String8 s) {
   if (s.str[i] == '+')      { sign = +1; i++; }
   else if (s.str[i] == '-') { sign = -1; i++; }
 
-  while (i < s.size && CharIsDigit(s.str[i], 10)) {
+  while (i < s.size && CharIsDigit(s.str[i])) {
     result *= 10;
     result += s.str[i] - '0';
     i++;
@@ -1855,7 +1835,7 @@ F32 String8ToF32(String8 s) {
   i++;
 
   U32 exp = 0;
-  while (i < s.size && CharIsDigit(s.str[i], 10)) {
+  while (i < s.size && CharIsDigit(s.str[i])) {
     result *= 10;
     result += s.str[i] - '0';
     i++;
@@ -1868,7 +1848,7 @@ F32 String8ToF32(String8 s) {
   return sign * result;
 }
 
-S32 String8ToS32(String8 s) {
+S32 Str8ToS32(String8 s) {
   S32 i = 0;
   S32 result = 0;
 
@@ -1876,7 +1856,7 @@ S32 String8ToS32(String8 s) {
   if (s.str[i] == '+')      { sign = +1; i++; }
   else if (s.str[i] == '-') { sign = -1; i++; }
 
-  while (i < s.size && CharIsDigit(s.str[i], 10)) {
+  while (i < s.size && CharIsDigit(s.str[i])) {
     result *= 10;
     result += s.str[i] - '0';
     i++;
@@ -1884,7 +1864,7 @@ S32 String8ToS32(String8 s) {
   return sign * result;
 }
 
-String8 String8Concat(Arena* arena, String8 a, String8 b) {
+String8 Str8Concat(Arena* arena, String8 a, String8 b) {
   String8 result;
   MEMORY_ZERO_STRUCT(&result);
   result.size = a.size + b.size;
@@ -1894,7 +1874,7 @@ String8 String8Concat(Arena* arena, String8 a, String8 b) {
   return result;
 }
 
-String8 String8FormatV(Arena* arena, U8* fmt, va_list args) {
+String8 Str8FormatV(Arena* arena, U8* fmt, va_list args) {
   va_list args_copy;
   va_copy(args_copy, args);
   U32 size = vsnprintf(NULL, 0, (const char* const) fmt, args_copy) + 1;
@@ -1910,27 +1890,28 @@ String8 String8FormatV(Arena* arena, U8* fmt, va_list args) {
   return result;
 }
 
-String8 _String8Format(Arena* arena, U8* fmt, ...) {
+String8 _Str8Format(Arena* arena, U8* fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  String8 result = String8FormatV(arena, fmt, args);
+  String8 result = Str8FormatV(arena, fmt, args);
   va_end(args);
   return result;
 }
 
-void String8ListPrepend(String8List* list, String8ListNode* node) {
+void Str8ListPrepend(String8List* list, String8ListNode* node) {
   SLL_QUEUE_PUSH_FRONT(list->head, list->tail, node, next);
 }
 
-void String8ListAppend(String8List* list, String8ListNode* node) {
+void Str8ListAppend(String8List* list, String8ListNode* node) {
   SLL_QUEUE_PUSH_BACK(list->head, list->tail, node, next);
 }
 
-String8 String8ListJoin(Arena* arena, String8List* list) {
+String8 Str8ListJoin(Arena* arena, String8List* list) {
   U64 size = 0;
   for (String8ListNode* node = list->head; node != NULL; node = node->next) {
     size += node->string.size;
   }
+
   String8 result;
   MEMORY_ZERO_STRUCT(&result);
   result.size = size;
@@ -1943,27 +1924,27 @@ String8 String8ListJoin(Arena* arena, String8List* list) {
   return result;
 }
 
-String8List String8Split(Arena* arena, String8 string, U8 c) {
+String8List Str8Split(Arena* arena, String8 string, U8 c) {
   String8List list;
   MEMORY_ZERO_STRUCT(&list);
   U8* substring_start = string.str;
   for (U64 i = 0; i < string.size; ++i) {
     if (string.str[i] == c) {
       String8ListNode* node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-      node->string = String8CreateRange(substring_start, &string.str[i]);
-      String8ListAppend(&list, node);
+      node->string = Str8Range(substring_start, &string.str[i]);
+      Str8ListAppend(&list, node);
       substring_start = &string.str[++i];
     }
   }
   if (substring_start < string.str + string.size) {
     String8ListNode* node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-    node->string = String8CreateRange(substring_start, string.str + string.size);
-    String8ListAppend(&list, node);
+    node->string = Str8Range(substring_start, string.str + string.size);
+    Str8ListAppend(&list, node);
   }
   return list;
 }
 
-S32 String8Hash(String8 s) {
+S32 Str8Hash(String8 s) {
   S32 hash = 0;
   for (S32 i = 0; i < s.size; i++) {
     hash += s.str[i];

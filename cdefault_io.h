@@ -161,7 +161,7 @@ B32 WIN_DirGetCurrent(Arena* arena, U8** file_path, U32* file_path_size) {
 }
 
 B32 WIN_DirSetCurrent(U8* file_path) {
-  CStringReplaceAllChar(file_path, '/', '\\');
+  CStrReplaceAllChar(file_path, '/', '\\');
   BOOL result = SetCurrentDirectory((LPCSTR) file_path);
   if (!result) {
     WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to set current directory: %s", file_path);
@@ -197,8 +197,8 @@ B32 WIN_FileHandleOpen(FileHandle* file, U8* file_path, FileMode mode) {
     return false;
   }
   file->arena = ArenaAllocate();
-  file->file_path = CStringCopy(file->arena, file_path);
-  CStringReplaceAllChar(file->file_path, '/', '\\');
+  file->file_path = CStrCopy(file->arena, file_path);
+  CStrReplaceAllChar(file->file_path, '/', '\\');
   file->is_writing = write;
   return true;
 }
@@ -335,7 +335,7 @@ B32 LINUX_DirGetCurrent(Arena* arena, U8** file_path, U32* file_path_size) {
     *file_path = ARENA_PUSH_ARRAY(arena, U8, size);
     getcwd(*file_path, size);
   } while (*file_path == NULL);
-  *file_path_size = CStringSize(*file_path);
+  *file_path_size = CStrSize(*file_path);
   ARENA_POP_ARRAY(arena, U8, size - (*file_path_size + 1));
   return true;
 }
@@ -385,8 +385,8 @@ B32 LINUX_FileHandleOpen(FileHandle* file, U8* file_path, FileMode mode) {
   }
 
   file->arena = ArenaAllocate();
-  file->file_path = CStringCopy(file->arena, file_path);
-  CStringReplaceAllChar(file->file_path, '\\', '/');
+  file->file_path = CStrCopy(file->arena, file_path);
+  CStrReplaceAllChar(file->file_path, '\\', '/');
   file->is_writing = write;
   return true;
 }
@@ -552,9 +552,9 @@ dir_set_current_to_exe_dir_exit:
 }
 
 B32 PathPop(U8** path) {
-  CStringReplaceAllChar(*path, '\\', '/');
+  CStrReplaceAllChar(*path, '\\', '/');
   U8* needle = (U8*) "/";
-  S32 result = CStringFindReverse(*path, CStringSize(*path) - 1, needle);
+  S32 result = CStrFindReverse(*path, CStrSize(*path) - 1, needle);
   if (result >= 0) { (*path)[result] = '\0'; }
   return result >= 0;
 }

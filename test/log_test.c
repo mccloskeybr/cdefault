@@ -4,8 +4,10 @@
 
 #define CDEFAULT_STD_IMPLEMENTATION
 #include "../cdefault_std.h"
+#define CDEFAULT_TEST_IMPLEMENTATION
+#include "../cdefault_test.h"
 
-B32 LogCustomFileTest(void) {
+void LogCustomFileTest(void) {
 #ifdef OS_LINUX
   U8 buffer[KB(1)] = {0};
   FILE* log_file = fmemopen(buffer, sizeof(buffer), "w+");
@@ -16,14 +18,13 @@ B32 LogCustomFileTest(void) {
   fseek(log_file, 0, SEEK_SET);
   TEST_EXPECT(strcmp(buffer, "[INFO | log_test.c:14]: test_1\n[INFO | log_test.c:15]: test_2\n") == 0);
   LogInit(stderr);
-  return true;
 #else
-  LOG_WARN("LogCustomFileTest not supported on this OS.");
-  return false;
+  FAIL("LogCustomFileTest not supported on this OS.");
 #endif
 }
 
 int main(void) {
-  TEST(LogCustomFileTest());
+  RUN_TEST(LogCustomFileTest);
+  LogTestReport();
   return 0;
 }
