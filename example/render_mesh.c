@@ -26,27 +26,46 @@ int main(void) {
   Image image;
   DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, (U8*) "../data/16bpp.bmp"));
   RendererRegisterImage(&image_handle, image.data, image.width, image.height);
-  Mesh cube;
-  DEBUG_ASSERT(MeshLoadFile(arena, &cube, (U8*) "../data/teapot.obj"));
-  RendererRegisterMesh(&mesh_handle, image_handle, cube.points, cube.normals, cube.uvs, cube.vertices_size, cube.indices, cube.indices_size);
+  Mesh obj;
+  DEBUG_ASSERT(MeshLoadFile(arena, &obj, (U8*) "../data/teapot.obj"));
+  RendererRegisterMesh(&mesh_handle, image_handle, obj.points, obj.normals, obj.uvs, obj.vertices_size, obj.indices, obj.indices_size);
 
-  M4 projection;
-  M4Perspective(&projection, F32_PI / 4.0f, 16.0f / 9.0f, 0.01f, 1000.0f);
-  RendererSetProjection(projection);
+  Camera* camera = RendererCamera3D();
+  camera->pos = (V3) { 0, 0, 3 };
 
-  F32 theta = 0;
+  F32 obj_theta = 0;
   while(!WindowShouldClose()) {
     if (WindowIsKeyPressed(Key_Control) && WindowIsKeyJustPressed(Key_C)) {
       LOG_INFO("SIGINT received");
       exit(0);
     }
 
-    V4 rot_1, rot_2, rot_3;
-    V4RotateAroundAxis(&rot_1, &V3_X_POS, theta);
-    V4RotateAroundAxis(&rot_2, &V3_Y_POS, theta);
-    V4QuatMulV4(&rot_3, &rot_1, &rot_2);
-    DrawMesh(mesh_handle, (V3) { 0, 0, 0 }, rot_3);
-    theta += 0.01f;
+    V3 cam_pos_delta;
+    V3MultF32(&cam_pos_delta, &camera->look_dir, dt_s);
+    if (WindowIsKeyPressed(Key_S)) {
+      V3SubV3(&camera->pos, &camera->pos, &cam_pos_delta);
+    } else if (WindowIsKeyPressed(Key_W)) {
+      V3AddV3(&camera->pos, &camera->pos, &cam_pos_delta);
+    }
+    if (WindowIsKeyPressed(Key_A)) {
+      V3RotateAroundAxis(&camera->look_dir, &camera->look_dir, &camera->up_dir, +0.1f);
+      // V3RotateAroundAxis(&camera->up_dir, &camera->up_dir, &camera->look_dir, -0.1f);
+    } else if (WindowIsKeyPressed(Key_D)) {
+      V3RotateAroundAxis(&camera->look_dir, &camera->look_dir, &camera->up_dir, -0.1f);
+      // V3RotateAroundAxis(&camera->up_dir, &camera->up_dir, &camera->look_dir, +0.1f);
+    }
+
+    V4 rot_1, rot_2, rot_3, rot_4;
+    V4RotateAroundAxis(&rot_1, &V3_X_POS, +obj_theta);
+    V4RotateAroundAxis(&rot_2, &V3_Y_POS, -obj_theta);
+    V4RotateAroundAxis(&rot_3, &V3_Z_POS, +obj_theta);
+    V4QuatMulV4(&rot_4, &rot_1, &rot_2);
+    // V4Normalize(&rot_4, &rot_4);
+    V4QuatMulV4(&rot_4, &rot_4, &rot_3);
+    V4Normalize(&rot_4, &rot_4);
+    DrawMesh(mesh_handle, (V3) { -0.5f, 0, 0 }, rot_4, (V3) { 0.1f, 0.1f, 0.1f});
+    DrawMesh(mesh_handle, (V3) { +0.5f, 0, 0 }, rot_4, (V3) { 0.1f, 0.1f, 0.1f});
+    obj_theta += 0.01f;
 
     do { dt_s = StopwatchReadSeconds(&frame_stopwatch); } while (dt_s < 0.016);
     StopwatchReset(&frame_stopwatch);

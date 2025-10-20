@@ -5,11 +5,17 @@
 #include "cdefault_math.h"
 
 // TODO:
-// separate renderer from window? more intuitive to separate 2d vs 3d renderer then.
 // vsync
 // shader abstraction?
 // draw more shapes
 // softer edges?
+
+typedef struct Camera Camera;
+struct Camera {
+  V3 pos;
+  V3 look_dir; // NOTE: Expected to be normalized.
+  V3 up_dir;   // NOTE: Expected to be normalized and orthogonal to look_dir.
+};
 
 // NOTE: A window must exist before any renderer / draw functions can be called.
 // NOTE: Sensible defaults are chosen if field values are 0.
@@ -20,7 +26,7 @@ B32  WindowShouldClose(); // NOTE: True when the window has been closed.
 void WindowSwapBuffers();
 void WindowGetDims(S32* x, S32* y, S32* width, S32* height); // NOTE: viewport dimensions; not necessarily the raw window size.
 void WindowSetTitle(char* title);
-void WindowSetSize(S32 width, S32 height); // NOTE: Does not update resolution, may need to call RendererSetProjection separately.
+void WindowSetSize(S32 width, S32 height); // NOTE: Does not update resolution, may need to update the projection matrices as necessary.
 void WindowShowCursor(B32 enable);
 void WindowFullscreen(B32 enable);
 
@@ -40,7 +46,9 @@ void WindowGetMousePositionV(V2* pos);
 void WindowGetMouseDeltaPosition(F32* x, F32* y);
 void WindowGetMouseDeltaPositionV(V2* pos);
 
-void RendererSetProjection(M4 projection);
+void RendererSetProjection2D(M4 projection);
+void RendererSetProjection3D(M4 projection);
+Camera* RendererCamera3D();
 void RendererRegisterImage(U32* image_handle, U8* image_bytes, U32 width, U32 height); // NOTE: Expects RGBA byte values (0 -> 255)
 void RendererRegisterMesh(U32* mesh_handle, U32 image_handle, V3* points, V3* normals, V2* uvs, U32 vertices_size, U32* indices, U32 indices_size);
 void RendererReleaseImage(U32 image_handle);
@@ -56,6 +64,7 @@ void RendererCastRayV(V2 pos, V2* intersect);
 void RendererCastRay3(F32 x, F32 y, V3* start, V3* dir);
 void RendererCastRay3V(V2 pos, V3* start, V3* dir);
 
+// NOTE: 2D API
 void DrawLine(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32 red, F32 green, F32 blue);
 void DrawLineV(V2 start, V2 end, F32 thickness, V3 color);
 void DrawRectangle(F32 center_x, F32 center_y, F32 width, F32 height, F32 red, F32 green, F32 blue);
@@ -85,7 +94,9 @@ void DrawImage(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 heig
 void DrawImageV(U32 image_handle, V2 pos, V2 size);
 void DrawImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 angle_rad);
 void DrawImageRotV(U32 image_handle, V2 pos, V2 size, F32 angle_rad);
-void DrawMesh(U32 mesh_handle, V3 pos, V4 rot);
+
+// NOTE: 3D API
+void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale);
 
 enum KeyboardKey {
   Key_A,
@@ -336,7 +347,9 @@ struct Renderer {
   GLint  mesh_camera_uniform;
   GLint  mesh_texture_uniform;
 
-  M4 world_to_camera;
+  Camera camera_3d;
+  M4 projection_3d;
+  M4 world_to_camera_2d;
 
   U32 next_mesh_id;
   Arena* mesh_pool;
@@ -570,11 +583,18 @@ static B32 RendererInit(void) {
   g->glBindVertexArray(0);
   g->glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-  M4 projection;
+  M4 projection_2d;
   S32 width, height;
   WindowGetDims(NULL, NULL, &width, &height);
-  M4Orthographic(&projection, 0, width, 0, height, 0.01f, 100.0f);
-  RendererSetProjection(projection);
+  M4Orthographic(&projection_2d, 0, width, 0, height, 0.01f, 100.0f);
+  RendererSetProjection2D(projection_2d);
+
+  M4 projection_3d;
+  M4Perspective(&projection_3d, F32_PI / 4.0f, 16.0f / 9.0f, 0.01f, 100.0f);
+  RendererSetProjection3D(projection_3d);
+  r->camera_3d.pos      = (V3) {0, 0, 0 };
+  r->camera_3d.look_dir = V3_Z_NEG;
+  r->camera_3d.up_dir   = V3_Y_POS;
 
   r->mesh_pool = ArenaAllocate();
 
@@ -589,14 +609,25 @@ static void RendererDeinit() {
   ArenaRelease(r->mesh_pool);
 }
 
-void RendererSetProjection(M4 projection) {
+void RendererSetProjection2D(M4 projection_2d) {
   Renderer* r = &_renderer;
+  // NOTE: 2d camera is fixed, so we can just store the final world to camera matrix instead of both and recalculating per-frame.
   V3 pos    = { 0, 0, 1 }; // NOTE: seat camera Z back so items can exist at z = 0.
   V3 target = V3_Z_NEG;
   V3 up     = V3_Y_POS;
   M4 camera;
   M4LookAt(&camera, &pos, &target, &up);
-  M4MultM4(&r->world_to_camera, &projection, &camera);
+  M4MultM4(&r->world_to_camera_2d, &projection_2d, &camera);
+}
+
+void RendererSetProjection3D(M4 projection_3d) {
+  Renderer* r = &_renderer;
+  r->projection_3d = projection_3d;
+}
+
+Camera* RendererCamera3D() {
+  Renderer* r = &_renderer;
+  return &r->camera_3d;
 }
 
 void RendererRegisterImage(U32* image_handle, U8* image_bytes, U32 width, U32 height) {
@@ -747,7 +778,7 @@ void RendererCastRay3(F32 x, F32 y, V3* start, V3* dir) {
   y2 = CLAMP(-1, y2, 1);
 
   M4 world_to_camera_inv;
-  M4Invert(&world_to_camera_inv, &r->world_to_camera);
+  M4Invert(&world_to_camera_inv, &r->world_to_camera_2d);
   V3 n = UnprojectPoint((V3) { x2, y2, -1}, &world_to_camera_inv);
   V3 f = UnprojectPoint((V3) { x2, y2, +1}, &world_to_camera_inv);
   V3 delta;
@@ -827,7 +858,7 @@ void DrawRoundedRectangleRot(F32 center_x, F32 center_y, F32 width, F32 height, 
   V4RotateAroundAxis(&rot, &V3_Z_POS, angle_rad);
   M4 rect_to_world, rect_to_camera, rect_to_camera_t;
   M4FromTransform(&rect_to_world, &pos, &rot, &scale);
-  M4MultM4(&rect_to_camera, &r->world_to_camera, &rect_to_world);
+  M4MultM4(&rect_to_camera, &r->world_to_camera_2d, &rect_to_world);
   M4Transpose(&rect_to_camera_t, &rect_to_camera);
 
   g->glUseProgram(r->rect_shader);
@@ -864,7 +895,7 @@ void DrawRoundedRectangleFrameRot(F32 center_x, F32 center_y, F32 width, F32 hei
   V4RotateAroundAxis(&rot, &V3_Z_POS, angle_rad);
   M4 frame_to_world, frame_to_camera, frame_to_camera_t;
   M4FromTransform(&frame_to_world, &pos, &rot, &scale);
-  M4MultM4(&frame_to_camera, &r->world_to_camera, &frame_to_world);
+  M4MultM4(&frame_to_camera, &r->world_to_camera_2d, &frame_to_world);
   M4Transpose(&frame_to_camera_t, &frame_to_camera);
 
   g->glUseProgram(r->frame_shader);
@@ -930,7 +961,7 @@ void DrawTriangle(F32 x1, F32 y1, F32 x2, F32 y2, F32 x3, F32 y3, F32 red, F32 g
   V4 rot = V4_QUAT_IDENT;
   M4 tri_to_world, tri_to_camera, tri_to_camera_t;
   M4FromTransform(&tri_to_world, &pos, &rot, &scale);
-  M4MultM4(&tri_to_camera, &r->world_to_camera, &tri_to_world);
+  M4MultM4(&tri_to_camera, &r->world_to_camera_2d, &tri_to_world);
   M4Transpose(&tri_to_camera_t, &tri_to_camera);
 
   g->glUseProgram(r->tri_shader);
@@ -976,7 +1007,7 @@ void DrawImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 h
   V4RotateAroundAxis(&rot, &V3_Z_POS, angle_rad);
   M4 image_to_world, image_to_camera, image_to_camera_t;
   M4FromTransform(&image_to_world, &pos, &rot, &scale);
-  M4MultM4(&image_to_camera, &r->world_to_camera, &image_to_world);
+  M4MultM4(&image_to_camera, &r->world_to_camera_2d, &image_to_world);
   M4Transpose(&image_to_camera_t, &image_to_camera);
 
   g->glUseProgram(r->image_shader);
@@ -993,16 +1024,19 @@ void DrawImageRotV(U32 image_handle, V2 pos, V2 size, F32 angle_rad) {
   DrawImageRot(image_handle, pos.x, pos.y, size.x, size.y, angle_rad);
 }
 
-void DrawMesh(U32 mesh_handle, V3 pos, V4 rot) {
+void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale) {
   Renderer* r = &_renderer;
   OpenGLAPI* g = &_ogl;
   RenderMesh* mesh = RendererFindMesh(mesh_handle);
   DEBUG_ASSERT(mesh != NULL);
 
-  V3 scale = { 0.1f, 0.1f, 0.1f };
-  M4 mesh_to_world, mesh_to_camera, mesh_to_camera_t;
+  V3 camera_target;
+  V3AddV3(&camera_target, &r->camera_3d.pos, &r->camera_3d.look_dir);
+  M4 camera, world_to_camera, mesh_to_world, mesh_to_camera, mesh_to_camera_t;
+  M4LookAt(&camera, &r->camera_3d.pos, &camera_target, &r->camera_3d.up_dir);
+  M4MultM4(&world_to_camera, &r->projection_3d, &camera);
   M4FromTransform(&mesh_to_world, &pos, &rot, &scale);
-  M4MultM4(&mesh_to_camera, &r->world_to_camera, &mesh_to_world);
+  M4MultM4(&mesh_to_camera, &world_to_camera, &mesh_to_world);
   M4Transpose(&mesh_to_camera_t, &mesh_to_camera);
 
   g->glUseProgram(r->mesh_shader);
