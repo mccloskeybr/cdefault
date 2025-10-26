@@ -58,7 +58,7 @@ static B32 MeshLoadObj(Arena* arena, Mesh* mesh, U8* file_data, U32 file_data_si
       LOG_ERROR("[MESH] OBJ file malformed; expected string where there was none. For line: %.*s", line->string.size, line->string.str); \
       goto mesh_load_obj_end; \
     }                     \
-    f = Str8ToF32(node->string);
+    Str8ToF32(node->string, &f);
   for (String8ListNode* line = lines.head; line != NULL; line = line->next) {
     String8List line_parts = Str8Split(temp_arena, line->string, ' ');
     String8ListNode* line_part = line_parts.head;
@@ -107,15 +107,18 @@ static B32 MeshLoadObj(Arena* arena, Mesh* mesh, U8* file_data, U32 file_data_si
       S32 uv_idx     = -1;
       S32 normal_idx = -1;
       String8ListNode* face_part = face_parts.head;;
-      point_idx = Str8ToS32(face_part->string) - 1;
+      Str8ToS32(face_part->string, &point_idx);
+      point_idx -= 1;
       face_part = face_part->next;
       if (face_part != NULL) {
         if (face_part->string.size > 0) {
-          uv_idx = Str8ToS32(face_part->string) - 1;
+          Str8ToS32(face_part->string, &uv_idx);
+          uv_idx -= 1;
         }
         face_part = face_part->next;
         if (face_part != NULL) {
-          normal_idx = Str8ToS32(face_part->string) - 1;
+          Str8ToS32(face_part->string, &normal_idx);
+          normal_idx -= 1;
         }
       }
       DEBUG_ASSERT(point_idx < obj_points_size && normal_idx < obj_normals_size && uv_idx < obj_uvs_size);

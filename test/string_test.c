@@ -59,8 +59,10 @@ void CStrConcatTest(void) {
 
 void CStrTrimTest(void) {
   Arena* arena = ArenaAllocate();
-  U8* trimmed = CStrTrim(arena, (U8*) "  test  ");
-  EXPECT_CSTR_EQ(trimmed, "test");
+  U8* test = (U8*) "  test  ";
+  EXPECT_CSTR_EQ(CStrTrimFront(arena, test), "test  ");
+  EXPECT_CSTR_EQ(CStrTrimBack(arena, test), "  test");
+  EXPECT_CSTR_EQ(CStrTrim(arena, test), "test");
 }
 
 void CStrReplaceAllTest(void) {
@@ -113,7 +115,10 @@ void Str8CreateTest(void) {
 }
 
 void Str8TrimTest(void) {
-  EXPECT_STR8_EQ(Str8Trim(Str8Lit("  test  ")), Str8Lit("test"));
+  String8 test = Str8Lit("  test  ");
+  EXPECT_STR8_EQ(Str8TrimFront(test), Str8Lit("test  "));
+  EXPECT_STR8_EQ(Str8TrimBack(test), Str8Lit("  test"));
+  EXPECT_STR8_EQ(Str8Trim(test), Str8Lit("test"));
 }
 
 void Str8ReplaceAllTest(void) {
@@ -129,18 +134,38 @@ void Str8ReplaceAllCharTest(void) {
 }
 
 void Str8ToF32Test(void) {
-  EXPECT_F32_APPROX_EQ(Str8ToF32(Str8Lit("1.2345")), 1.2345f);
-  EXPECT_F32_APPROX_EQ(Str8ToF32(Str8Lit("+1")), 1.0f);
-  EXPECT_F32_APPROX_EQ(Str8ToF32(Str8Lit("-502")), -502.0f);
-  EXPECT_F32_APPROX_EQ(Str8ToF32(Str8Lit("1x0")), 1);
-  EXPECT_F32_APPROX_EQ(Str8ToF32(Str8Lit("abc1.2")), 0);
+  F32 result;
+
+  EXPECT_S32_EQ(Str8ToF32(Str8Lit("1.2345"), &result), 6);
+  EXPECT_F32_APPROX_EQ(result, 1.2345f);
+
+  EXPECT_S32_EQ(Str8ToF32(Str8Lit("+1"), &result), 2);
+  EXPECT_F32_APPROX_EQ(result, 1.0f);
+
+  EXPECT_S32_EQ(Str8ToF32(Str8Lit("-502"), &result), 4);
+  EXPECT_F32_APPROX_EQ(result, -502.0f);
+
+  EXPECT_S32_EQ(Str8ToF32(Str8Lit("1x0"), &result), 1);
+  EXPECT_F32_APPROX_EQ(result, 1);
+
+  EXPECT_S32_EQ(Str8ToF32(Str8Lit("abc1.2"), &result), -1);
+  EXPECT_F32_APPROX_EQ(result, 0);
 }
 
 void Str8ToS32Test(void) {
-  EXPECT_S32_EQ(Str8ToS32(Str8Lit("123")), 123);
-  EXPECT_S32_EQ(Str8ToS32(Str8Lit("-456")), -456);
-  EXPECT_S32_EQ(Str8ToS32(Str8Lit("1x2")), 1);
-  EXPECT_S32_EQ(Str8ToS32(Str8Lit("x2")), 0);
+  S32 result;
+
+  EXPECT_S32_EQ(Str8ToS32(Str8Lit("123"), &result), 3);
+  EXPECT_S32_EQ(result, 123);
+
+  EXPECT_S32_EQ(Str8ToS32(Str8Lit("-456"), &result), 4);
+  EXPECT_S32_EQ(result, -456);
+
+  EXPECT_S32_EQ(Str8ToS32(Str8Lit("1x2"), &result), 1);
+  EXPECT_S32_EQ(result, 1);
+
+  EXPECT_S32_EQ(Str8ToS32(Str8Lit("x2"), &result), -1);
+  EXPECT_S32_EQ(result, 0);
 }
 
 void Str8StartsWithTest(void) {

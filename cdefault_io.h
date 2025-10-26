@@ -77,15 +77,6 @@ struct FileHandle {
   B8 is_writing;
 };
 
-#define WIN_IO_LOG_ERROR(result, err)                                        \
-  do {                                                                       \
-    char _err_buffer[1024];                                                  \
-    _err_buffer[0] = '\0';                                                   \
-    FormatMessageA(                                                          \
-        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_MAX_WIDTH_MASK,          \
-        NULL, result, 0, _err_buffer, STATIC_ARRAY_SIZE(_err_buffer), NULL); \
-    LOG_ERROR(err " - %s", _err_buffer);                                     \
-  } while (0)
 #define WIN_IO_LOG_ERROR_EX(result, fmt, ...)                                \
   do {                                                                       \
     char _err_buffer[1024];                                                  \
@@ -95,6 +86,8 @@ struct FileHandle {
         NULL, result, 0, _err_buffer, STATIC_ARRAY_SIZE(_err_buffer), NULL); \
     LOG_ERROR(fmt " - %s", ##__VA_ARGS__, _err_buffer);                      \
   } while (0)
+#define WIN_IO_LOG_ERROR(result, err)                                        \
+  WIN_IO_LOG_ERROR_EX(result, "%s", err)
 
 static U64 WIN_FileTimeToEpochSeconds(FILETIME* filetime) {
   U64 time = (((U64) filetime->dwHighDateTime) << 32) | filetime->dwLowDateTime;
@@ -276,10 +269,10 @@ struct FileHandle {
   B8 is_writing;
 };
 
-#define LINUX_IO_LOG_ERROR(result, err) \
-  LOG_ERROR(err " - %s: %s", strerror(result));
 #define LINUX_IO_LOG_ERROR_EX(result, fmt, ...) \
-  LOG_ERROR(fmt " - %s: %s", ##__VA_ARGS__, strerror(result));
+  LOG_ERROR(fmt " - %s: %s", ##__VA_ARGS__, strerror(result))
+#define LINUX_IO_LOG_ERROR(result, err) \
+  LINUX_IO_LOG_ERROR_EX(result, "%s", err)
 
 B32 LINUX_FileStat(U8* file_path, FileStats* stats) {
   struct stat st;

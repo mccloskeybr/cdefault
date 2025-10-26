@@ -1,9 +1,10 @@
 #ifndef CDEFAULT_MATH_H_
 #define CDEFAULT_MATH_H_
 
-#include <stdlib.h>
-#include <math.h>
 #include "cdefault_std.h"
+
+#include <math.h>
+#include <stdlib.h>
 
 // TODO: color translation funcs?
 // TODO: optimize matrix operations

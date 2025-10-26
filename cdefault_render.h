@@ -5,6 +5,8 @@
 #include "cdefault_math.h"
 
 // TODO:
+// move 2d camera
+// 3d shape primative draw fns
 // vsync
 // shader abstraction?
 // draw more shapes

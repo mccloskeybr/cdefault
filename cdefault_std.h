@@ -296,7 +296,7 @@ void  MemoryDecommit(void* ptr, U64 size);
 // Queue queue = {0};
 // Node node = {0};
 // SLL_QUEUE_PUSH(queue.head, queue.tail, &node, next);
-// SLL_QUEUE_POP(queue.head, queue.tail next);
+// SLL_QUEUE_POP(queue.head, queue.tail, next);
 
 #define SLL_QUEUE_PUSH_FRONT(head, tail, curr_node, next) \
   if ((head) == NULL) {                                   \
@@ -663,9 +663,10 @@ String8 Str8ReplaceAll(Arena* arena, String8 src, String8 from, String8 to);
 B32     Str8ReplaceAllChar(String8* str, U8 from, U8 to);
 void    Str8ToUpper(String8 s);
 void    Str8ToLower(String8 s);
-F32     Str8ToF32(String8 s);
-S32     Str8ToS32(String8 s);
+S32     Str8ToF32(String8 s, F32* f32); // NOTE: returns char width of float, -1 on no float.
+S32     Str8ToS32(String8 s, S32* s32); // NOTE: returns char width of float, -1 on no float.
 B32     Str8StartsWith(String8 a, String8 b); // NOTE: True iff a starts with b.
+B32     Str8StartsWithChar(String8 a, U8 b);
 B32     Str8EndsWith(String8 a, String8 b); // NOTE: True iff a ends with b.
 B32     Str8Eq(String8 a, String8 b);
 S64     Str8Find(String8 string, S32 start_pos, String8 needle); // NOTE: Returns -1 on failure.
@@ -1265,7 +1266,7 @@ F32 TimeSecondsSinceStart() {
   DEBUG_ASSERT(_cdef_time_init);
   LARGE_INTEGER time_now;
   QueryPerformanceCounter(&time_now);
-  return ((F32) time_now.QuadPart - _cdef_start_time.QuadPart) /
+  return ((F32) (time_now.QuadPart - _cdef_start_time.QuadPart)) /
     ((F32) _cdef_performance_freq.QuadPart);
 }
 
@@ -1456,9 +1457,15 @@ F64 RandF64(RandomSeries* rand, F64 min, F64 max) {
 ///////////////////////////////////////////////////////////////////////////////
 
 B32 CharIsWhitespace(U8 c) {
-  return (c == ' '  || c == '\n' ||
-          c == '\t' || c == '\r' ||
-          c == '\f' || c == '\v');
+  static const U8 whitespace_table[256] = {
+    [' ']  = 1,
+    ['\n'] = 1,
+    ['\t'] = 1,
+    ['\r'] = 1,
+    ['\f'] = 1,
+    ['\v'] = 1,
+  };
+  return whitespace_table[c];
 }
 
 B32 CharIsLower(U8 c) {
@@ -1525,6 +1532,18 @@ U8* CStrConcat(Arena* arena, U8* a, U8* b) {
   MEMORY_COPY(result + a_size, b, b_size * sizeof(U8));
   result[a_size + b_size] = '\0';
   return result;
+}
+
+U8* CStrTrimFront(Arena* arena, U8* s) {
+  U64 start = 0;
+  while (CharIsWhitespace(s[start])) { start++; }
+  return CStrSubstring(arena, s, start, CStrSize(s) - 1);
+}
+
+U8* CStrTrimBack(Arena* arena, U8* s) {
+  U64 end = CStrSize(s) - 1;
+  while (CharIsWhitespace(s[end]))   { end--; }
+  return CStrSubstring(arena, s, 0, CStrSize(s) - 1);
 }
 
 U8* CStrTrim(Arena* arena, U8* s) {
@@ -1702,7 +1721,7 @@ String8 Str8Copy(Arena* arena, String8 string) {
 }
 
 String8 Str8Substring(String8 s, U64 start, U64 end) {
-  DEBUG_ASSERT(end >= start);
+  if (end < start) { end = start; }
   start = MIN(start, s.size - 1);
   end = MIN(end, s.size - 1);
   String8 result;
@@ -1712,12 +1731,21 @@ String8 Str8Substring(String8 s, U64 start, U64 end) {
   return result;
 }
 
-String8 Str8Trim(String8 s) {
+// TODO: bounds checking. probably need to switch to S64s.
+String8 Str8TrimFront(String8 s) {
   U64 start = 0;
   while (CharIsWhitespace(s.str[start])) { ++start; }
+  return Str8Substring(s, start, s.size - 1);
+}
+
+String8 Str8TrimBack(String8 s) {
   U64 end = s.size - 1;
   while (CharIsWhitespace(s.str[end])) { --end; }
-  return Str8Substring(s, start, end);
+  return Str8Substring(s, 0, end);
+}
+
+String8 Str8Trim(String8 s) {
+  return Str8TrimBack(Str8TrimFront(s));
 }
 
 String8 Str8ReplaceAll(Arena* arena, String8 src, String8 from, String8 to) {
@@ -1771,6 +1799,11 @@ B32 Str8StartsWith(String8 a, String8 b) {
   return true;
 }
 
+B32 Str8StartsWithChar(String8 a, U8 b) {
+  if (a.size == 0) { return false; }
+  return a.str[0] == b;
+}
+
 B32 Str8EndsWith(String8 a, String8 b) {
   if (a.size < b.size) { return false; }
   U64 a_offset = a.size - b.size;
@@ -1818,9 +1851,11 @@ void Str8ToLower(String8 s) {
   }
 }
 
-F32 Str8ToF32(String8 s) {
+// TODO: support e notation
+S32 Str8ToF32(String8 s, F32* f32) {
   U32 i = 0;
   F32 result = 0.0f;
+  B32 found_f32 = false;
 
   S32 sign = 1;
   if (s.str[i] == '+')      { sign = +1; i++; }
@@ -1830,27 +1865,34 @@ F32 Str8ToF32(String8 s) {
     result *= 10;
     result += s.str[i] - '0';
     i++;
+    found_f32 = true;
   }
-  if (s.str[i] != '.') { return sign * result; }
+  if (s.str[i] != '.') { goto str8_to_f32_end; }
   i++;
 
-  U32 exp = 0;
+  U32 exp = 1;
   while (i < s.size && CharIsDigit(s.str[i])) {
     result *= 10;
     result += s.str[i] - '0';
     i++;
-    exp++;
+    exp *= 10;
+    found_f32 = true;
   }
-  while (exp > 0) {
-    result /= 10;
-    exp--;
+  result /= exp;
+str8_to_f32_end:
+  if (found_f32) {
+    *f32 = sign * result;
+    return i;
+  } else {
+    *f32 = 0;
+    return -1;
   }
-  return sign * result;
 }
 
-S32 Str8ToS32(String8 s) {
+S32 Str8ToS32(String8 s, S32* s32) {
   S32 i = 0;
   S32 result = 0;
+  B32 found_s32 = false;
 
   S32 sign = 1;
   if (s.str[i] == '+')      { sign = +1; i++; }
@@ -1860,8 +1902,15 @@ S32 Str8ToS32(String8 s) {
     result *= 10;
     result += s.str[i] - '0';
     i++;
+    found_s32 = true;
   }
-  return sign * result;
+  if (found_s32) {
+    *s32 = sign * result;
+    return i;
+  } else {
+    *s32 = 0;
+    return -1;
+  }
 }
 
 String8 Str8Concat(Arena* arena, String8 a, String8 b) {

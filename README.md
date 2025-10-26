@@ -11,6 +11,7 @@ NOTE: Windows is explicitly supported. Linux is partially supported. I'll get ar
 *  `cdefault_geometry.h`   - Structs and functions for 2/3D geometry, with a focus on collision detection.
 *  `cdefault_image.h`      - Image file importer.
 *  `cdefault_io.h`         - Filesytem API.
+*  `cdefault_json.h`       - JSON serializer / deserializer.
 *  `cdefault_math.h`       - Math library, particularly 2/3/4D vectors and 2x2/3x3/4x4 matrices for graphics.
 *  `cdefault_mesh.h`       - Mesh file importer.
 *  `cdefault_physics_2d.h` - Simple and extendible 2D physics API with a basic rigid body resolver.
