@@ -189,11 +189,10 @@ B32 MeshLoad(Arena* arena, Mesh* mesh, U8* file_data, U32 file_data_size) {
 
 B32 MeshLoadFile(Arena* arena, Mesh* mesh, U8* file_path) {
   B32 success = false;
-  U8* file_data;
-  U32 file_data_size;
+  String8 file_data;
   Arena* file_arena = ArenaAllocate();
-  if (!FileReadAll(file_arena, file_path, &file_data, &file_data_size, false)) { goto mesh_load_file_exit; }
-  success = MeshLoad(arena, mesh, file_data, file_data_size);
+  if (!FileReadAll(file_arena, file_path, &file_data.str, &file_data.size)) { goto mesh_load_file_exit; }
+  success = MeshLoad(arena, mesh, file_data.str, file_data.size);
 mesh_load_file_exit:
   ArenaRelease(file_arena);
   return success;

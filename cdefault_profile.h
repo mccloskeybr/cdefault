@@ -27,7 +27,7 @@ struct ProfileAnchor {
 };
 
 // NOTE: Surround critical blocks with PROFILE_START / PROFILE_END to time them.
-#ifndef NDEBUG
+#ifdef PROFILE
 #  define PROFILE_START(metric) _ProfileBlockStart(metric);
 #  define PROFILE_END(metric) _ProfileBlockEnd(metric);
 #else

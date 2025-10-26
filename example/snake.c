@@ -72,21 +72,20 @@ static S32 AudioEntry(void* user_data) {
   spec.format = AudioStreamFormat_F32;
   ASSERT(AudioStreamOpen(&audio_manager.stream, spec));
 
-  U8* audio_buffer;
-  U32 audio_buffer_size;
+  String8 buffer;
   while (true) {
-    if (!AudioStreamAcquireBuffer(audio_manager.stream, &audio_buffer, &audio_buffer_size)) { continue; }
-    MEMORY_ZERO(audio_buffer, audio_buffer_size);
+    if (!AudioStreamAcquireBuffer(audio_manager.stream, &buffer.str, &buffer.size)) { continue; }
+    MEMORY_ZERO(buffer.str, buffer.size);
 
-    U8* temp_buffer = ARENA_PUSH_ARRAY(arena, U8, audio_buffer_size);
+    U8* temp_buffer = ARENA_PUSH_ARRAY(arena, U8, buffer.size);
     MutexLock(&audio_manager.mutex);
     SoundEffect* effect = audio_manager.tail;
     while (effect != NULL) {
-      MEMORY_ZERO(temp_buffer, audio_buffer_size);
+      MEMORY_ZERO(temp_buffer, buffer.size);
       U32 read = stb_vorbis_get_samples_float_interleaved(
-          effect->vorbis, spec.channels, (F32*) temp_buffer, audio_buffer_size / sizeof(F32));
-      for (S32 i = 0; i < audio_buffer_size / sizeof(F32); i++) {
-        ((F32*) audio_buffer)[i] += ((F32*) temp_buffer)[i];
+          effect->vorbis, spec.channels, (F32*) temp_buffer, buffer.size / sizeof(F32));
+      for (S32 i = 0; i < buffer.size / sizeof(F32); i++) {
+        ((F32*) buffer.str)[i] += ((F32*) temp_buffer)[i];
       }
       if (read == 0) {
         if (effect->is_looping) {
@@ -110,7 +109,7 @@ static S32 AudioEntry(void* user_data) {
     MutexUnlock(&audio_manager.mutex);
     ArenaClear(arena);
 
-    if (!AudioStreamReleaseBuffer(audio_manager.stream, audio_buffer, audio_buffer_size)) { continue; }
+    if (!AudioStreamReleaseBuffer(audio_manager.stream, buffer.str, buffer.size)) { continue; }
     if (!AudioStreamWait(audio_manager.stream)) { continue; }
   }
 

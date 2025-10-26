@@ -352,11 +352,10 @@ image_load_bmp_exit:
 
 B32 ImageLoadFile(Arena* arena, Image* image, ImageFormat format, U8* file_path) {
   B32 success = false;
-  U8* file_data;
-  U32 file_data_size;
+  String8 file_data;
   Arena* file_arena = ArenaAllocate();
-  if (!FileReadAll(file_arena, file_path, &file_data, &file_data_size, false)) { goto image_load_file_exit; }
-  success = ImageLoad(arena, image, format, file_data, file_data_size);
+  if (!FileReadAll(file_arena, file_path, &file_data.str, &file_data.size)) { goto image_load_file_exit; }
+  success = ImageLoad(arena, image, format, file_data.str, file_data.size);
 image_load_file_exit:
   ArenaRelease(file_arena);
   return success;
@@ -486,7 +485,7 @@ B32 ImageDumpBmp(Image* image, U8* file_path) {
     }
   }
 
-  B32 success = FileDump(file_path, bmp, bmp_file_size, false);
+  B32 success = FileDump(file_path, bmp, bmp_file_size);
   ArenaRelease(temp_arena);
   return success;
 }

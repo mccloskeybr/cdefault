@@ -47,7 +47,7 @@ void CStrCopyTest(void) {
 void CStrSubstringTest(void) {
   Arena* arena = ArenaAllocate();
   U8 base[19] = "prefix test suffix";
-  U8* substring = CStrSubstring(arena, base, 7, 10);
+  U8* substring = CStrSubstring(arena, base, 7, 11);
   EXPECT_CSTR_EQ(substring, "test");
 }
 
@@ -63,6 +63,16 @@ void CStrTrimTest(void) {
   EXPECT_CSTR_EQ(CStrTrimFront(arena, test), "test  ");
   EXPECT_CSTR_EQ(CStrTrimBack(arena, test), "  test");
   EXPECT_CSTR_EQ(CStrTrim(arena, test), "test");
+
+  test = (U8*) "     ";
+  EXPECT_CSTR_EQ(CStrTrimFront(arena, test), "");
+  EXPECT_CSTR_EQ(CStrTrimBack(arena, test), "");
+  EXPECT_CSTR_EQ(CStrTrim(arena, test), "");
+
+  test = (U8*) "  c  ";
+  EXPECT_CSTR_EQ(CStrTrimFront(arena, test), "c  ");
+  EXPECT_CSTR_EQ(CStrTrimBack(arena, test), "  c");
+  EXPECT_CSTR_EQ(CStrTrim(arena, test), "c");
 }
 
 void CStrReplaceAllTest(void) {
@@ -119,6 +129,16 @@ void Str8TrimTest(void) {
   EXPECT_STR8_EQ(Str8TrimFront(test), Str8Lit("test  "));
   EXPECT_STR8_EQ(Str8TrimBack(test), Str8Lit("  test"));
   EXPECT_STR8_EQ(Str8Trim(test), Str8Lit("test"));
+
+  test = Str8Lit("     ");
+  EXPECT_STR8_EQ(Str8TrimFront(test), Str8Lit(""));
+  EXPECT_STR8_EQ(Str8TrimBack(test), Str8Lit(""));
+  EXPECT_STR8_EQ(Str8Trim(test), Str8Lit(""));
+
+  test = Str8Lit("  c  ");
+  EXPECT_STR8_EQ(Str8TrimFront(test), Str8Lit("c  "));
+  EXPECT_STR8_EQ(Str8TrimBack(test), Str8Lit("  c"));
+  EXPECT_STR8_EQ(Str8Trim(test), Str8Lit("c"));
 }
 
 void Str8ReplaceAllTest(void) {

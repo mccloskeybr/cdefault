@@ -40,16 +40,16 @@ struct FileStats {
 };
 
 B32 FileStat(U8* file_path, FileStats* stats); // NOTE: Retrieves stats / info on the file with the given path.
-B32 FileReadAll(Arena* arena, U8* file_path, U8** buffer, U32* buffer_size, B32 add_null_terminator); // NOTE: Places the data in file_path in *buffer.
-B32 FileDump(U8* file_path, U8* buffer, U32 buffer_size, B32 remove_null_terminator);   // NOTE: Replaces data in file_path with buffer (removes any \0 suffix).
-B32 FileAppend(U8* file_path, U8* buffer, U32 buffer_size, B32 remove_null_terminator); // NOTE: Appends the data with buffer (removes any \0 suffix). If you will append many times, prefer opening a FileHandle manually.
+B32 FileReadAll(Arena* arena, U8* file_path, U8** buffer, S32* buffer_size); // NOTE: Places the data in file_path in *buffer.
+B32 FileDump(U8* file_path, U8* buffer, S32 buffer_size);   // NOTE: Replaces data in file_path with buffer (removes any \0 suffix).
+B32 FileAppend(U8* file_path, U8* buffer, S32 buffer_size); // NOTE: Appends the data with buffer (removes any \0 suffix). If you will append many times, prefer opening a FileHandle manually.
 B32 FileCopy(U8* src_path, U8* dest_path); // NOTE: Replaces all data in dest_path with the data in src_path.
 
 B32 DirSetCurrentToExeDir();      // NOTE: Sets the current working directory to wherever the executable is.
 B32 DirSetCurrent(U8* file_path); // NOTE: Sets the current working directory to the provided location.
-B32 DirGetCurrent(Arena* arena, U8** file_path, U32* file_path_size); // NOTE: Gets the current working directory.
-B32 DirGetExe(Arena* arena, U8** file_path, U32* file_path_size);     // NOTE: Gets the path to the currently running executable.
-B32 DirGetExeDir(Arena* arena, U8** file_path, U32* file_path_size);  // NOTE: Gets the directory to the currently running executable.
+B32 DirGetCurrent(Arena* arena, U8** file_path, S32* file_path_size); // NOTE: Gets the current working directory.
+B32 DirGetExe(Arena* arena, U8** file_path, S32* file_path_size);     // NOTE: Gets the path to the currently running executable.
+B32 DirGetExeDir(Arena* arena, U8** file_path, S32* file_path_size);  // NOTE: Gets the directory to the currently running executable.
 
 B32 PathPop(U8** path); // NOTE: Pops the right most part of the path off. E.g. /a/b/c -> /a/b
 
@@ -57,8 +57,8 @@ B32 FileHandleOpen(FileHandle* file, U8* file_path, FileMode mode);  // NOTE: Op
 B32 FileHandleClose(FileHandle* file);                               // NOTE: Closes a file, releases any locks held on that file.
 B32 FileHandleStat(FileHandle* file, FileStats* stats);              // NOTE: Like FileStat, but on a FileHandle instead of a path.
 B32 FileHandleSeek(FileHandle* file, S32 distance, FileSeekPos pos); // NOTE: Seeks to a given position in the file.
-B32 FileHandleRead(FileHandle* file, U8* buffer, U32 buffer_size, U32* bytes_read); // NOTE: Reads / places buffer_size bytes into buffer, stopping if EOF is observed. Num bytes read is placed into bytes_read.
-B32 FileHandleWrite(FileHandle* file, U8* buffer, U32 buffer_size);  // NOTE: Writes / places buffer_size bytes from buffer into the file.
+B32 FileHandleRead(FileHandle* file, U8* buffer, S32 buffer_size, S32* bytes_read); // NOTE: Reads / places buffer_size bytes into buffer, stopping if EOF is observed. Num bytes read is placed into bytes_read.
+B32 FileHandleWrite(FileHandle* file, U8* buffer, S32 buffer_size);  // NOTE: Writes / places buffer_size bytes from buffer into the file.
 
 #endif // CDEFAULT_IO_H_
 
@@ -119,7 +119,7 @@ B32 WIN_FileHandleStat(FileHandle* file, FileStats* stats) {
   return true;
 }
 
-B32 WIN_DirGetExe(Arena* arena, U8** file_path, U32* file_path_size) {
+B32 WIN_DirGetExe(Arena* arena, U8** file_path, S32* file_path_size) {
   U16 size = 0;
   do {
     ARENA_POP_ARRAY(arena, U8, size);
@@ -136,7 +136,7 @@ B32 WIN_DirGetExe(Arena* arena, U8** file_path, U32* file_path_size) {
   return true;
 }
 
-B32 WIN_DirGetCurrent(Arena* arena, U8** file_path, U32* file_path_size) {
+B32 WIN_DirGetCurrent(Arena* arena, U8** file_path, S32* file_path_size) {
   U16 size = 0;
   do {
     ARENA_POP_ARRAY(arena, U8, size);
@@ -224,7 +224,7 @@ B32 WIN_FileHandleSeek(FileHandle* file, S32 distance, FileSeekPos pos) {
   return true;
 }
 
-B32 WIN_FileHandleRead(FileHandle* file, U8* buffer, U32 buffer_size, U32* bytes_read) {
+B32 WIN_FileHandleRead(FileHandle* file, U8* buffer, S32 buffer_size, S32* bytes_read) {
   DWORD read;
   BOOL result = ReadFile(file->handle, (LPVOID) buffer, buffer_size, &read, NULL);
   if (!result) {
@@ -235,9 +235,13 @@ B32 WIN_FileHandleRead(FileHandle* file, U8* buffer, U32 buffer_size, U32* bytes
   return true;
 }
 
-B32 WIN_FileHandleWrite(FileHandle* file, U8* buffer, U32 buffer_size) {
+B32 WIN_FileHandleWrite(FileHandle* file, U8* buffer, S32 buffer_size) {
+  if (buffer_size < 0) {
+    LOG_ERROR("[IO] Attempting to write a buffer size of: %d.", buffer_size);
+    return false;
+  }
   DWORD total = 0;
-  while (total < buffer_size) {
+  while (total < (U32) buffer_size) {
     DWORD w;
     BOOL result = WriteFile(file->handle, buffer + total, buffer_size - total, &w, NULL);
     if (!result) {
@@ -298,7 +302,7 @@ B32 LINUX_FileHandleStat(FileHandle* file, FileStats* stats) {
   return true;
 }
 
-B32 LINUX_DirGetExe(Arena* arena, U8** file_path, U32* file_path_size) {
+B32 LINUX_DirGetExe(Arena* arena, U8** file_path, S32* file_path_size) {
   U16 size = 0;
   do {
     ARENA_POP_ARRAY(arena, U8, size);
@@ -316,7 +320,7 @@ B32 LINUX_DirGetExe(Arena* arena, U8** file_path, U32* file_path_size) {
   return true;
 }
 
-B32 LINUX_DirGetCurrent(Arena* arena, U8** file_path, U32* file_path_size) {
+B32 LINUX_DirGetCurrent(Arena* arena, U8** file_path, S32* file_path_size) {
   U16 size = 0;
   do {
     ARENA_POP_ARRAY(arena, U8, size);
@@ -412,8 +416,8 @@ B32 LINUX_FileHandleSeek(FileHandle* file, S32 distance, FileSeekPos pos) {
   return true;
 }
 
-B32 LINUX_FileHandleRead(FileHandle* file, U8* buffer, U32 buffer_size, U32* bytes_read) {
-  U32 r = read(file->fd, buffer, buffer_size);
+B32 LINUX_FileHandleRead(FileHandle* file, U8* buffer, S32 buffer_size, S32* bytes_read) {
+  S32 r = read(file->fd, buffer, buffer_size);
   if (r == -1) {
     LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to read file: %s", file->file_path);
     return false;
@@ -422,9 +426,13 @@ B32 LINUX_FileHandleRead(FileHandle* file, U8* buffer, U32 buffer_size, U32* byt
   return true;
 }
 
-B32 LINUX_FileHandleWrite(FileHandle* file, U8* buffer, U32 buffer_size) {
+B32 LINUX_FileHandleWrite(FileHandle* file, U8* buffer, S32 buffer_size) {
+  if (buffer_size < 0) {
+    LOG_ERROR("[IO] Attempting to write a buffer size of: %d.", buffer_size);
+    return false;
+  }
   U32 total = 0;
-  while (total < buffer_size) {
+  while (total < (U32) buffer_size) {
     U32 w = write(file->fd, buffer + total, buffer_size - total);
     if (w == -1) {
       LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to write file: %s", file->file_path);
@@ -453,32 +461,28 @@ B32 FileStat(U8* file_path, FileStats* stats) {
   return CDEFAULT_IO_BACKEND_FN(FileStat(file_path, stats));
 }
 
-B32 FileReadAll(Arena* arena, U8* file_path, U8** buffer, U32* buffer_size, B32 add_null_terminator) {
+B32 FileReadAll(Arena* arena, U8* file_path, U8** buffer, S32* buffer_size) {
   B32 success = false;
   FileHandle handle;
   if (!FileHandleOpen(&handle, file_path, FileMode_Read)) { return false; }
   FileStats stats;
   if (!FileHandleStat(&handle, &stats)) { goto file_read_all_exit; }
-  U32 extra = 0;
-  if (add_null_terminator) { extra = 1; }
-  *buffer = ARENA_PUSH_ARRAY(arena, U8, stats.size + extra);
-  U32 bytes_read;
+  *buffer = ARENA_PUSH_ARRAY(arena, U8, stats.size);
+  S32 bytes_read;
   if (!FileHandleRead(&handle, *buffer, stats.size, &bytes_read)) {
     ARENA_POP_ARRAY(arena, U8, stats.size);
     goto file_read_all_exit;
   }
-  if (add_null_terminator) { (*buffer)[stats.size] = '\0'; }
-  if (buffer_size != NULL) { *buffer_size = bytes_read + extra; }
+  if (buffer_size != NULL) { *buffer_size = bytes_read; }
   success = true;
 file_read_all_exit:
   DEBUG_ASSERT(FileHandleClose(&handle));
   return success;
 }
 
-B32 FileDump(U8* file_path, U8* buffer, U32 buffer_size, B32 remove_null_terminator) {
+B32 FileDump(U8* file_path, U8* buffer, S32 buffer_size) {
   B32 success = false;
   FileHandle handle;
-  if (buffer[buffer_size - 1] == '\0' && remove_null_terminator) { buffer_size -= 1; }
   if (!FileHandleOpen(&handle, file_path, FileMode_Write | FileMode_Create | FileMode_Truncate)) { return false; }
   if (!FileHandleWrite(&handle, buffer, buffer_size)) { goto file_dump_exit; }
   success = true;
@@ -487,10 +491,9 @@ file_dump_exit:
   return success;
 }
 
-B32 FileAppend(U8* file_path, U8* buffer, U32 buffer_size, B32 remove_null_terminator) {
+B32 FileAppend(U8* file_path, U8* buffer, S32 buffer_size) {
   B32 success = false;
   FileHandle handle;
-  if (buffer[buffer_size - 1] == '\0' && remove_null_terminator) { buffer_size -= 1; }
   if (!FileHandleOpen(&handle, file_path, FileMode_Write | FileMode_Create)) { return false; }
   if (!FileHandleSeek(&handle, 0, FileSeekPos_End)) { goto file_append_exit; }
   if (!FileHandleWrite(&handle, buffer, buffer_size)) { goto file_append_exit; }
@@ -503,27 +506,26 @@ file_append_exit:
 B32 FileCopy(U8* src_path, U8* dest_path) {
   B32 success = false;
   Arena* arena = ArenaAllocate();
-  U8* buffer;
-  U32 buffer_size;
-  if (!FileReadAll(arena, src_path, &buffer, &buffer_size, false)) { goto file_copy_exit; }
-  if (!FileDump(dest_path, buffer, buffer_size, false)) { goto file_copy_exit; }
+  String8 buffer;
+  if (!FileReadAll(arena, src_path, &buffer.str, &buffer.size)) { goto file_copy_exit; }
+  if (!FileDump(dest_path, buffer.str, buffer.size)) { goto file_copy_exit; }
   success = true;
 file_copy_exit:
   ArenaRelease(arena);
   return success;
 }
 
-B32 DirGetExe(Arena* arena, U8** file_path, U32* file_path_size) {
+B32 DirGetExe(Arena* arena, U8** file_path, S32* file_path_size) {
   return CDEFAULT_IO_BACKEND_FN(DirGetExe(arena, file_path, file_path_size));
 }
 
-B32 DirGetExeDir(Arena* arena, U8** file_path, U32* file_path_size) {
+B32 DirGetExeDir(Arena* arena, U8** file_path, S32* file_path_size) {
   B32 result = DirGetExe(arena, file_path, file_path_size);
   if (result) { PathPop(file_path); }
   return result;
 }
 
-B32 DirGetCurrent(Arena* arena, U8** file_path, U32* file_path_size) {
+B32 DirGetCurrent(Arena* arena, U8** file_path, S32* file_path_size) {
   return CDEFAULT_IO_BACKEND_FN(DirGetCurrent(arena, file_path, file_path_size));
 }
 
@@ -535,7 +537,7 @@ B32 DirSetCurrentToExeDir() {
   B32 success = false;
   Arena* arena = ArenaAllocate();
   U8* dir;
-  U32 dir_size;
+  S32 dir_size;
   if (!DirGetExeDir(arena, &dir, &dir_size)) { goto dir_set_current_to_exe_dir_exit; }
   if (!DirSetCurrent(dir)) { goto dir_set_current_to_exe_dir_exit; }
   success = true;
@@ -568,11 +570,11 @@ B32 FileHandleSeek(FileHandle* file, S32 distance, FileSeekPos pos) {
   return CDEFAULT_IO_BACKEND_FN(FileHandleSeek(file, distance, pos));
 }
 
-B32 FileHandleRead(FileHandle* file, U8* buffer, U32 buffer_size, U32* bytes_read) {
+B32 FileHandleRead(FileHandle* file, U8* buffer, S32 buffer_size, S32* bytes_read) {
   return CDEFAULT_IO_BACKEND_FN(FileHandleRead(file, buffer, buffer_size, bytes_read));
 }
 
-B32 FileHandleWrite(FileHandle* file, U8* buffer, U32 buffer_size) {
+B32 FileHandleWrite(FileHandle* file, U8* buffer, S32 buffer_size) {
   return CDEFAULT_IO_BACKEND_FN(FileHandleWrite(file, buffer, buffer_size));
 }
 

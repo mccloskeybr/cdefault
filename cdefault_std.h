@@ -609,7 +609,7 @@ F64  RandF64(RandomSeries* rand, F64 min, F64 max);
 typedef struct String8 String8;
 struct String8 {
   U8* str;
-  U64 size;
+  S32 size;
 };
 
 typedef struct String8ListNode String8ListNode;
@@ -633,9 +633,10 @@ B32  CharIsDigitEx(U8 c, U32 base);
 U8   CharToLower(U8 c);
 U8   CharToUpper(U8 c);
 
-U32  CStrSize(U8* str);
+S32  CStrSize(U8* str);
+U8*  CStrFromStr8(Arena* arena, String8 s);
 U8*  CStrCopy(Arena* arena, U8* src); // TODO: Copy with sized buffer
-U8*  CStrSubstring(Arena* arena, U8* s, U64 start, U64 end);
+U8*  CStrSubstring(Arena* arena, U8* s, S32 start, S32 one_past_last);
 U8*  CStrConcat(Arena* arena, U8* a, U8* b);
 U8*  CStrTrim(Arena* arena, U8* s);
 U8*  CStrReplaceAll(Arena* arena, U8* src, U8* from, U8* to); // NOTE: Replaces occurrences of a with b in src, and places the result in dest.
@@ -651,13 +652,13 @@ U8*  CStrFormatV(Arena* arena, U8* fmt, va_list args);
 U8*  _CStrFormat(Arena* arena, U8* fmt, ...);
 #define CStrFormat(a, fmt, ...) _CStrFormat(a, (U8) fmt, ##__VA_ARGS__)
 
-String8 Str8(U8* str, U64 size);
+String8 Str8(U8* str, S32 size);
 String8 Str8Range(U8* str, U8* one_past_last);
 String8 _Str8CStr(U8* c_str);
 #define Str8CStr(s) _Str8CStr((U8*) s)
 #define Str8Lit(s) Str8((U8*) s, sizeof(s) - 1)
 String8 Str8Copy(Arena* arena, String8 string);
-String8 Str8Substring(String8 s, U64 start, U64 end);
+String8 Str8Substring(String8 s, S32 start, S32 one_past_last);
 String8 Str8Trim(String8 s);
 String8 Str8ReplaceAll(Arena* arena, String8 src, String8 from, String8 to);
 B32     Str8ReplaceAllChar(String8* str, U8 from, U8 to);
@@ -669,8 +670,8 @@ B32     Str8StartsWith(String8 a, String8 b); // NOTE: True iff a starts with b.
 B32     Str8StartsWithChar(String8 a, U8 b);
 B32     Str8EndsWith(String8 a, String8 b); // NOTE: True iff a ends with b.
 B32     Str8Eq(String8 a, String8 b);
-S64     Str8Find(String8 string, S32 start_pos, String8 needle); // NOTE: Returns -1 on failure.
-S64     Str8FindReverse(String8 string, S32 reverse_start_pos, String8 needle); // NOTE: Returns -1 on failure.
+S32     Str8Find(String8 string, S32 start_pos, String8 needle); // NOTE: Returns -1 on failure.
+S32     Str8FindReverse(String8 string, S32 reverse_start_pos, String8 needle); // NOTE: Returns -1 on failure.
 String8 Str8Concat(Arena* arena, String8 a, String8 b);
 String8 Str8FormatV(Arena* arena, U8* fmt, va_list args);
 String8 _Str8Format(Arena* arena, U8* fmt, ...);
@@ -1502,10 +1503,19 @@ U8 CharToUpper(U8 c) {
   return c;
 }
 
-U32 CStrSize(U8* str) {
+S32 CStrSize(U8* str) {
   U8* end = str;
   while (*end != '\0') { end++; }
-  return (U32) (end - str);
+  return (S32) (end - str);
+}
+
+U8* CStrFromStr8(Arena* arena, String8 s) {
+  if (s.size < 0) { return (U8*) ""; }
+  S32 size = s.size + 1;
+  U8* result = ARENA_PUSH_ARRAY(arena, U8, size);
+  MEMORY_COPY(result, s.str, size * sizeof(U8));
+  result[s.size] = '\0';
+  return result;
 }
 
 U8* CStrCopy(Arena* arena, U8* src) {
@@ -1515,8 +1525,9 @@ U8* CStrCopy(Arena* arena, U8* src) {
   return result;
 }
 
-U8* CStrSubstring(Arena* arena, U8* s, U64 start, U64 end) {
-  U64 size = end - start + 1;
+U8* CStrSubstring(Arena* arena, U8* s, S32 start, S32 one_past_last) {
+  if (one_past_last < start) { one_past_last = start; }
+  S32 size = one_past_last - start;
   U8* result = ARENA_PUSH_ARRAY(arena, U8, size + 1);
   MEMORY_COPY(result, (s + start), size * sizeof(U8));
   result[size] = '\0';
@@ -1535,26 +1546,29 @@ U8* CStrConcat(Arena* arena, U8* a, U8* b) {
 }
 
 U8* CStrTrimFront(Arena* arena, U8* s) {
-  U64 start = 0;
-  while (CharIsWhitespace(s[start])) { start++; }
-  return CStrSubstring(arena, s, start, CStrSize(s) - 1);
+  S32 start = 0;
+  S32 size = CStrSize(s);
+  while (start < size && CharIsWhitespace(s[start])) { start++; }
+  return CStrSubstring(arena, s, start, size);
 }
 
 U8* CStrTrimBack(Arena* arena, U8* s) {
-  U64 end = CStrSize(s) - 1;
-  while (CharIsWhitespace(s[end]))   { end--; }
-  return CStrSubstring(arena, s, 0, CStrSize(s) - 1);
+  S32 end = CStrSize(s) - 1;
+  while (end >= 0 && CharIsWhitespace(s[end])) { end--; }
+  return CStrSubstring(arena, s, 0, end + 1);
 }
 
 U8* CStrTrim(Arena* arena, U8* s) {
-  U64 start = 0;
-  U64 end = CStrSize(s) - 1;
-  while (CharIsWhitespace(s[start])) { start++; }
-  while (CharIsWhitespace(s[end]))   { end--;   }
-  return CStrSubstring(arena, s, start, end);
+  S32 start = 0;
+  S32 size  = CStrSize(s);
+  S32 end   = size - 1;
+  while (start < size && CharIsWhitespace(s[start])) { start++; }
+  if (start < size) { while (end >= start && CharIsWhitespace(s[end])) { end--; } }
+  return CStrSubstring(arena, s, start, end + 1);
 }
 
 B32 CStrEq(U8* a, U8* b) {
+  if (CStrSize(a) != CStrSize(b)) { return false; }
   return CStrStartsWith(a, b);
 }
 
@@ -1595,10 +1609,10 @@ S32 CStrFindReverse(U8* str, S32 start_pos, U8* needle) {
 }
 
 U8* CStrReplaceAll(Arena* arena, U8* src, U8* from, U8* to) {
-  U32 i = 0;
-  U32 from_size = CStrSize(from);
-  U32 to_size = CStrSize(to);
-  U32 result_size = 0;
+  S32 i = 0;
+  S32 from_size = CStrSize(from);
+  S32 to_size = CStrSize(to);
+  S32 result_size = 0;
   while (src[i] != '\0') {
     if (CStrStartsWith(&src[i], from)) {
       i += from_size;
@@ -1610,10 +1624,10 @@ U8* CStrReplaceAll(Arena* arena, U8* src, U8* from, U8* to) {
   }
   U8* result = ARENA_PUSH_ARRAY(arena, U8, result_size + 1);
   i = 0;
-  U32 k = 0;
+  S32 k = 0;
   while (src[i] != '\0') {
     if (CStrStartsWith(&src[i], from)) {
-      for (U32 j = 0; j < to_size; j++) {
+      for (S32 j = 0; j < to_size; j++) {
         result[k++] = to[j];
       }
       i += from_size;
@@ -1689,7 +1703,7 @@ U8* _CStrFormat(Arena* arena, U8* fmt, ...) {
   return result;
 }
 
-String8 Str8(U8* str, U64 size) {
+String8 Str8(U8* str, S32 size) {
   String8 result;
   MEMORY_ZERO_STRUCT(&result);
   result.str = str;
@@ -1704,14 +1718,16 @@ String8 _Str8CStr(U8* c_str) {
 }
 
 String8 Str8Range(U8* str, U8* one_past_last) {
+  DEBUG_ASSERT(one_past_last >= str);
   String8 result;
   MEMORY_ZERO_STRUCT(&result);
   result.str = str;
-  result.size = (U64) (one_past_last - str);
+  result.size = (S32) (one_past_last - str);
   return result;
 }
 
 String8 Str8Copy(Arena* arena, String8 string) {
+  DEBUG_ASSERT(string.size >= 0);
   String8 result;
   MEMORY_ZERO_STRUCT(&result);
   result.size = string.size;
@@ -1720,39 +1736,39 @@ String8 Str8Copy(Arena* arena, String8 string) {
   return result;
 }
 
-String8 Str8Substring(String8 s, U64 start, U64 end) {
-  if (end < start) { end = start; }
-  start = MIN(start, s.size - 1);
-  end = MIN(end, s.size - 1);
-  String8 result;
-  MEMORY_ZERO_STRUCT(&result);
-  result.str = s.str + start;
-  result.size = end - start + 1;
-  return result;
+String8 Str8Substring(String8 s, S32 start, S32 one_past_last) {
+  DEBUG_ASSERT(s.size >= 0);
+  if (one_past_last < start) { one_past_last = start; }
+  start         = MIN(start, s.size);
+  one_past_last = MIN(one_past_last, s.size);
+  return Str8(s.str + start, one_past_last - start);
 }
 
-// TODO: bounds checking. probably need to switch to S64s.
 String8 Str8TrimFront(String8 s) {
-  U64 start = 0;
-  while (CharIsWhitespace(s.str[start])) { ++start; }
-  return Str8Substring(s, start, s.size - 1);
+  DEBUG_ASSERT(s.size >= 0);
+  S32 start = 0;
+  while (start < s.size && CharIsWhitespace(s.str[start])) { start++; }
+  return Str8Substring(s, start, s.size);
 }
 
 String8 Str8TrimBack(String8 s) {
-  U64 end = s.size - 1;
-  while (CharIsWhitespace(s.str[end])) { --end; }
-  return Str8Substring(s, 0, end);
+  DEBUG_ASSERT(s.size >= 0);
+  S32 end = s.size - 1;
+  while (end >= 0 && CharIsWhitespace(s.str[end])) { --end; }
+  return Str8Substring(s, 0, end + 1);
 }
 
 String8 Str8Trim(String8 s) {
+  DEBUG_ASSERT(s.size >= 0);
   return Str8TrimBack(Str8TrimFront(s));
 }
 
 String8 Str8ReplaceAll(Arena* arena, String8 src, String8 from, String8 to) {
+  DEBUG_ASSERT(src.size >= 0 && from.size >= 0 && to.size >= 0);
   U32 result_size = 0;
-  U32 i = 0;
+  S32 i = 0;
   while (i < src.size) {
-    String8 sub = Str8Substring(src, i, src.size - 1);
+    String8 sub = Str8Substring(src, i, src.size);
     if (Str8StartsWith(sub, from)) {
       i += from.size;
       result_size += to.size;
@@ -1765,11 +1781,11 @@ String8 Str8ReplaceAll(Arena* arena, String8 src, String8 from, String8 to) {
   result.str = ARENA_PUSH_ARRAY(arena, U8, result_size);
   result.size = result_size;
   i = 0;
-  U32 k = 0;
+  S32 k = 0;
   while (i < src.size) {
-    String8 sub = Str8Substring(src, i, src.size - 1);
+    String8 sub = Str8Substring(src, i, src.size);
     if (Str8StartsWith(sub, from)) {
-      for (U32 j = 0; j < to.size; j++) {
+      for (S32 j = 0; j < to.size; j++) {
         result.str[k++] = to.str[j];
       }
       i += from.size;
@@ -1781,8 +1797,9 @@ String8 Str8ReplaceAll(Arena* arena, String8 src, String8 from, String8 to) {
 }
 
 B32 Str8ReplaceAllChar(String8* str, U8 from, U8 to) {
+  DEBUG_ASSERT(str->size >= 0);
   B32 result = false;
-  for (U32 i = 0; i < str->size; i++) {
+  for (S32 i = 0; i < str->size; i++) {
     if (str->str[i] == from) {
       result = true;
       str->str[i] = to;
@@ -1792,47 +1809,53 @@ B32 Str8ReplaceAllChar(String8* str, U8 from, U8 to) {
 }
 
 B32 Str8StartsWith(String8 a, String8 b) {
+  DEBUG_ASSERT(a.size >= 0 && b.size >= 0);
   if (a.size < b.size) { return false; }
-  for (U64 i = 0; i < b.size; ++i) {
+  for (S32 i = 0; i < b.size; ++i) {
     if (a.str[i] != b.str[i]) { return false; }
   }
   return true;
 }
 
 B32 Str8StartsWithChar(String8 a, U8 b) {
+  DEBUG_ASSERT(a.size >= 0);
   if (a.size == 0) { return false; }
   return a.str[0] == b;
 }
 
 B32 Str8EndsWith(String8 a, String8 b) {
+  DEBUG_ASSERT(a.size >= 0 && b.size >= 0);
   if (a.size < b.size) { return false; }
-  U64 a_offset = a.size - b.size;
-  for (U64 i = 0; i < b.size; ++i) {
+  S32 a_offset = a.size - b.size;
+  for (S32 i = 0; i < b.size; ++i) {
     if (a.str[a_offset + i] != b.str[i]) { return false; }
   }
   return true;
 }
 
 B32 Str8Eq(String8 a, String8 b) {
+  DEBUG_ASSERT(a.size >= 0 && b.size >= 0);
   if (a.size != b.size) { return false; }
   return Str8StartsWith(a, b);
 }
 
-S64 Str8Find(String8 string, S32 start_pos, String8 needle) {
+S32 Str8Find(String8 string, S32 start_pos, String8 needle) {
+  DEBUG_ASSERT(string.size >= 0 && needle.size >= 0);
   if (start_pos < 0) { return -1; }
   if (string.size < start_pos + needle.size) { return -1; }
-  for (U64 i = 0; i < string.size - start_pos; ++i) {
-    U64 offset = start_pos + i;
+  for (S32 i = 0; i < string.size - start_pos; ++i) {
+    S32 offset = start_pos + i;
     String8 substr = Str8(string.str + offset, string.size - offset);
     if (Str8StartsWith(substr, needle)) { return offset; }
   }
   return -1;
 }
 
-S64 Str8FindReverse(String8 string, S32 reverse_start_pos, String8 needle) {
+S32 Str8FindReverse(String8 string, S32 reverse_start_pos, String8 needle) {
+  DEBUG_ASSERT(string.size >= 0 && needle.size >= 0);
   if (reverse_start_pos < 0) { return -1; }
   if (string.size < reverse_start_pos + needle.size) { return -1; }
-  for (U64 i = string.size - reverse_start_pos - needle.size; i > 0; --i) {
+  for (S32 i = string.size - reverse_start_pos - needle.size; i > 0; --i) {
     String8 substr = Str8(string.str, i + needle.size);
     if (Str8EndsWith(substr, needle)) { return i; }
   }
@@ -1840,20 +1863,23 @@ S64 Str8FindReverse(String8 string, S32 reverse_start_pos, String8 needle) {
 }
 
 void Str8ToUpper(String8 s) {
-  for (U64 i = 0; i < s.size; ++i) {
+  DEBUG_ASSERT(s.size >= 0);
+  for (S32 i = 0; i < s.size; ++i) {
     s.str[i] = CharToUpper(s.str[i]);
   }
 }
 
 void Str8ToLower(String8 s) {
-  for (U64 i = 0; i < s.size; ++i) {
+  DEBUG_ASSERT(s.size >= 0);
+  for (S32 i = 0; i < s.size; ++i) {
     s.str[i] = CharToLower(s.str[i]);
   }
 }
 
 // TODO: support e notation
 S32 Str8ToF32(String8 s, F32* f32) {
-  U32 i = 0;
+  DEBUG_ASSERT(s.size >= 0);
+  S32 i = 0;
   F32 result = 0.0f;
   B32 found_f32 = false;
 
@@ -1870,7 +1896,7 @@ S32 Str8ToF32(String8 s, F32* f32) {
   if (s.str[i] != '.') { goto str8_to_f32_end; }
   i++;
 
-  U32 exp = 1;
+  S32 exp = 1;
   while (i < s.size && CharIsDigit(s.str[i])) {
     result *= 10;
     result += s.str[i] - '0';
@@ -1890,6 +1916,7 @@ str8_to_f32_end:
 }
 
 S32 Str8ToS32(String8 s, S32* s32) {
+  DEBUG_ASSERT(s.size >= 0);
   S32 i = 0;
   S32 result = 0;
   B32 found_s32 = false;
@@ -1914,6 +1941,7 @@ S32 Str8ToS32(String8 s, S32* s32) {
 }
 
 String8 Str8Concat(Arena* arena, String8 a, String8 b) {
+  DEBUG_ASSERT(a.size >= 0 && b.size >= 0);
   String8 result;
   MEMORY_ZERO_STRUCT(&result);
   result.size = a.size + b.size;
@@ -1956,7 +1984,7 @@ void Str8ListAppend(String8List* list, String8ListNode* node) {
 }
 
 String8 Str8ListJoin(Arena* arena, String8List* list) {
-  U64 size = 0;
+  S32 size = 0;
   for (String8ListNode* node = list->head; node != NULL; node = node->next) {
     size += node->string.size;
   }
@@ -1974,10 +2002,11 @@ String8 Str8ListJoin(Arena* arena, String8List* list) {
 }
 
 String8List Str8Split(Arena* arena, String8 string, U8 c) {
+  DEBUG_ASSERT(string.size >= 0);
   String8List list;
   MEMORY_ZERO_STRUCT(&list);
   U8* substring_start = string.str;
-  for (U64 i = 0; i < string.size; ++i) {
+  for (S32 i = 0; i < string.size; ++i) {
     if (string.str[i] == c) {
       String8ListNode* node = ARENA_PUSH_STRUCT(arena, String8ListNode);
       node->string = Str8Range(substring_start, &string.str[i]);
@@ -1994,6 +2023,7 @@ String8List Str8Split(Arena* arena, String8 string, U8 c) {
 }
 
 S32 Str8Hash(String8 s) {
+  DEBUG_ASSERT(s.size >= 0);
   S32 hash = 0;
   for (S32 i = 0; i < s.size; i++) {
     hash += s.str[i];
@@ -2061,7 +2091,7 @@ S32 SortCompareB64Asc(void* a, void* b) { return *(B64*) a - *(B64*) b; }
 S32 SortCompareString8Asc(void* a, void* b) {
   String8* a_cast = (String8*) a;
   String8* b_cast = (String8*) b;
-  U32 i = 0;
+  S32 i = 0;
   while (true) {
     if (i >= a_cast->size) { return -1 * (a_cast->size != b_cast->size); }
     if (i >= b_cast->size) { return +1; } // NOTE: contextually, a size != b size.
@@ -2090,7 +2120,7 @@ S32 SortCompareB64Desc(void* a, void* b) { return *(B64*) b - *(B64*) a; }
 S32 SortCompareString8Desc(void* a, void* b) {
   String8* a_cast = (String8*) a;
   String8* b_cast = (String8*) b;
-  U32 i = 0;
+  S32 i = 0;
   while (true) {
     if (i >= a_cast->size) { return +1 * (a_cast->size != b_cast->size); }
     if (i >= b_cast->size) { return -1; } // NOTE: contextually, a size != b size.

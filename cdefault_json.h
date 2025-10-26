@@ -77,14 +77,14 @@ void JsonObjectPushArray(Arena* arena, JsonObject* object, String8 key, JsonArra
 JsonObject* JsonObjectCreateObject(Arena* arena, JsonObject* object, String8 key);
 JsonArray*  JsonObjectCreateArray(Arena* arena, JsonObject* object, String8 key);
 
-U32 JsonArraySize(JsonArray array);
-JsonValue* JsonArrayGet(JsonArray array, U32 index);
-B32  JsonArrayGetString(JsonArray array, U32 index, String8* result);
-B32  JsonArrayGetNumber(JsonArray array, U32 index, F32* result);
-B32  JsonArrayGetBool(JsonArray array, U32 index, B32* result);
-B32  JsonArrayGetNull(JsonArray array, U32 index);
-B32  JsonArrayGetObject(JsonArray array, U32 index, JsonObject* result);
-B32  JsonArrayGetArray(JsonArray array, U32 index, JsonArray* result);
+S32 JsonArraySize(JsonArray array);
+JsonValue* JsonArrayGet(JsonArray array, S32 index);
+B32  JsonArrayGetString(JsonArray array, S32 index, String8* result);
+B32  JsonArrayGetNumber(JsonArray array, S32 index, F32* result);
+B32  JsonArrayGetBool(JsonArray array, S32 index, B32* result);
+B32  JsonArrayGetNull(JsonArray array, S32 index);
+B32  JsonArrayGetObject(JsonArray array, S32 index, JsonObject* result);
+B32  JsonArrayGetArray(JsonArray array, S32 index, JsonArray* result);
 void JsonArrayPushString(Arena* arena, JsonArray* array, String8 value);
 void JsonArrayPushNumber(Arena* arena, JsonArray* array, F32 value);
 void JsonArrayPushBool(Arena* arena, JsonArray* array, B32 value);
@@ -99,13 +99,12 @@ JsonArray*  JsonArrayCreateArray(Arena* arena, JsonArray* array);
 #ifdef CDEFAULT_JSON_IMPLEMENTATION
 #undef CDEFAULT_JSON_IMPLEMENTATION
 
-// TODO: save original string for more clear error messages
-// TODO: truncate string whenever logging
+// TODO: truncate string when logging?
 
 static B32 JsonValueParse(Arena* arena, JsonValue* value, String8* orig_str, String8* json_str);
 static B32 JsonObjectParse(Arena* arena, JsonObject* object, String8* orig_str, String8* json_str);
-static void JsonValueAppendToStr8List(Arena* arena, JsonValue* value, String8List* json_str_list, B32 pretty, U32 indent);
-static void JsonObjectAppendToStr8List(Arena* arena, JsonObject* object, String8List* json_str_list, B32 pretty, U32 indent);
+static void JsonValueAppendToStr8List(Arena* arena, JsonValue* value, String8List* json_str_list, B32 pretty, S32 indent);
+static void JsonObjectAppendToStr8List(Arena* arena, JsonObject* object, String8List* json_str_list, B32 pretty, S32 indent);
 
 #define JSON_LOG_ERROR_EX(orig_str, curr_str, fmt, ...)                                                   \
   do {                                                                                                    \
@@ -118,7 +117,7 @@ static void JsonObjectAppendToStr8List(Arena* arena, JsonObject* object, String8
 #define JSON_LOG_ERROR(orig_str, curr_str, err)    \
   JSON_LOG_ERROR_EX(orig_str, curr_str, "%s", err)
 
-static void JsonStrAdvance(String8* json_str, U32 size) {
+static void JsonStrAdvance(String8* json_str, S32 size) {
   DEBUG_ASSERT(size <= json_str->size);
   json_str->str  += size;
   json_str->size -= size;
@@ -273,7 +272,7 @@ B32 JsonParse(Arena* arena, JsonObject* object, String8 json_str) {
   return JsonObjectParse(arena, object, &json_str, &json_str_copy);
 }
 
-static void JsonValueAppendToStr8List(Arena* arena, JsonValue* value, String8List* json_str_list, B32 pretty, U32 indent) {
+static void JsonValueAppendToStr8List(Arena* arena, JsonValue* value, String8List* json_str_list, B32 pretty, S32 indent) {
   String8ListNode* node;
   switch (value->kind) {
     case JsonValueKind_String: {
@@ -294,7 +293,7 @@ static void JsonValueAppendToStr8List(Arena* arena, JsonValue* value, String8Lis
       Str8ListAppend(json_str_list, node);
       node->string = Str8Format(arena, "[%s", pretty ? "\n" : "");
 
-      U32 array_indent = indent + 2;
+      S32 array_indent = indent + 2;
       for (JsonArrayNode* curr = value->array.nodes_head; curr != NULL; curr = curr->next) {
         if (pretty) {
           node = ARENA_PUSH_STRUCT(arena, String8ListNode);
@@ -330,14 +329,14 @@ static void JsonValueAppendToStr8List(Arena* arena, JsonValue* value, String8Lis
   }
 }
 
-static void JsonObjectAppendToStr8List(Arena* arena, JsonObject* object, String8List* json_str_list, B32 pretty, U32 indent) {
+static void JsonObjectAppendToStr8List(Arena* arena, JsonObject* object, String8List* json_str_list, B32 pretty, S32 indent) {
   String8ListNode* node;
   node = ARENA_PUSH_STRUCT(arena, String8ListNode);
   Str8ListAppend(json_str_list, node);
   node->string = Str8Format(arena, "{%s", pretty ? "\n" : "");
 
   for (JsonObjectNode* curr = object->nodes_head; curr != NULL; curr = curr->next) {
-    U32 value_indent = indent + 2;
+    S32 value_indent = indent + 2;
 
     node = ARENA_PUSH_STRUCT(arena, String8ListNode);
     Str8ListAppend(json_str_list, node);
@@ -507,52 +506,53 @@ JsonArray* JsonObjectCreateArray(Arena* arena, JsonObject* object, String8 key) 
   return &node->value.array;
 }
 
-U32 JsonArraySize(JsonArray array) {
-  U32 size = 0;
+S32 JsonArraySize(JsonArray array) {
+  S32 size = 0;
   for (JsonArrayNode* curr = array.nodes_head; curr != NULL; curr = curr->next) { size++; }
   return size;
 }
 
-JsonValue* JsonArrayGet(JsonArray array, U32 index) {
+JsonValue* JsonArrayGet(JsonArray array, S32 index) {
+  if (index < 0) { return NULL; }
   JsonArrayNode* curr = array.nodes_head;
-  for (U32 i = 0; i < index; i++) {
+  for (S32 i = 0; i < index; i++) {
     if (curr == NULL) { return NULL; }
     curr = curr->next;
   }
   return &curr->value;
 }
 
-B32 JsonArrayGetString(JsonArray array, U32 index, String8* result) {
+B32 JsonArrayGetString(JsonArray array, S32 index, String8* result) {
   JsonValue* value = JsonArrayGet(array, index);
   if (value == NULL) { return false; }
   return JsonValueGetString(value, result);
 }
 
-B32 JsonArrayGetNumber(JsonArray array, U32 index, F32* result) {
+B32 JsonArrayGetNumber(JsonArray array, S32 index, F32* result) {
   JsonValue* value = JsonArrayGet(array, index);
   if (value == NULL) { return false; }
   return JsonValueGetNumber(value, result);
 }
 
-B32 JsonArrayGetBool(JsonArray array, U32 index, B32* result) {
+B32 JsonArrayGetBool(JsonArray array, S32 index, B32* result) {
   JsonValue* value = JsonArrayGet(array, index);
   if (value == NULL) { return false; }
   return JsonValueGetBool(value, result);
 }
 
-B32 JsonArrayGetNull(JsonArray array, U32 index) {
+B32 JsonArrayGetNull(JsonArray array, S32 index) {
   JsonValue* value = JsonArrayGet(array, index);
   if (value == NULL) { return false; }
   return JsonValueGetNull(value);
 }
 
-B32 JsonArrayGetObject(JsonArray array, U32 index, JsonObject* result) {
+B32 JsonArrayGetObject(JsonArray array, S32 index, JsonObject* result) {
   JsonValue* value = JsonArrayGet(array, index);
   if (value == NULL) { return false; }
   return JsonValueGetObject(value, result);
 }
 
-B32 JsonArrayGetArray(JsonArray array, U32 index, JsonArray* result) {
+B32 JsonArrayGetArray(JsonArray array, S32 index, JsonArray* result) {
   JsonValue* value = JsonArrayGet(array, index);
   if (value == NULL) { return false; }
   return JsonValueGetArray(value, result);

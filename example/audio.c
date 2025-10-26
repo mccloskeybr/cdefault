@@ -25,13 +25,13 @@ int main(void) {
   AudioStreamHandle stream;
   DEBUG_ASSERT(AudioStreamOpen(&stream, spec));
 
-  U8* buffer;
-  U32 buffer_size, bytes_read;
+  String8 buffer;
+  S32 bytes_read;
   while(true) {
-    DEBUG_ASSERT(AudioStreamAcquireBuffer(stream, &buffer, &buffer_size));
-    DEBUG_ASSERT(SoundGetSamplesInterleaved(&sound, buffer, buffer_size, &bytes_read));
-    if (bytes_read < buffer_size) { DEBUG_ASSERT(SoundRestart(&sound)); }
-    DEBUG_ASSERT(AudioStreamReleaseBuffer(stream, buffer, bytes_read));
+    DEBUG_ASSERT(AudioStreamAcquireBuffer(stream, &buffer.str, &buffer.size));
+    DEBUG_ASSERT(SoundGetSamplesInterleaved(&sound, buffer.str, buffer.size, &bytes_read));
+    if (bytes_read < buffer.size) { DEBUG_ASSERT(SoundRestart(&sound)); }
+    DEBUG_ASSERT(AudioStreamReleaseBuffer(stream, buffer.str, bytes_read));
     DEBUG_ASSERT(AudioStreamWait(stream));
   }
 

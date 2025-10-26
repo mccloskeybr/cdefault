@@ -75,12 +75,12 @@ struct Sound {
 
 B32 SoundOpenFile(Sound* sound, U8* file_path);
 B32 SoundOpenFileHandle(Sound* sound, FileHandle file);
-B32 SoundGetSamplesInterleaved(Sound* sound, U8* sample_bytes, U32 sample_bytes_size, U32* sample_bytes_read);
+B32 SoundGetSamplesInterleaved(Sound* sound, U8* sample_bytes, S32 sample_bytes_size, S32* sample_bytes_read);
 B32 SoundRestart(Sound* sound);
 B32 SoundClose(Sound* sound);
 
 B32 SoundOpenWav(Sound* sound, FileHandle file);
-B32 SoundGetSamplesInterleavedWav(Sound* sound, U8* sample_bytes, U32 sample_bytes_size, U32* sample_bytes_read);
+B32 SoundGetSamplesInterleavedWav(Sound* sound, U8* sample_bytes, S32 sample_bytes_size, S32* sample_bytes_read);
 
 #endif // CDEFAULT_SOUND_H_
 
@@ -99,7 +99,7 @@ B32 SoundOpenWav(Sound* sound, FileHandle file) {
   // NOTE: 128 is just an arbitrarily large amount that should contain all header versions.
   // TODO: debug assertions may be thrown if the file is malformed, do we care?
   U8 bytes[128];
-  U32 bytes_read;
+  S32 bytes_read;
   if (!FileHandleRead(&sound->file, bytes, STATIC_ARRAY_SIZE(bytes), &bytes_read)) { return false; }
 
   BinHead r;
@@ -160,7 +160,7 @@ B32 SoundOpenWav(Sound* sound, FileHandle file) {
   return true;
 }
 
-B32 SoundGetSamplesInterleavedWav(Sound* sound, U8* sample_bytes, U32 sample_bytes_size, U32* sample_bytes_read) {
+B32 SoundGetSamplesInterleavedWav(Sound* sound, U8* sample_bytes, S32 sample_bytes_size, S32* sample_bytes_read) {
   DEBUG_ASSERT(sound->type == SoundFileType_WAV);
   if (sound->samples_pos >= sound->samples_byte_size) {
     *sample_bytes_read = 0;
@@ -174,7 +174,7 @@ B32 SoundGetSamplesInterleavedWav(Sound* sound, U8* sample_bytes, U32 sample_byt
   return true;
 }
 
-B32 SoundGetSamplesInterleaved(Sound* sound, U8* sample_bytes, U32 sample_bytes_size, U32* sample_bytes_read) {
+B32 SoundGetSamplesInterleaved(Sound* sound, U8* sample_bytes, S32 sample_bytes_size, S32* sample_bytes_read) {
   switch (sound->type) {
     case SoundFileType_WAV: { return SoundGetSamplesInterleavedWav(sound, sample_bytes, sample_bytes_size, sample_bytes_read); } break;
     default:                { UNREACHABLE(); return -1; } break;
