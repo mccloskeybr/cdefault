@@ -1458,15 +1458,9 @@ F64 RandF64(RandomSeries* rand, F64 min, F64 max) {
 ///////////////////////////////////////////////////////////////////////////////
 
 B32 CharIsWhitespace(U8 c) {
-  static const U8 whitespace_table[256] = {
-    [' ']  = 1,
-    ['\n'] = 1,
-    ['\t'] = 1,
-    ['\r'] = 1,
-    ['\f'] = 1,
-    ['\v'] = 1,
-  };
-  return whitespace_table[c];
+  return (c == ' '  || c == '\n' ||
+          c == '\t' || c == '\r' ||
+          c == '\f' || c == '\v');
 }
 
 B32 CharIsLower(U8 c) {

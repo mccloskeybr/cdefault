@@ -2,3 +2,6 @@ test/build/*
 test/bin/*
 example/build/*
 example/bin/*
+benchmark/build/*
+benchmark/bin/*
+benchmark/data/*

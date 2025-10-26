@@ -3,11 +3,30 @@
 
 #include "cdefault_std.h"
 
-// NOTE: Metrics need to be manually registered in this enum.
+// NOTE: Block profiling is enabled by #defining PROFILE.
+
+// NOTE: ProfileMetricType_Count is used to size static arrays, so add a dummy counter if the user hasn't defined a registry.
+#ifndef PROFILE_REGISTRY
+#define PROFILE_REGISTRY(PROFILE_METRIC) PROFILE_METRIC(DUMMY)
+#endif
+
+// NOTE: The user is expected to register macros before #including this header the following way:
+// #define PROFILE_REGISTRY(PROFILE_METRIC) \
+//   PROFILE_METRIC(METRIC_1) \
+//   PROFILE_METRIC(METRIC_2) \
+//   ...
+#define PROFILE_DEFINE_METRIC_ENUM(metric) ProfileMetricType_##metric,
 typedef enum ProfileMetricType ProfileMetricType;
 enum ProfileMetricType {
-  // ...
+  PROFILE_REGISTRY(PROFILE_DEFINE_METRIC_ENUM)
   ProfileMetricType_Count,
+};
+
+// NOTE: Can retrieve a String8 copy of the metric's name via PROFILE_METRIC_STR8(METRIC_NAME)
+#define PROFILE_METRIC_STR8(metric) ProfileMetricType_Names[ProfileMetricType_##metric]
+#define PROFILE_DEFINE_METRIC_STR8(metric) { (U8*) #metric, sizeof(#metric) },
+static String8 ProfileMetricType_Names[ProfileMetricType_Count] = {
+  PROFILE_REGISTRY(PROFILE_DEFINE_METRIC_STR8)
 };
 
 // NOTE: Profiling is inherently stack-shaped. Therefore, when profiling a section, unless it
@@ -28,18 +47,18 @@ struct ProfileAnchor {
 
 // NOTE: Surround critical blocks with PROFILE_START / PROFILE_END to time them.
 #ifdef PROFILE
-#  define PROFILE_START(metric) _ProfileBlockStart(metric);
-#  define PROFILE_END(metric) _ProfileBlockEnd(metric);
+#  define PROFILE_START(metric)  _ProfileBlockStart(ProfileMetricType_##metric)
+#  define PROFILE_END(metric)    _ProfileBlockEnd(ProfileMetricType_##metric)
 #else
 #  define PROFILE_START(metric)
 #  define PROFILE_END(metric)
 #endif
 
-// NOTE: GetAnchor and Reset are expected to be called in a centralized profiling / debug controller.
-ProfileAnchor* ProfileGetAnchor(ProfileMetricType metric);
-void ProfileReset(void);
-void _ProfileBlockStart(ProfileMetricType metric);
-void _ProfileBlockEnd(ProfileMetricType metric);
+void ProfileReset();
+#define ProfileGetAnchor(metric) _ProfileGetAnchor(ProfileMetricType_##metric)
+ProfileAnchor _ProfileGetAnchor(ProfileMetricType metric);
+volatile void _ProfileBlockStart(ProfileMetricType metric);
+volatile void _ProfileBlockEnd(ProfileMetricType metric);
 
 #endif // CDEFAULT_PROFILE_H_
 
@@ -62,22 +81,22 @@ struct ProfileContext {
 };
 static ProfileContext _profile_context;
 
-static U64 ReadCpuTimer() {
+static volatile inline U64 ReadCpuTimer() {
   return __rdtsc();
 }
 
-ProfileAnchor* ProfileGetAnchor(ProfileMetricType metric) {
+ProfileAnchor _ProfileGetAnchor(ProfileMetricType metric) {
   ProfileContext* ctx = &_profile_context;
-  return &ctx->profile_zones[metric];
+  return ctx->profile_zones[metric];
 }
 
-void ProfileReset(void) {
+void ProfileReset() {
   ProfileContext* ctx = &_profile_context;
   DEBUG_ASSERT(ctx->next_profile_block == 0);
   MEMORY_ZERO_STATIC_ARRAY(ctx->profile_zones);
 }
 
-void _ProfileBlockStart(ProfileMetricType metric) {
+volatile void _ProfileBlockStart(ProfileMetricType metric) {
   ProfileContext* ctx = &_profile_context;
   ProfileAnchor* anchor = &ctx->profile_zones[metric];
   ProfileBlock* block = &ctx->profile_block_stack[ctx->next_profile_block];
@@ -86,11 +105,13 @@ void _ProfileBlockStart(ProfileMetricType metric) {
   MEMORY_ZERO_STRUCT(block);
   block->metric = metric;
   block->elapsed_inclusive_snapshot = anchor->elapsed_inclusive;
+
   block->start = ReadCpuTimer();
 }
 
-void _ProfileBlockEnd(ProfileMetricType metric) {
+volatile void _ProfileBlockEnd(ProfileMetricType metric) {
   U64 end = ReadCpuTimer();
+
   ProfileContext* ctx = &_profile_context;
   ProfileBlock* block = &ctx->profile_block_stack[ctx->next_profile_block - 1];
   DEBUG_ASSERT(block->metric == metric);
