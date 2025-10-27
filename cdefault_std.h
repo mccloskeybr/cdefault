@@ -759,6 +759,14 @@ S32 SortCompareString8Desc(void* a, void* b); // NOTE: Lexicographic ordering
 // NOTE: Bin read / write
 ///////////////////////////////////////////////////////////////////////////////
 
+U8  ReadU8(U8* bytes);
+U16 ReadU16LE(U8* bytes);
+U16 ReadU16BE(U8* bytes);
+U32 ReadU32LE(U8* bytes);
+U32 ReadU32BE(U8* bytes);
+U64 ReadU64LE(U8* bytes);
+U64 ReadU64BE(U8* bytes);
+
 // Convenience struct for traversing binary blobs, e.g. file data.
 // E.g. read or write by bytes at a time, automatically updating a running position count.
 
@@ -772,7 +780,8 @@ struct BinHead {
 void BinHeadInit(BinHead* head, U8* bytes, U32 bytes_size);
 void BinHeadSetPos(BinHead* head, U32 pos);
 void BinHeadReset(BinHead* head);
-void BinHeadSkip(BinHead* head, U32 num, U32 size);
+void BinHeadSkip(BinHead* head, U32 num, S32 size);
+U8*  BinHeadDecay(BinHead* head);
 U8   BinHeadR8(BinHead* head);
 U16  BinHeadR16LE(BinHead* head);
 U16  BinHeadR16BE(BinHead* head);
@@ -2130,6 +2139,46 @@ S32 SortCompareString8Desc(void* a, void* b) {
 // NOTE: Bin read / write Implementation
 ///////////////////////////////////////////////////////////////////////////////
 
+U8 ReadU8(U8* bytes) {
+  return *bytes;
+}
+
+U16 ReadU16LE(U8* bytes) {
+  U8 x = ReadU8(bytes);
+  U8 y = ReadU8(bytes + 1);
+  return (((U16) x) + (((U16) y) << 8));
+}
+
+U16 ReadU16BE(U8* bytes) {
+  U8 x = ReadU8(bytes);
+  U8 y = ReadU8(bytes + 1);
+  return ((((U16) x) << 8) + ((U16) y));
+}
+
+U32 ReadU32LE(U8* bytes) {
+  U16 x = ReadU16LE(bytes);
+  U16 y = ReadU16LE(bytes + 2);
+  return (((U32) x) + (((U32) y) << 16));
+}
+
+U32 ReadU32BE(U8* bytes) {
+  U16 x = ReadU16BE(bytes);
+  U16 y = ReadU16BE(bytes + 2);
+  return ((((U32) x) << 16) + ((U32) y));
+}
+
+U64 ReadU64LE(U8* bytes) {
+  U32 x = ReadU32LE(bytes);
+  U32 y = ReadU32LE(bytes + 4);
+  return (((U64) x) + (((U64) y) << 32));
+}
+
+U64 ReadU64BE(U8* bytes) {
+  U32 x = ReadU32BE(bytes);
+  U32 y = ReadU32BE(bytes + 4);
+  return ((((U64) x) << 32) + ((U64) y));
+}
+
 void BinHeadInit(BinHead* head, U8* bytes, U32 bytes_size) {
   head->bytes = bytes;
   head->bytes_size = bytes_size;
@@ -2144,49 +2193,61 @@ void BinHeadReset(BinHead* head) {
   BinHeadSetPos(head, 0);
 }
 
-void BinHeadSkip(BinHead* head, U32 num, U32 size) {
+void BinHeadSkip(BinHead* head, U32 num, S32 size) {
   head->pos += num * size;
 }
 
+U8* BinHeadDecay(BinHead* head) {
+  return &head->bytes[head->pos];
+}
+
 U8 BinHeadR8(BinHead* head) {
-  DEBUG_ASSERT(head->pos < head->bytes_size);
-  return head->bytes[head->pos++];
+  DEBUG_ASSERT(head->pos + 1 <= head->bytes_size);
+  U8 result = ReadU8(head->bytes + head->pos);
+  head->pos += 1;
+  return result;
 }
 
 U16 BinHeadR16LE(BinHead* head) {
-  U8 x = BinHeadR8(head);
-  U8 y = BinHeadR8(head);
-  return (((U16) x) + (((U16) y) << 8));
+  DEBUG_ASSERT(head->pos + 2 <= head->bytes_size);
+  U16 result = ReadU16LE(head->bytes + head->pos);
+  head->pos += 2;
+  return result;
 }
 
 U16 BinHeadR16BE(BinHead* head) {
-  U8 x = BinHeadR8(head);
-  U8 y = BinHeadR8(head);
-  return ((((U16) x) << 8) + ((U16) y));
+  DEBUG_ASSERT(head->pos + 2 <= head->bytes_size);
+  U16 result = ReadU16BE(head->bytes + head->pos);
+  head->pos += 2;
+  return result;
 }
 
 U32 BinHeadR32LE(BinHead* head) {
-  U16 x = BinHeadR16LE(head);
-  U16 y = BinHeadR16LE(head);
-  return (((U32) x) + (((U32) y) << 16));
+  DEBUG_ASSERT(head->pos + 4 <= head->bytes_size);
+  U32 result = ReadU32LE(head->bytes + head->pos);
+  head->pos += 4;
+  return result;
 }
 
 U32 BinHeadR32BE(BinHead* head) {
-  U16 x = BinHeadR16BE(head);
-  U16 y = BinHeadR16BE(head);
-  return ((((U32) x) << 16) + ((U32) y));
+  DEBUG_ASSERT(head->pos + 4 <= head->bytes_size);
+  U32 result = ReadU32BE(head->bytes + head->pos);
+  head->pos += 4;
+  return result;
 }
 
 U64 BinHeadR64LE(BinHead* head) {
-  U32 x = BinHeadR32LE(head);
-  U32 y = BinHeadR32LE(head);
-  return (((U64) x) + (((U64) y) << 32));
+  DEBUG_ASSERT(head->pos + 8 <= head->bytes_size);
+  U64 result = ReadU64LE(head->bytes + head->pos);
+  head->pos += 8;
+  return result;
 }
 
 U64 BinHeadR64BE(BinHead* head) {
-  U32 x = BinHeadR32BE(head);
-  U32 y = BinHeadR32BE(head);
-  return ((((U64) x) << 32) + ((U64) y));
+  DEBUG_ASSERT(head->pos + 8 <= head->bytes_size);
+  U64 result = ReadU64BE(head->bytes + head->pos);
+  head->pos += 8;
+  return result;
 }
 
 void BinHeadW8(BinHead* head, U8 x) {
