@@ -43,6 +43,16 @@ struct FontVertex {
   S16 y;
 };
 
+typedef struct FontCurve FontCurve;
+struct FontCurve {
+  S16 start_x;
+  S16 start_y;
+  S16 end_x;
+  S16 end_y;
+  S16 control_x;
+  S16 control_y;
+};
+
 static void FontTableParse(FontTable* table, BinHead* h) {
   BinHeadR32BE(h);
   table->offset      = BinHeadR32BE(h);
@@ -172,17 +182,18 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
         S32 low  = 0;
         S32 high = number_groups;
         while (low < high ) {
-          S32 mid = low + ((high - low) / 2);
-          U32 start_char = ReadU32BE(groups + (mid * 12));
-          U32 end_char   = ReadU32BE(groups + ((mid * 12) + 4));
-          if (codepoint < start_char) {
+          S32 mid            = low + ((high - low) / 2);
+          U8* mid_group      = groups + (mid * 12);
+          U32 mid_start_char = ReadU32BE(mid_group);
+          U32 mid_end_char   = ReadU32BE(mid_group + 4);
+          if (codepoint < mid_start_char) {
             high = mid;
-          } else if (codepoint > end_char) {
+          } else if (codepoint > mid_end_char) {
             low = mid + 1;
           } else {
             U32 start_glyph = ReadU32BE(groups + ((mid * 12) + 8));
             if (cmap_format == 12) {
-              glyph_index = start_glyph + codepoint - start_char;
+              glyph_index = start_glyph + codepoint - mid_start_char;
               break;
             } else {
               glyph_index = start_glyph;
@@ -195,7 +206,7 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
     }
     DEBUG_ASSERT(glyph_index != 0);
 
-    // NOTE: find size metrics
+    // NOTE: find glyph size metrics
     S32 advance_width, left_side_bearing;
     BinHeadSetPos(&h, font.hhea.offset);
     BinHeadSkip(&h, 34, sizeof(U8));
@@ -218,7 +229,7 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
     }
 
     // NOTE: get glyf offset
-    U32 glyf_offset, g2;
+    S32 glyf_offset, g2;
     BinHeadSetPos(&h, font.loca.offset);
     switch (index_to_loc_format) {
       case 0: { // NOTE: stored as U16s
@@ -271,11 +282,11 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
     max_glyph_height_for_row = MAX(glyph_height, max_glyph_height_for_row);
 
     // NOTE: determine glyph shape
-    // TODO: merge with bitmap box determination above?
     if (glyf_offset > 0) {
       BinHeadSetPos(&h, glyf_offset);
       S16 num_contours = BinHeadR16BE(&h);
       if (num_contours > 0) {
+        // NOTE: parse simple shape
         BinHeadSkip(&h, 8, sizeof(U8));
         U8* end_pts_of_contours = BinHeadDecay(&h);
         BinHeadSkip(&h, 2 * num_contours, sizeof(U8));
@@ -288,7 +299,7 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
 
         U8 flags = 0;
         U16 flag_num_repeat = 0;
-        for (U16 i = 0; i < num_vertices; i++) {
+        for (U16 j = 0; j < num_vertices; j++) {
           if (flag_num_repeat == 0) {
             flags = ReadU8(points);
             points++;
@@ -299,13 +310,13 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
           } else {
             flag_num_repeat--;
           }
-          vertices[i].flags = flags;
+          vertices[j].flags = flags;
         }
         DEBUG_ASSERT(flag_num_repeat == 0);
 
         S16 x = 0;
-        for (U16 i = 0; i < num_vertices; i++) {
-          U8 flags = vertices[i].flags;
+        for (U16 j = 0; j < num_vertices; j++) {
+          U8 flags = vertices[j].flags;
           if (flags & BIT(1)) {
             S16 dx = ReadU8(points);
             points++;
@@ -317,12 +328,12 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
               points += 2;
             }
           }
-          vertices[i].x = x;
+          vertices[j].x = x;
         }
 
         S16 y = 0;
-        for (U16 i = 0; i < num_vertices; i++) {
-          U8 flags = vertices[i].flags;
+        for (U16 j = 0; j < num_vertices; j++) {
+          U8 flags = vertices[j].flags;
           if (flags & BIT(2)) {
             S16 dx = *points;
             points++;
@@ -334,17 +345,102 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
               points += 2;
             }
           }
-          vertices[i].y = y;
+          vertices[j].y = y;
         }
 
-        /*
-        for (U16 i = 0; i < num_vertices; i++) {
-          DrawCircle(vertices[i].x, vertices[i].y, 10, 0, 0, 1);
+        // NOTE: decompress / build final glyph contour
+        U16 start_of_contour        = 0;
+        U16 end_of_contour          = ReadU16BE(end_pts_of_contours);
+        U16 next_end_of_contour_idx = 1;
+        FontCurve debug_curve;
+        while (true) {
+          for (U16 j = start_of_contour; j < end_of_contour; j++) {
+            if (j > TEST) { return; }
+            FontVertex* p0 = &vertices[start_of_contour + (((j + 0) - start_of_contour) % (end_of_contour - start_of_contour))];
+            FontVertex* p1 = &vertices[start_of_contour + (((j + 1) - start_of_contour) % (end_of_contour - start_of_contour))];
+            FontVertex* p2 = &vertices[start_of_contour + (((j + 2) - start_of_contour) % (end_of_contour - start_of_contour))];
+
+            B32 p0_on_curve = p0->flags & BIT(0);
+            B32 p1_on_curve = p1->flags & BIT(0);
+            B32 p2_on_curve = p2->flags & BIT(0);
+
+            if (WindowIsKeyJustPressed(Key_Space)) {
+              U32 hook = 5;
+            }
+
+            FontCurve* curve = &debug_curve;
+            if (p0_on_curve) {
+              if (p1_on_curve) { // hit
+                curve->start_x   = p0->x;
+                curve->start_y   = p0->x;
+                curve->control_x = (p0->x + p1->x) / 2;
+                curve->control_y = (p0->y + p1->y) / 2;
+                curve->end_x     = p1->x;
+                curve->end_y     = p1->y;
+
+              } else if (p2_on_curve) { // miss
+                curve->start_x   = p0->x;
+                curve->start_y   = p0->x;
+                curve->control_x = p1->x;
+                curve->control_y = p1->y;
+                curve->end_x     = p2->x;
+                curve->end_y     = p2->y;
+                j++;
+
+              } else { // hit
+                curve->start_x   = p0->x;
+                curve->start_y   = p0->y;
+                curve->control_x = p1->x;
+                curve->control_y = p1->y;
+                curve->end_x     = (p1->x + p2->x) / 2;
+                curve->end_y     = (p1->y + p2->y) / 2;
+              }
+
+            } else {
+              DEBUG_ASSERT(!p1_on_curve);
+              if (p2_on_curve) { // hit
+                curve->start_x   = (p0->x + p1->x) / 2;
+                curve->start_y   = (p0->y + p1->y) / 2;
+                curve->control_x = p1->x;
+                curve->control_y = p1->y;
+                curve->end_x     = p2->x;
+                curve->end_y     = p2->y;
+                j++;
+
+              } else { // miss
+                curve->start_x   = (p0->x + p1->x) / 2;
+                curve->start_y   = (p0->y + p1->y) / 2;
+                curve->control_x = p1->x;
+                curve->control_y = p1->y;
+                curve->end_x     = (p1->x + p2->x) / 2;
+                curve->end_y     = (p1->y + p2->y) / 2;
+                j++;
+              }
+            }
+
+            curve->start_x = curve->start_x / 4 + 100;
+            curve->start_y = curve->start_y / 4 + 100;
+            curve->end_x = curve->end_x / 4 + 100;
+            curve->end_y = curve->end_y / 4 + 100;
+            curve->control_x = curve->control_x / 4 + 100;
+            curve->control_y = curve->control_y / 4 + 100;
+
+            DrawQuadBezier(curve->start_x, curve->start_y, curve->control_x, curve->control_y, curve->end_x, curve->end_y, 10, j * 2, 0, 0, 1);
+            DrawCircle(curve->start_x, curve->start_y, 2, 1, next_end_of_contour_idx == 2, 0);
+            DrawCircle(curve->control_x, curve->control_y, 2, 0, next_end_of_contour_idx == 2, 1);
+            DrawCircle(curve->end_x, curve->end_y, 2, 1, next_end_of_contour_idx == 2, 0);
+
+          }
+          return;
+          if (next_end_of_contour_idx >= num_contours) { break; }
+          start_of_contour = end_of_contour + 1;
+          end_of_contour   = ReadU16BE(end_pts_of_contours + (next_end_of_contour_idx * 2));
+          next_end_of_contour_idx++;
         }
-        */
+        DEBUG_ASSERT(next_end_of_contour_idx == num_contours);
 
       } else if (num_contours < 0) {
-        // NOTE: compound shapes
+        // NOTE: parse compound shape
       }
     }
 

@@ -69,6 +69,8 @@ void RendererCastRay3V(V2 pos, V3* start, V3* dir);
 // NOTE: 2D API
 void DrawLine(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32 red, F32 green, F32 blue);
 void DrawLineV(V2 start, V2 end, F32 thickness, V3 color);
+void DrawQuadBezier(F32 start_x, F32 start_y, F32 control_x, F32 control_y, F32 end_x, F32 end_y, U32 resolution, F32 thickness, F32 red, F32 green, F32 blue);
+void DrawQuadBezierV(V2 start, V2 control, V2 end, U32 resolution, F32 thickness, V3 color);
 void DrawRectangle(F32 center_x, F32 center_y, F32 width, F32 height, F32 red, F32 green, F32 blue);
 void DrawRectangleV(V2 center, V2 size, V3 color);
 void DrawRectangleFrame(F32 center_x, F32 center_y, F32 width, F32 height, F32 border, F32 red, F32 green, F32 blue);
@@ -807,6 +809,27 @@ void DrawLine(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32
 
 void DrawLineV(V2 start, V2 end, F32 thickness, V3 color) {
   DrawLine(start.x, start.y, end.x, end.y, thickness, color.r, color.g, color.b);
+}
+
+void DrawQuadBezier(F32 start_x, F32 start_y, F32 control_x, F32 control_y, F32 end_x, F32 end_y, U32 resolution, F32 thickness, F32 red, F32 green, F32 blue) {
+  F32 x_prev = start_x;
+  F32 y_prev = start_y;
+  for (U32 i = 0; i <= resolution; i++) {
+    F32 t = ((F32) i) / ((F32) resolution);
+    F32 x_1 = F32Lerp(start_x, control_x, t);
+    F32 y_1 = F32Lerp(start_y, control_y, t);
+    F32 x_2 = F32Lerp(control_x, end_x, t);
+    F32 y_2 = F32Lerp(control_y, end_y, t);
+    F32 x_3 = F32Lerp(x_1, x_2, t);
+    F32 y_3 = F32Lerp(y_1, y_2, t);
+    DrawLine(x_prev, y_prev, x_3, y_3, thickness, red, green, blue);
+    x_prev = x_3;
+    y_prev = y_3;
+  }
+}
+
+void DrawQuadBezierV(V2 start, V2 control, V2 end, U32 resolution, F32 thickness, V3 color) {
+  DrawQuadBezier(start.x, start.y, control.x, control.y, end.x, end.y, resolution, thickness, color.r, color.g, color.b);
 }
 
 void DrawRectangle(F32 center_x, F32 center_y, F32 width, F32 height, F32 red, F32 green, F32 blue) {

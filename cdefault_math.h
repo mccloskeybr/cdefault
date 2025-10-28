@@ -297,7 +297,7 @@ F32 F32ArcSin(F32 x) { return asinf(x); }
 F32 F32ArcCos(F32 x) { return acosf(x); }
 F32 F32ArcTan(F32 x) { return atanf(x); }
 F32 F32ArcTan2(F32 y, F32 x) { return atan2f(y, x); }
-F32 F32Lerp(F32 x, F32 y, F32 t) { return (x * (1 - t)) + (y * t); }
+F32 F32Lerp(F32 x, F32 y, F32 t) { return x + ((y - x) * t); }
 F32 F32ToRad(F32 deg) { return deg * (F32_PI / 180.0f); }
 F32 F32ToDeg(F32 rad) { return rad * (180.0f / F32_PI); }
 F32 F32Ceil(F32 x) { return ceilf(x); }
