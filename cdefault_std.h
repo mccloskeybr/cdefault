@@ -821,7 +821,7 @@ U8*  DynamicArrayGet(DynamicArray* array, U32 i);
 void DynamicArrayClear(DynamicArray* array);
 
 #define DynamicArrayPushBackSafe(a, t)  \
-  DynamicArrayPushBack(a, (U8*) t)      \
+  DynamicArrayPushBack(a, (U8*) t);     \
   DEBUG_ASSERT(sizeof(*t) == (a)->elem_size);
 #define DynamicArrayInsertSafe(a, t, i) \
   DynamicArrayInsert(a, (U8*) t, i);    \

@@ -43,12 +43,11 @@ struct FontVertex {
   S16 y;
 };
 
-typedef struct FontCurve FontCurve;
-struct FontCurve {
+// NOTE: Each node's end point is inferred to be the next node's start point.
+typedef struct FontSplineNode FontSplineNode;
+struct FontSplineNode {
   S16 start_x;
   S16 start_y;
-  S16 end_x;
-  S16 end_y;
   S16 control_x;
   S16 control_y;
 };
@@ -66,6 +65,9 @@ static void FontTableParse(FontTable* table, BinHead* h) {
 B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Image* bitmap, U32 bitmap_width, U32 bitmap_height) {
   // TODO: initialize the bitmap
   U64 base_pos = ArenaPos(arena);
+  Arena* temp_arena = ArenaAllocate();
+  DynamicArray contours;
+  DynamicArrayInit(&contours, sizeof(DynamicArray), 8);
   B32 success = false;
 
   Font font;
@@ -161,7 +163,7 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
   U32 bitmap_y = 1;
   U32 max_glyph_height_for_row = 0;
   for (U32 i = 0; i < 1; i++) {
-    U32 codepoint = 'a' + i; // TODO: configure
+    U32 codepoint = 'A' + TEST + i; // TODO: configure
 
     // NOTE: find glyph index
     U32 glyph_index = 0;
@@ -295,7 +297,7 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
         U8* points = BinHeadDecay(&h);
 
         U16 num_vertices = ReadU16BE(end_pts_of_contours + (2 * (num_contours - 1))) + 1;
-        FontVertex* vertices = ARENA_PUSH_ARRAY(arena, FontVertex, num_vertices); // TODO: pop this!!!
+        FontVertex* vertices = ARENA_PUSH_ARRAY(temp_arena, FontVertex, num_vertices);
 
         U8 flags = 0;
         U16 flag_num_repeat = 0;
@@ -349,106 +351,109 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
         }
 
         // NOTE: decompress / build final glyph contour
+        U16 contour_idx             = 0;
         U16 start_of_contour        = 0;
-        U16 end_of_contour          = ReadU16BE(end_pts_of_contours);
-        U16 next_end_of_contour_idx = 1;
-        FontCurve debug_curve;
+        U16 end_of_contour          = ReadU16BE(end_pts_of_contours + (contour_idx * 2));
+        FontSplineNode spline_node;
         while (true) {
-          for (U16 j = start_of_contour; j < end_of_contour; j++) {
-            if (j > TEST) { return; }
-            FontVertex* p0 = &vertices[start_of_contour + (((j + 0) - start_of_contour) % (end_of_contour - start_of_contour))];
-            FontVertex* p1 = &vertices[start_of_contour + (((j + 1) - start_of_contour) % (end_of_contour - start_of_contour))];
-            FontVertex* p2 = &vertices[start_of_contour + (((j + 2) - start_of_contour) % (end_of_contour - start_of_contour))];
+          // TODO: likely a better way to store contours than creating a dynamic array for each one?
+          DynamicArray contour;
+          DynamicArrayInit(&contour, sizeof(FontSplineNode), 32);
+          for (U16 j = start_of_contour; j <= end_of_contour; j++) {
+            FontVertex* p0 = &vertices[start_of_contour + (((j + 0) - start_of_contour) % (end_of_contour + 1 - start_of_contour))];
+            FontVertex* p1 = &vertices[start_of_contour + (((j + 1) - start_of_contour) % (end_of_contour + 1 - start_of_contour))];
+            FontVertex* p2 = &vertices[start_of_contour + (((j + 2) - start_of_contour) % (end_of_contour + 1 - start_of_contour))];
 
             B32 p0_on_curve = p0->flags & BIT(0);
             B32 p1_on_curve = p1->flags & BIT(0);
             B32 p2_on_curve = p2->flags & BIT(0);
 
-            if (WindowIsKeyJustPressed(Key_Space)) {
-              U32 hook = 5;
-            }
-
-            FontCurve* curve = &debug_curve;
             if (p0_on_curve) {
               if (p1_on_curve) { // hit
-                curve->start_x   = p0->x;
-                curve->start_y   = p0->x;
-                curve->control_x = (p0->x + p1->x) / 2;
-                curve->control_y = (p0->y + p1->y) / 2;
-                curve->end_x     = p1->x;
-                curve->end_y     = p1->y;
+                // on on ?? -- P3
+                spline_node.start_x = p0->x;
+                spline_node.start_y = p0->y;
+                spline_node.control_x = (p0->x + p1->x) / 2;
+                spline_node.control_y = (p0->y + p1->y) / 2;
 
               } else if (p2_on_curve) { // miss
-                curve->start_x   = p0->x;
-                curve->start_y   = p0->x;
-                curve->control_x = p1->x;
-                curve->control_y = p1->y;
-                curve->end_x     = p2->x;
-                curve->end_y     = p2->y;
+                // on off on
+                spline_node.start_x   = p0->x;
+                spline_node.start_y   = p0->y;
+                spline_node.control_x = p1->x;
+                spline_node.control_y = p1->y;
                 j++;
 
               } else { // hit
-                curve->start_x   = p0->x;
-                curve->start_y   = p0->y;
-                curve->control_x = p1->x;
-                curve->control_y = p1->y;
-                curve->end_x     = (p1->x + p2->x) / 2;
-                curve->end_y     = (p1->y + p2->y) / 2;
+                // on off off -- P0
+                spline_node.start_x   = p0->x;
+                spline_node.start_y   = p0->y;
+                spline_node.control_x = p1->x;
+                spline_node.control_y = p1->y;
               }
 
             } else {
               DEBUG_ASSERT(!p1_on_curve);
               if (p2_on_curve) { // hit
-                curve->start_x   = (p0->x + p1->x) / 2;
-                curve->start_y   = (p0->y + p1->y) / 2;
-                curve->control_x = p1->x;
-                curve->control_y = p1->y;
-                curve->end_x     = p2->x;
-                curve->end_y     = p2->y;
+                // off off on -- P1
+                spline_node.start_x   = (p0->x + p1->x) / 2;
+                spline_node.start_y   = (p0->y + p1->y) / 2;
+                spline_node.control_x = p1->x;
+                spline_node.control_y = p1->y;
                 j++;
 
               } else { // miss
-                curve->start_x   = (p0->x + p1->x) / 2;
-                curve->start_y   = (p0->y + p1->y) / 2;
-                curve->control_x = p1->x;
-                curve->control_y = p1->y;
-                curve->end_x     = (p1->x + p2->x) / 2;
-                curve->end_y     = (p1->y + p2->y) / 2;
-                j++;
+                // off off off
+                spline_node.start_x   = (p0->x + p1->x) / 2;
+                spline_node.start_y   = (p0->y + p1->y) / 2;
+                spline_node.control_x = p1->x;
+                spline_node.control_y = p1->y;
               }
             }
-
-            curve->start_x = curve->start_x / 4 + 100;
-            curve->start_y = curve->start_y / 4 + 100;
-            curve->end_x = curve->end_x / 4 + 100;
-            curve->end_y = curve->end_y / 4 + 100;
-            curve->control_x = curve->control_x / 4 + 100;
-            curve->control_y = curve->control_y / 4 + 100;
-
-            DrawQuadBezier(curve->start_x, curve->start_y, curve->control_x, curve->control_y, curve->end_x, curve->end_y, 10, j * 2, 0, 0, 1);
-            DrawCircle(curve->start_x, curve->start_y, 2, 1, next_end_of_contour_idx == 2, 0);
-            DrawCircle(curve->control_x, curve->control_y, 2, 0, next_end_of_contour_idx == 2, 1);
-            DrawCircle(curve->end_x, curve->end_y, 2, 1, next_end_of_contour_idx == 2, 0);
-
+            DynamicArrayPushBackSafe(&contour, &spline_node);
           }
-          return;
-          if (next_end_of_contour_idx >= num_contours) { break; }
+          DynamicArrayPushBackSafe(&contours, &contour);
+          contour_idx++;
+          if (contour_idx >= num_contours) { break; }
           start_of_contour = end_of_contour + 1;
-          end_of_contour   = ReadU16BE(end_pts_of_contours + (next_end_of_contour_idx * 2));
-          next_end_of_contour_idx++;
+          end_of_contour   = ReadU16BE(end_pts_of_contours + (contour_idx * 2));
         }
-        DEBUG_ASSERT(next_end_of_contour_idx == num_contours);
+        DEBUG_ASSERT(contour_idx == num_contours);
+
+        for (U32 j = 0; j < contours.size; j++) {
+          DynamicArray* contour = (DynamicArray*) DynamicArrayGet(&contours, j);
+          for (U32 i = 0; i < contour->size; i++) {
+            FontSplineNode* curr = (FontSplineNode*) DynamicArrayGet(contour, i);
+            FontSplineNode* next = (FontSplineNode*) DynamicArrayGet(contour, (i + 1) % contour->size);
+
+            F32 start_x = curr->start_x / 4 + 100;
+            F32 start_y = curr->start_y / 4 + 100;
+            F32 end_x = next->start_x / 4 + 100;
+            F32 end_y = next->start_y / 4 + 100;
+            F32 control_x = curr->control_x / 4 + 100;
+            F32 control_y = curr->control_y / 4 + 100;
+
+            DrawQuadBezier(start_x, start_y, control_x, control_y, end_x, end_y, 10, 2, 0, 0, 1);
+          }
+        }
 
       } else if (num_contours < 0) {
         // NOTE: parse compound shape
       }
     }
 
+    for (U32 i = 0; i < contours.size; i++) {
+      DynamicArray* contour = (DynamicArray*) DynamicArrayGet(&contours, i);
+      DynamicArrayDeinit(contour);
+    }
+    DynamicArrayClear(&contours);
     bitmap_x += glyph_width;
   }
 
   success = true;
 font_bake_bitmap_end:
+  ArenaRelease(temp_arena);
+  DynamicArrayDeinit(&contours);
   if (!success) { ArenaPopTo(arena, base_pos); }
   return success;
 }

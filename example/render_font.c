@@ -10,13 +10,24 @@
 #define CDEFAULT_RENDER_IMPLEMENTATION
 #include "../cdefault_render.h"
 
-static U32 TEST = 0;
+U32 TEST = 0;
 
 #define CDEFAULT_FONT_IMPLEMENTATION
 #include "../cdefault_font.h"
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "third_party/stb_truetype.h"
 
+// 955  230 true
+// 955  166 false
+// <fake point>
+// 997  108 false
+// 1041 95  true
+// 1000 -23 true
+// 932  -14 false
+// 830  55  false
+// 807  125 true
+// 750  52  false
+// 579  -23 false
 
 int main(void) {
   DEBUG_ASSERT(WindowInit(1920, 1080, "render image example"));
