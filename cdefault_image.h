@@ -28,6 +28,7 @@ typedef enum ImageFormat ImageFormat;
 enum ImageFormat {
   ImageFormat_RGBA,
   ImageFormat_RGB,
+  ImageFormat_R,
 };
 
 typedef struct Image Image;
@@ -35,6 +36,8 @@ struct Image {
   ImageFormat format;
   U32 width;
   U32 height;
+  // NOTE: data is the raw pixel color data, `format` describes the layout.
+  // this starts at the bottom left of the frame and increases up and to the right.
   U8* data;
 };
 
@@ -103,6 +106,7 @@ B32 ImageLoadBmp(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
     LOG_ERROR("[IMAGE] Bad BMP file - expected a color plane of 1, got %d.", color_plane);
     return false;
   }
+  // NOTE: BMP is normally ordered from bottom to top.
   B8 y_flipped = false;
   if (temp_image.height < 0) {
     temp_image.height *= -1;
@@ -334,8 +338,6 @@ B32 ImageLoadBmp(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
     }
   }
 
-  // NOTE: BMP is normally ordered from bottom to top. Flip it by default to order from top to bottom.
-  y_flipped = !y_flipped;
   if (y_flipped) {
     for (U32 i = 0; i < temp_image.height / 2; i++) {
       U8* a = temp_image.data + (i * temp_image.width * 4);
@@ -373,8 +375,9 @@ void ImageConvert(Arena* arena, Image* to, Image* from, ImageFormat to_format) {
 
   U32 bytes_per_pixel = 0;
   switch (to->format) {
-    case ImageFormat_RGB:  { bytes_per_pixel = 3; } break;
     case ImageFormat_RGBA: { bytes_per_pixel = 4; } break;
+    case ImageFormat_RGB:  { bytes_per_pixel = 3; } break;
+    case ImageFormat_R:    { bytes_per_pixel = 1; } break;
     default: { UNREACHABLE(); }
   }
 
@@ -387,31 +390,40 @@ void ImageConvert(Arena* arena, Image* to, Image* from, ImageFormat to_format) {
     for (U32 j = 0; j < to->width; j++) {
       U8 r, g, b, a;
       switch (from->format) {
-        case ImageFormat_RGB: {
-          r = from->data[(((i * to->width) + j) * 3) + 0];
-          g = from->data[(((i * to->width) + j) * 3) + 1];
-          b = from->data[(((i * to->width) + j) * 3) + 2];
-          a = 255;
-        } break;
         case ImageFormat_RGBA: {
           r = from->data[(((i * to->width) + j) * 4) + 0];
           g = from->data[(((i * to->width) + j) * 4) + 1];
           b = from->data[(((i * to->width) + j) * 4) + 2];
           a = from->data[(((i * to->width) + j) * 4) + 3];
         } break;
+        case ImageFormat_RGB: {
+          r = from->data[(((i * to->width) + j) * 3) + 0];
+          g = from->data[(((i * to->width) + j) * 3) + 1];
+          b = from->data[(((i * to->width) + j) * 3) + 2];
+          a = 255;
+        } break;
+        case ImageFormat_R: {
+          r = from->data[(((i * to->width) + j) * 1) + 0];
+          g = r;
+          b = r;
+          a = 255;
+        } break;
       }
 
       switch (to->format) {
-        case ImageFormat_RGB: {
-          to->data[(((i * to->width) + j) * 3) + 0] = r;
-          to->data[(((i * to->width) + j) * 3) + 1] = g;
-          to->data[(((i * to->width) + j) * 3) + 2] = b;
-        } break;
         case ImageFormat_RGBA: {
           to->data[(((i * to->width) + j) * 4) + 0] = r;
           to->data[(((i * to->width) + j) * 4) + 1] = g;
           to->data[(((i * to->width) + j) * 4) + 2] = b;
           to->data[(((i * to->width) + j) * 4) + 3] = a;
+        } break;
+        case ImageFormat_RGB: {
+          to->data[(((i * to->width) + j) * 3) + 0] = r;
+          to->data[(((i * to->width) + j) * 3) + 1] = g;
+          to->data[(((i * to->width) + j) * 3) + 2] = b;
+        } break;
+        case ImageFormat_R: {
+          to->data[(((i * to->width) + j) * 4) + 0] = (r + g + b) / 3;
         } break;
       }
     }
@@ -444,7 +456,7 @@ B32 ImageDumpBmp(Image* image, U8* file_path) {
   // NOTE: winv4 header
   BinHeadW32LE(&h, header_size);
   BinHeadW32LE(&h, temp_image.width);
-  BinHeadW32LE(&h, ((S32)temp_image.height) * -1); // NOTE: BMP is bottom up.
+  BinHeadW32LE(&h, ((S32)temp_image.height));
   BinHeadW16LE(&h, 1);  // color planes
   BinHeadW16LE(&h, 32); // bits per pixel
   BinHeadW32LE(&h, 3);  // bitfield compression

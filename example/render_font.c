@@ -10,24 +10,12 @@
 #define CDEFAULT_RENDER_IMPLEMENTATION
 #include "../cdefault_render.h"
 
-U32 TEST = 0;
+U32 TEST = 1;
 
 #define CDEFAULT_FONT_IMPLEMENTATION
 #include "../cdefault_font.h"
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "third_party/stb_truetype.h"
-
-// 955  230 true
-// 955  166 false
-// <fake point>
-// 997  108 false
-// 1041 95  true
-// 1000 -23 true
-// 932  -14 false
-// 830  55  false
-// 807  125 true
-// 750  52  false
-// 579  -23 false
 
 int main(void) {
   DEBUG_ASSERT(WindowInit(1920, 1080, "render image example"));
@@ -49,7 +37,8 @@ int main(void) {
     }
 
     Image font_image;
-    DEBUG_ASSERT(FontBakeBitmap(arena, file_data.str, file_data.size, 32, &font_image, 500, 500));
+    DEBUG_ASSERT(FontBakeBitmap(arena, file_data.str, file_data.size, 32, &font_image, 100, 100));
+    DEBUG_ASSERT(ImageDumpBmp(&font_image, (U8*) "../data/TEST.bmp"));
 
     WindowSwapBuffers();
     WindowFlushEvents();
@@ -58,7 +47,7 @@ int main(void) {
 
   stbtt_bakedchar cdata[96];
   unsigned char stb_bitmap[512 * 512];
-  stbtt_BakeFontBitmap(file_data.str, 0, 32, stb_bitmap, 512, 512, 'a', 'z' - 'a', cdata);
+  stbtt_BakeFontBitmap(file_data.str, 0, 32, stb_bitmap, 512, 512, 'A', 'z' - 'A', cdata);
 
 #endif
 
