@@ -6,35 +6,48 @@
 #include "cdefault_std.h"
 #include "cdefault_math.h"
 
-B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Image* bitmap, U16 bitmap_width, U16 bitmap_height);
+typedef enum LocFormat LocFormat;
+enum LocFormat {
+  LocFormat_U16,
+  LocFormat_U32,
+};
+
+typedef struct Font Font;
+struct Font {
+  U8* data;
+  U32 data_size;
+  U32 loca_offset;
+  U32 head_offset;
+  U32 glyf_offset;
+  U32 hhea_offset;
+  U32 hmtx_offset;
+  U32 cmap_subtable_offset;
+  U16 num_glyphs;
+  LocFormat loc_format;
+};
+
+B32 FontInit(Font* font, U8* data, U32 data_size);
+B32 FontBakeBitmap(Arena* arena, Font* font, F32 pixel_height, Image* bitmap, U16 bitmap_width, U16 bitmap_height);
+
+// NOTE: determines the index of the glyph into the various font tables.
+B32 FontGetGlyphIndex(Font* font, U32 codepoint, U32* glyph_index);
+// NOTE: determines the offset of the glyph from the glyf table.
+// NOTE: returns false e.g. if there is no entry in the glyf table (true for e.g. ' ').
+B32 FontGetGlyphGlyfOffset(Font* font, U32 glyph_index, S32* glyf_offset);
+B32 FontGetGlyphSizeInfo(Font* font, U32 glyph_index, S32* advance_width, S32* left_side_bearing);
 
 #endif // CDEFAULT_FONT_H_
 
 #ifdef CDEFAULT_FONT_IMPLEMENTATION
 #undef CDEFAULT_FONT_IMPLEMENTATION
+// https://tchayen.github.io/posts/ttf-file-parsing
+// https://github.com/nothings/stb/blob/master/stb_truetype.h
+// https://developer.apple.com/fonts/TrueType-Reference-Manual/
 
 #define FONT_PID_UNICODE_ENCODING       0
 #define FONT_PID_MICROSOFT_ENCODING     3
 #define FONT_MICROSOFT_EID_UNICODE_BMP  1
 #define FONT_MICROSOFT_EID_UNICODE_FULL 10
-
-typedef struct FontTable FontTable;
-struct FontTable {
-  U32 offset;
-  U32 length;
-  B32 initialized;
-};
-
-typedef struct Font Font;
-struct Font {
-  // maybe these can be local?
-  FontTable cmap;
-  FontTable loca;
-  FontTable head;
-  FontTable glyf;
-  FontTable hhea;
-  FontTable hmtx;
-};
 
 typedef struct FontVertex FontVertex;
 struct FontVertex {
@@ -43,7 +56,7 @@ struct FontVertex {
   S16 y;
 };
 
-// NOTE: Each node's end point is inferred to be the next node's start point.
+// NOTE: Each node's end point is inferred to be the next node in the contour's start point.
 typedef struct FontSplineNode FontSplineNode;
 struct FontSplineNode {
   S16 start_x;
@@ -52,45 +65,238 @@ struct FontSplineNode {
   S16 control_y;
 };
 
-static void FontTableParse(FontTable* table, BinHead* h) {
+// NOTE: evaluates quadratic bezier lerps for a single dimension.
+static F32 FontCurveEvaluateBezier(F32 start, F32 end, F32 control, F32 t) {
+  F32 start_to_control = F32Lerp(start, control, t);
+  F32 control_to_end   = F32Lerp(control, end, t);
+  return F32Lerp(start_to_control, control_to_end, t);
+}
+
+// NOTE: maps a_value from a_range to b_range.
+static F32 FontMapValue(F32 a_value, F32 a_min, F32 a_max, F32 b_min, F32 b_max) {
+  return b_min + ((a_value - a_min) / (a_max - a_min)) * (b_max - b_min);
+}
+
+static void FontTableParse(U32* table_offset, BinHead* h) {
   BinHeadR32BE(h);
-  table->offset      = BinHeadR32BE(h);
-  table->length      = BinHeadR32BE(h);
-  table->initialized = true;
+  *table_offset = BinHeadR32BE(h);
+  BinHeadR32BE(h);
 }
 
-// NOTE: maps a point in rectangle A into rectangle B.
-// TODO: SPEEDUP: some obvious speedups here.
-static void FontScalePoint(
-    F32 a_x, F32 a_y, F32* b_x, F32* b_y,
-    F32 a_min_x, F32 a_min_y, F32 a_max_x, F32 a_max_y,
-    F32 b_min_x, F32 b_min_y, F32 b_max_x, F32 b_max_y) {
-  DEBUG_ASSERT(a_min_x <= a_x && a_x <= a_max_x);
-  DEBUG_ASSERT(a_min_y <= a_y && a_y <= a_max_y);
-  F32 u = (a_x - a_min_x) / (a_max_x - a_min_x);
-  F32 v = (a_y - a_min_y) / (a_max_y - a_min_y);
-  *b_x = b_min_x + u * (b_max_x - b_min_x);
-  *b_y = b_min_y + v * (b_max_y - b_min_y);
-}
+B32 FontInit(Font* font, U8* data, U32 data_size) {
+  MEMORY_ZERO_STRUCT(font);
+  font->data = data;
+  font->data_size = data_size;
 
-static void FontCurveGetDimBounds(F32 start, F32 end, F32 control, F32* min, F32* max) {
-  *min = MIN(start, end);
-  *max = MAX(start, end);
-  F32 t_extreme = (start - end) / (start - (2 * end) + control);
-  if (0 <= t_extreme && t_extreme <= 1) {
-    F32 start_control = F32Lerp(start, control, t_extreme);
-    F32 control_end   = F32Lerp(control, end, t_extreme);
-    F32 y_extreme     = F32Lerp(start_control, control_end, t_extreme);
-    *min = MIN(*min, y_extreme);
-    *max = MAX(*max, y_extreme);
+  BinHead h;
+  BinHeadInit(&h, data, data_size);
+
+  // NOTE: parse header
+  BinHeadR32BE(&h);
+  U16 num_tables = BinHeadR16BE(&h);
+  BinHeadSkip(&h, 6, sizeof(U8));
+
+  // NOTE: parse top-level tables
+  U32 cmap_offset = 0;
+  U32 maxp_offset = 0;
+  for (U32 i = 0; i < num_tables; i++) {
+    String8 tag = Str8(BinHeadDecay(&h), 4);
+    BinHeadSkip(&h, 4, sizeof(U8));
+    if      (Str8Eq(tag, Str8Lit("cmap"))) { FontTableParse(&cmap_offset, &h);       }
+    else if (Str8Eq(tag, Str8Lit("maxp"))) { FontTableParse(&maxp_offset, &h);       }
+    else if (Str8Eq(tag, Str8Lit("loca"))) { FontTableParse(&font->loca_offset, &h); }
+    else if (Str8Eq(tag, Str8Lit("head"))) { FontTableParse(&font->head_offset, &h); }
+    else if (Str8Eq(tag, Str8Lit("glyf"))) { FontTableParse(&font->glyf_offset, &h); }
+    else if (Str8Eq(tag, Str8Lit("hhea"))) { FontTableParse(&font->hhea_offset, &h); }
+    else if (Str8Eq(tag, Str8Lit("hmtx"))) { FontTableParse(&font->hmtx_offset, &h); }
+    else                                   { BinHeadSkip(&h, 12, sizeof(U8));        }
   }
+  if (cmap_offset == 0) {
+    LOG_ERROR("[FONT] Failed to parse font, ttf data is missing required table 'cmap'.");
+    return false;
+  }
+  if (maxp_offset == 0) {
+    LOG_ERROR("[FONT] Failed to parse font, ttf data is missing required table 'maxp'.");
+    return false;
+  }
+  if (font->loca_offset == 0) {
+    LOG_ERROR("[FONT] Failed to parse font, ttf data is missing required table 'loca'.");
+    return false;
+  }
+  if (font->head_offset == 0) {
+    LOG_ERROR("[FONT] Failed to parse font, ttf data is missing required table 'head'.");
+    return false;
+  }
+  if (font->glyf_offset == 0) {
+    LOG_ERROR("[FONT] Failed to parse font, ttf data is missing required table 'glyf'.");
+    return false;
+  }
+  if (font->hhea_offset == 0) {
+    LOG_ERROR("[FONT] Failed to parse font, ttf data is missing required table 'hhea'.");
+    return false;
+  }
+  if (font->hmtx_offset == 0) {
+    LOG_ERROR("[FONT] Failed to parse font, ttf data is missing required table 'hmtx'.");
+    return false;
+  }
+
+  // NOTE: find cmap encoding index
+  BinHeadSetPos(&h, cmap_offset);
+  BinHeadSkip(&h, 2, sizeof(U8));
+  U16 num_cmap_subtables = BinHeadR16BE(&h);
+  for (U16 i = 0; i < num_cmap_subtables; i++) {
+    U16 plat_id      = BinHeadR16BE(&h);
+    U16 plat_spec_id = BinHeadR16BE(&h);
+    U32 index_offset = BinHeadR32BE(&h);
+    if (plat_id == FONT_PID_MICROSOFT_ENCODING) {
+      if (plat_spec_id == FONT_MICROSOFT_EID_UNICODE_BMP ||
+          plat_spec_id == FONT_MICROSOFT_EID_UNICODE_FULL) {
+        font->cmap_subtable_offset = cmap_offset + index_offset;
+      }
+    } else if (plat_id == FONT_PID_UNICODE_ENCODING) {
+      font->cmap_subtable_offset = cmap_offset + index_offset;
+    }
+  }
+  if (font->cmap_subtable_offset == 0) {
+    LOG_ERROR("[FONT] Failed to find supported cmap encoding table.");
+    return false;
+  }
+
+  // NOTE: determine loc format
+  BinHeadSetPos(&h, font->head_offset);
+  BinHeadSkip(&h, 50, sizeof(U8));
+  U16 index_to_loc_format = BinHeadR16BE(&h);
+  switch (index_to_loc_format) {
+    case 0: { font->loc_format = LocFormat_U16; } break;
+    case 1: { font->loc_format = LocFormat_U32;  } break;
+    default: {
+      LOG_ERROR("[FONT] Invalid or unsupported indexToLocFormat provided: %d", index_to_loc_format);
+      return false;
+    } break;
+  }
+
+  // NOTE: retrieve validation data
+  BinHeadSetPos(&h, maxp_offset);
+  BinHeadSkip(&h, 4, sizeof(U8));
+  font->num_glyphs = BinHeadR16BE(&h);
+
+  return true;
 }
 
-// https://tchayen.github.io/posts/ttf-file-parsing
-// https://github.com/nothings/stb/blob/master/stb_truetype.h
-// https://developer.apple.com/fonts/TrueType-Reference-Manual/
-B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Image* bitmap, U16 bitmap_width, U16 bitmap_height) {
-  U64 base_pos   = ArenaPos(arena);
+B32 FontGetGlyphIndex(Font* font, U32 codepoint, U32* glyph_index) {
+  *glyph_index = 0;
+  BinHead h;
+  BinHeadInit(&h, font->data, font->data_size);
+  BinHeadSetPos(&h, font->cmap_subtable_offset);
+  U16 cmap_format = BinHeadR16BE(&h);
+  switch (cmap_format) {
+    case 0: {
+      BinHeadSkip(&h, 4, sizeof(U8));
+      BinHeadSkip(&h, codepoint, sizeof(U8));
+      *glyph_index = BinHeadR8(&h);
+    } break;
+    case 12:
+    case 13: {
+      BinHeadSkip(&h, 10, sizeof(U8));
+      U32 number_groups = BinHeadR32BE(&h);
+      U8* groups = BinHeadDecay(&h);
+      S32 low  = 0;
+      S32 high = number_groups;
+      while (low < high ) {
+        S32 mid            = low + ((high - low) / 2);
+        U8* mid_group      = groups + (mid * 12);
+        U32 mid_start_char = ReadU32BE(mid_group);
+        U32 mid_end_char   = ReadU32BE(mid_group + 4);
+        if (codepoint < mid_start_char) {
+          high = mid;
+        } else if (codepoint > mid_end_char) {
+          low = mid + 1;
+        } else {
+          U32 start_glyph = ReadU32BE(groups + ((mid * 12) + 8));
+          if (cmap_format == 12) {
+            *glyph_index = start_glyph + codepoint - mid_start_char;
+            break;
+          } else {
+            *glyph_index = start_glyph;
+            break;
+          }
+        }
+      }
+    } break;
+    default: TODO();
+  }
+  if (*glyph_index == 0) { return false; }
+  return true;
+}
+
+// TODO: validate that the provided glyph index is less than the maximum number of glyphs.
+B32 FontGetGlyphGlyfOffset(Font* font, U32 glyph_index, S32* glyf_offset) {
+  *glyf_offset = 0;
+  if (glyph_index > font->num_glyphs) {
+    LOG_ERROR("[FONT] Provided glyph index exceeds the number of glyphs: %d, %d", glyph_index, font->num_glyphs);
+    return false;
+  }
+
+  U32 next_glyf_offset = 0;
+  BinHead h;
+  BinHeadInit(&h, font->data, font->data_size);
+  BinHeadSetPos(&h, font->loca_offset);
+  switch (font->loc_format) {
+    case LocFormat_U16: {
+      BinHeadSkip(&h, 2 * glyph_index, sizeof(U8));
+      *glyf_offset     = font->glyf_offset + BinHeadR16BE(&h) * 2;
+      next_glyf_offset = font->glyf_offset + BinHeadR16BE(&h) * 2;
+    } break;
+    case LocFormat_U32: {
+      BinHeadSkip(&h, 4 * glyph_index, sizeof(U8));
+      *glyf_offset     = font->glyf_offset + BinHeadR32BE(&h);
+      next_glyf_offset = font->glyf_offset + BinHeadR32BE(&h);
+    } break;
+    default: UNREACHABLE();
+  }
+
+  // NOTE: length is implied from offset_next - offset_curr.
+  U32 glyf_length = next_glyf_offset - *glyf_offset;
+  if (glyf_length == 0) { return false; }
+  return true;
+}
+
+B32 FontGetGlyphSizeInfo(Font* font, U32 glyph_index, S32* advance_width, S32* left_side_bearing) {
+  *advance_width = 0;
+  *left_side_bearing = 0;
+  if (glyph_index > font->num_glyphs) {
+    LOG_ERROR("[FONT] Provided glyph index exceeds the number of glyphs: %d, %d", glyph_index, font->num_glyphs);
+    return false;
+  }
+
+  BinHead h;
+  BinHeadInit(&h, font->data, font->data_size);
+  BinHeadSetPos(&h, font->hhea_offset);
+  BinHeadSkip(&h, 34, sizeof(U8));
+  U16 num_long_hor_metrics = BinHeadR16BE(&h);
+  if (glyph_index < num_long_hor_metrics) {
+    BinHeadSetPos(&h, font->hmtx_offset);
+    BinHeadSkip(&h, 4 * glyph_index, sizeof(U8));
+    *advance_width     = BinHeadR16BE(&h);
+    *left_side_bearing = BinHeadR16BE(&h);
+
+  } else {
+    // NOTE: e.g. for monospaced fonts
+    BinHeadSetPos(&h, font->hmtx_offset);
+    BinHeadSkip(&h, 4 * (num_long_hor_metrics - 1), sizeof(U8));
+    *advance_width = BinHeadR16BE(&h);
+
+    BinHeadSetPos(&h, font->hmtx_offset);
+    BinHeadSkip(&h, 4 * num_long_hor_metrics, sizeof(U8));
+    BinHeadSkip(&h, 2 * (glyph_index - num_long_hor_metrics), sizeof(U8));
+    *left_side_bearing = BinHeadR16BE(&h);
+  }
+  return true;
+}
+
+B32 FontBakeBitmap(Arena* arena, Font* font, F32 pixel_height, Image* bitmap, U16 bitmap_width, U16 bitmap_height) {
+  B32 success  = false;
+  U64 base_pos = ArenaPos(arena);
 
   MEMORY_ZERO_STRUCT(bitmap);
   bitmap->format = ImageFormat_R;
@@ -102,90 +308,12 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
   Arena* temp_arena = ArenaAllocate();
   DynamicArray contours;
   DynamicArrayInit(&contours, sizeof(DynamicArray), 8);
-  B32 success = false;
-
-  Font font;
-  MEMORY_ZERO_STRUCT(&font);
 
   BinHead h;
-  BinHeadInit(&h, data, data_size);
-
-  // NOTE: parse header
-  BinHeadR32BE(&h);
-  U16 num_tables = BinHeadR16BE(&h);
-  BinHeadSkip(&h, 6, sizeof(U8));
-
-  // NOTE: parse top-level tables
-  for (U32 i = 0; i < num_tables; i++) {
-    String8 tag = Str8(BinHeadDecay(&h), 4);
-    BinHeadSkip(&h, 4, sizeof(U8));
-    if      (Str8Eq(tag, Str8Lit("cmap"))) { FontTableParse(&font.cmap, &h); }
-    else if (Str8Eq(tag, Str8Lit("loca"))) { FontTableParse(&font.loca, &h); }
-    else if (Str8Eq(tag, Str8Lit("head"))) { FontTableParse(&font.head, &h); }
-    else if (Str8Eq(tag, Str8Lit("glyf"))) { FontTableParse(&font.glyf, &h); }
-    else if (Str8Eq(tag, Str8Lit("hhea"))) { FontTableParse(&font.hhea, &h); }
-    else if (Str8Eq(tag, Str8Lit("hmtx"))) { FontTableParse(&font.hmtx, &h); }
-    else                                   { BinHeadSkip(&h, 12, sizeof(U8)); }
-  }
-  if (!font.cmap.initialized) {
-    LOG_ERROR("[FONT] Failed to parse font, ttf data is missing required table 'cmap'.");
-    goto font_bake_bitmap_end;
-  }
-  if (!font.loca.initialized) {
-    LOG_ERROR("[FONT] Failed to parse font, ttf data is missing required table 'loca'.");
-    goto font_bake_bitmap_end;
-  }
-  if (!font.head.initialized) {
-    LOG_ERROR("[FONT] Failed to parse font, ttf data is missing required table 'head'.");
-    goto font_bake_bitmap_end;
-  }
-  if (!font.glyf.initialized) {
-    LOG_ERROR("[FONT] Failed to parse font, ttf data is missing required table 'glyf'.");
-    goto font_bake_bitmap_end;
-  }
-  if (!font.hhea.initialized) {
-    LOG_ERROR("[FONT] Failed to parse font, ttf data is missing required table 'hhea'.");
-    goto font_bake_bitmap_end;
-  }
-  if (!font.hmtx.initialized) {
-    LOG_ERROR("[FONT] Failed to parse font, ttf data is missing required table 'hmtx'.");
-    goto font_bake_bitmap_end;
-  }
-
-  // NOTE: find cmap encoding index
-  U32 cmap_subtable_offset = 0;
-  BinHeadSetPos(&h, font.cmap.offset);
-  BinHeadSkip(&h, 2, sizeof(U8));
-  U16 num_cmap_subtables = BinHeadR16BE(&h);
-  for (U16 i = 0; i < num_cmap_subtables; i++) {
-    U16 plat_id      = BinHeadR16BE(&h);
-    U16 plat_spec_id = BinHeadR16BE(&h);
-    U32 index_offset = BinHeadR32BE(&h);
-    if (plat_id == FONT_PID_MICROSOFT_ENCODING) {
-      if (plat_spec_id == FONT_MICROSOFT_EID_UNICODE_BMP ||
-          plat_spec_id == FONT_MICROSOFT_EID_UNICODE_FULL) {
-        cmap_subtable_offset = font.cmap.offset + index_offset;
-      }
-    } else if (plat_id == FONT_PID_UNICODE_ENCODING) {
-      cmap_subtable_offset = font.cmap.offset + index_offset;
-    }
-  }
-  if (cmap_subtable_offset == 0) {
-    LOG_ERROR("[FONT] Failed to find supported cmap encoding table.");
-    goto font_bake_bitmap_end;
-  }
-
-  // NOTE: determine loc format
-  BinHeadSetPos(&h, font.head.offset);
-  BinHeadSkip(&h, 50, sizeof(U8));
-  U16 index_to_loc_format = BinHeadR16BE(&h);
-  if (index_to_loc_format > 1) {
-    LOG_ERROR("[FONT] Invalid or unsupported indexToLocFormat provided: %d", index_to_loc_format);
-    goto font_bake_bitmap_end;
-  }
+  BinHeadInit(&h, font->data, font->data_size);
 
   // NOTE: determine glyph scale
-  BinHeadSetPos(&h, font.hhea.offset);
+  BinHeadSetPos(&h, font->hhea_offset);
   BinHeadSkip(&h, 4, sizeof(U8));
   S16 ascent  = BinHeadR16BE(&h);
   S16 descent = BinHeadR16BE(&h);
@@ -203,112 +331,42 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
   for (U32 i = 0; i < TEST; i++) {
     U32 codepoint = 'A' + i; // TODO: configure
 
-    // NOTE: find glyph index
-    U32 glyph_index = 0;
-    BinHeadSetPos(&h, cmap_subtable_offset);
-    U16 cmap_format = BinHeadR16BE(&h);
-    switch (cmap_format) {
-      case 0: {
-        U16 length = BinHeadR16BE(&h);
-        BinHeadSkip(&h, 2, sizeof(U8));
-        BinHeadSkip(&h, codepoint, sizeof(U8));
-        glyph_index = BinHeadR8(&h);
-      } break;
-      case 12:
-      case 13: {
-        BinHeadSkip(&h, 10, sizeof(U8));
-        U32 number_groups = BinHeadR32BE(&h);
-        U8* groups = BinHeadDecay(&h);
-        S32 low  = 0;
-        S32 high = number_groups;
-        while (low < high ) {
-          S32 mid            = low + ((high - low) / 2);
-          U8* mid_group      = groups + (mid * 12);
-          U32 mid_start_char = ReadU32BE(mid_group);
-          U32 mid_end_char   = ReadU32BE(mid_group + 4);
-          if (codepoint < mid_start_char) {
-            high = mid;
-          } else if (codepoint > mid_end_char) {
-            low = mid + 1;
-          } else {
-            U32 start_glyph = ReadU32BE(groups + ((mid * 12) + 8));
-            if (cmap_format == 12) {
-              glyph_index = start_glyph + codepoint - mid_start_char;
-              break;
-            } else {
-              glyph_index = start_glyph;
-              break;
-            }
-          }
-        }
-      } break;
-      default: TODO();
+    U32 glyph_index;
+    if (!FontGetGlyphIndex(font, codepoint, &glyph_index)) {
+      LOG_ERROR("[FONT] Unable to retrieve glyph index for codepoint: %d", codepoint);
+      goto font_bake_bitmap_end;
     }
-    DEBUG_ASSERT(glyph_index != 0);
 
-    // NOTE: find glyph size metrics
     S32 advance_width, left_side_bearing;
-    BinHeadSetPos(&h, font.hhea.offset);
-    BinHeadSkip(&h, 34, sizeof(U8));
-    U16 num_long_hor_metrics = BinHeadR16BE(&h);
-    if (glyph_index < num_long_hor_metrics) {
-      BinHeadSetPos(&h, font.hmtx.offset);
-      BinHeadSkip(&h, 4 * glyph_index, sizeof(U8));
-      advance_width     = BinHeadR16BE(&h);
-      left_side_bearing = BinHeadR16BE(&h);
-    } else {
-      // NOTE: e.g. for monospaced fonts
-      BinHeadSetPos(&h, font.hmtx.offset);
-      BinHeadSkip(&h, 4 * (num_long_hor_metrics - 1), sizeof(U8));
-      advance_width = BinHeadR16BE(&h);
-
-      BinHeadSetPos(&h, font.hmtx.offset);
-      BinHeadSkip(&h, 4 * num_long_hor_metrics, sizeof(U8));
-      BinHeadSkip(&h, 2 * (glyph_index - num_long_hor_metrics), sizeof(U8));
-      left_side_bearing = BinHeadR16BE(&h);
+    if (!FontGetGlyphSizeInfo(font, glyph_index, &advance_width, &left_side_bearing)) {
+      LOG_ERROR("[FONT] Unable to determine glyph size info for codepoint: %d", codepoint);
+      goto font_bake_bitmap_end;
     }
 
-    // NOTE: get glyf offset
-    S32 glyf_offset, g2; // TODO: understand what is g2
-    BinHeadSetPos(&h, font.loca.offset);
-    switch (index_to_loc_format) {
-      case 0: { // NOTE: stored as U16s
-        BinHeadSkip(&h, 2 * glyph_index, sizeof(U8));
-        glyf_offset = font.glyf.offset + BinHeadR16BE(&h) * 2;
-        g2          = font.glyf.offset + BinHeadR16BE(&h) * 2;
-      } break;
-      case 1: { // NOTE: stored as U32s
-        BinHeadSkip(&h, 4 * glyph_index, sizeof(U8));
-        glyf_offset = font.glyf.offset + BinHeadR32BE(&h);
-        g2          = font.glyf.offset + BinHeadR32BE(&h);
-      } break;
-      default: UNREACHABLE();
-    }
+    S32 glyph_glyf_offset;
+    B32 has_glyf_entry = FontGetGlyphGlyfOffset(font, glyph_index, &glyph_glyf_offset);
 
     // NOTE: determine bitmap box
-    S16 min_x = 0;
-    S16 min_y = 0;
-    S16 max_x = 0;
-    S16 max_y = 0;
-    if (glyf_offset != g2) {
-      BinHeadSetPos(&h, glyf_offset);
+    S16 glyph_min_x = 0;
+    S16 glyph_min_y = 0;
+    S16 glyph_max_x = 0;
+    S16 glyph_max_y = 0;
+    if (has_glyf_entry) {
+      BinHeadSetPos(&h, glyph_glyf_offset);
       BinHeadSkip(&h, 2, sizeof(U8));
-      min_x = BinHeadR16BE(&h);
-      min_y = BinHeadR16BE(&h);
-      max_x = BinHeadR16BE(&h);
-      max_y = BinHeadR16BE(&h);
-    } else {
-      // E.g. for space characters
-      glyf_offset = -1;
+      glyph_min_x = BinHeadR16BE(&h);
+      glyph_min_y = BinHeadR16BE(&h);
+      glyph_max_x = BinHeadR16BE(&h);
+      glyph_max_y = BinHeadR16BE(&h);
     }
-    S16 scaled_min_x = (S16) F32Floor(((F32) min_x) * scale);
-    S16 scaled_min_y = (S16) F32Floor(((F32) min_y) * scale);
-    S16 scaled_max_x = (S16) F32Ceil(((F32)  max_x) * scale);
-    S16 scaled_max_y = (S16) F32Ceil(((F32)  max_y) * scale);
+    S16 scaled_glyph_min_x = (S16) F32Floor(((F32) glyph_min_x) * scale);
+    S16 scaled_glyph_min_y = (S16) F32Floor(((F32) glyph_min_y) * scale);
+    S16 scaled_glyph_max_x = (S16) F32Ceil(((F32)  glyph_max_x) * scale);
+    S16 scaled_glyph_max_y = (S16) F32Ceil(((F32)  glyph_max_y) * scale);
 
     // NOTE: determine glyph bitmap placement
-    U16 scaled_glyph_width  = scaled_max_x - scaled_min_x;
-    U16 scaled_glyph_height = scaled_max_y - scaled_min_y;
+    U16 scaled_glyph_width  = scaled_glyph_max_x - scaled_glyph_min_x;
+    U16 scaled_glyph_height = scaled_glyph_max_y - scaled_glyph_min_y;
     if (bitmap_x + scaled_glyph_width > bitmap_width) {
       bitmap_x = 1;
       bitmap_y += max_glyph_height_for_row;
@@ -321,12 +379,12 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
     max_glyph_height_for_row = MAX(scaled_glyph_height + 1, max_glyph_height_for_row);
     S16 bitmap_min_x = bitmap_x;
     S16 bitmap_min_y = bitmap_y;
-    S16 bitmap_max_x = scaled_min_x + scaled_glyph_width;
-    S16 bitmap_max_y = scaled_min_y + scaled_glyph_height;
+    S16 bitmap_max_x = bitmap_x + scaled_glyph_width;
+    S16 bitmap_max_y = bitmap_y + scaled_glyph_height;
 
     // NOTE: determine glyph shape
-    if (glyf_offset > 0) {
-      BinHeadSetPos(&h, glyf_offset);
+    if (has_glyf_entry) {
+      BinHeadSetPos(&h, glyph_glyf_offset);
       S16 num_contours = BinHeadR16BE(&h);
       if (num_contours > 0) {
         // NOTE: parse simple shape
@@ -395,6 +453,7 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
         U16 contour_idx      = 0;
         U16 start_of_contour = 0;
         U16 end_of_contour   = ReadU16BE(end_pts_of_contours + (contour_idx * 2));
+        DynamicArrayClear(&contours);
         while (true) {
           // TODO: likely a better way to store contours than creating a dynamic array for each one?
           DynamicArray contour;
@@ -461,24 +520,6 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
           start_of_contour = end_of_contour + 1;
           end_of_contour   = ReadU16BE(end_pts_of_contours + (contour_idx * 2));
         }
-
-        for (U32 j = 0; j < contours.size; j++) {
-          DynamicArray* contour = (DynamicArray*) DynamicArrayGet(&contours, j);
-          for (U32 k = 0; k < contour->size; k++) {
-            FontSplineNode* curr = (FontSplineNode*) DynamicArrayGet(contour, k);
-            FontSplineNode* next = (FontSplineNode*) DynamicArrayGet(contour, (k + 1) % contour->size);
-
-            F32 start_x = curr->start_x / 4 + 100;
-            F32 start_y = curr->start_y / 4 + 100;
-            F32 end_x = next->start_x / 4 + 100;
-            F32 end_y = next->start_y / 4 + 100;
-            F32 control_x = curr->control_x / 4 + 100;
-            F32 control_y = curr->control_y / 4 + 100;
-
-            DrawQuadBezier(start_x, start_y, control_x, control_y, end_x, end_y, 10, 2, 0, 0, 1);
-          }
-        }
-
       } else if (num_contours < 0) {
         // NOTE: parse compound shape
         TODO();
@@ -486,65 +527,90 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
     }
 
     // NOTE: rasterize the glyph into the bitmap
-    B32 pen_down;
-    S16 pen_x;
+    // TODO: should we reference the encoded winding order here?
     S16 pen_y = bitmap_min_y;
+    DynamicArray intersect_x_vals;
+    DynamicArrayInit(&intersect_x_vals, sizeof(F32), 32);
     while (pen_y <= bitmap_max_y) {
-      pen_down = false;
-      pen_x    = bitmap_min_x;
-      while (pen_x <= bitmap_max_x) {
-        // TODO: scaling like this is cringe
-        F32 pen_glyph_x, pen_glyph_y;
-        FontScalePoint(
-            pen_x, pen_y, &pen_glyph_x, &pen_glyph_y,
-            bitmap_min_x, bitmap_min_y, bitmap_max_x, bitmap_max_y,
-            min_x, min_y, max_x, max_y);
+      F32 scanline_y = FontMapValue(pen_y + 0.5f, bitmap_min_y, bitmap_max_y, glyph_min_y, glyph_max_y);
 
-        // NOTE: find the closest contour to the right.
-        // TODO: can sort the contours to speed this up
-        S32 closest_contour = -1;
-        S32 closest_curve   = -1;
-        F32 min_distance    = F32_MAX;
-        for (U32 i = 0; i < contours.size; i++) {
-          DynamicArray* contour = (DynamicArray*) DynamicArrayGet(&contours, i);
-          for (U32 j = 0; j < contour->size; j++) {
-            FontSplineNode* curr = (FontSplineNode*) DynamicArrayGet(contour, j);
-            FontSplineNode* next = (FontSplineNode*) DynamicArrayGet(contour, (j + 1) % contour->size);
+      // NOTE: find all points that intersect with the current scanline.
+      DynamicArrayClear(&intersect_x_vals);
+      for (U32 i = 0; i < contours.size; i++) {
+        DynamicArray* contour = (DynamicArray*) DynamicArrayGet(&contours, i);
+        for (U32 j = 0; j < contour->size; j++) {
+          FontSplineNode* curr = (FontSplineNode*) DynamicArrayGet(contour, j);
+          FontSplineNode* next = (FontSplineNode*) DynamicArrayGet(contour, (j + 1) % contour->size);
 
-            F32 min_y, max_y, min_x, max_x;
-            FontCurveGetDimBounds(curr->start_y, next->start_y, curr->control_y, &min_y, &max_y);
-            if (pen_glyph_y < min_y || pen_glyph_y > max_y) { continue; } // NOTE: missed in vertical direction.
-            FontCurveGetDimBounds(curr->start_x, next->start_x, curr->control_x, &min_x, &max_x);
-            if (pen_glyph_x > min_x && pen_glyph_x > max_x) { continue; } // NOTE: already passed this curve.
+          F32 a = curr->start_y - (2 * curr->control_y) + next->start_y;
+          F32 b = 2 * (curr->control_y - curr->start_y);
+          F32 c = curr->start_y - scanline_y;
 
-            F32 distance = MAX(min_x - pen_glyph_x, max_x - pen_glyph_x);
-            if (distance < min_distance) {
-              closest_contour = i;
-              closest_curve   = j;
-              min_distance    = distance;
+          // NOTE: get y-extremes for the given curve
+          F32 curve_min_y = MIN(curr->start_y, next->start_y);
+          F32 curve_max_y = MAX(curr->start_y, next->start_y);
+          F32 t_y_extreme = (curr->start_y - curr->control_y) / a;
+          if (0 <= t_y_extreme && t_y_extreme <= 1) {
+            F32 y_extreme = FontCurveEvaluateBezier(curr->start_y, next->start_y, curr->control_y, t_y_extreme);
+            curve_min_y = MIN(curve_min_y, y_extreme);
+            curve_max_y = MAX(curve_max_y, y_extreme);
+          }
+          if (scanline_y < curve_min_y || scanline_y > curve_max_y) { continue; }
+
+          // NOTE: find Ts for x-intersections on given scanline
+          F32 t[2];
+          U32 t_size = 0;
+          if (F32Abs(a) > 0.00001) {
+            // is a parabola
+            F32 det = (b * b) - (4 * a * c);
+            if (det > 0) {
+              det = F32Sqrt(det);
+              if (det == 0) {
+                t[t_size++] = (-b) / (2 * a);
+              } else {
+                t[t_size++] = (-b + det) / (2 * a);
+                t[t_size++] = (-b - det) / (2 * a);
+              }
             }
+          } else if (F32Abs(b) > 0.00001) {
+            // is a line
+            t[t_size++] = -c / b;
+          } else {
+            continue;
+          }
+
+          for (U32 k = 0; k < t_size; k++) {
+            if (!(0 <= t[k] && t[k] <= 1)) { continue; }
+            F32 x_intersect = FontCurveEvaluateBezier(curr->start_x, next->start_x, curr->control_x, t[k]);
+            if (x_intersect < glyph_min_x || x_intersect > glyph_max_x) {
+              LOG_WARN("[FONT] Font defined glyph shape exceeds defined bounds! Attempting to recover, but there may be visual artifacts.");
+              x_intersect = MAX(glyph_min_x, x_intersect);
+              x_intersect = MIN(glyph_max_x, x_intersect);
+            }
+            DynamicArrayPushBackSafe(&intersect_x_vals, &x_intersect);
           }
         }
-        // NOTE: if no contour was found, we're done drawing this line.
-        if(closest_contour == -1) {
-          DEBUG_ASSERT(!pen_down);
-          break;
+      }
+      SORT_ASC(F32, (F32*) intersect_x_vals.data, intersect_x_vals.size);
+
+      F32 scanline_x = glyph_min_x;
+      B32 pen_down = false;
+      for (U32 i = 0; i < intersect_x_vals.size; i++) {
+        F32 x_value = *(F32*) DynamicArrayGet(&intersect_x_vals, i);
+        if (x_value < scanline_x) {
+          pen_down = !pen_down;
+          continue;
         }
-
-        F32 draw_to_x, draw_to_y;
-        FontScalePoint(
-            pen_glyph_x + min_distance, pen_glyph_y, &draw_to_x, &draw_to_y,
-            min_x, min_y, max_x, max_y,
-            bitmap_min_x, bitmap_min_y, bitmap_max_x, bitmap_max_y);
-
-        S16 pixel_dist = draw_to_x - pen_x;
+        // TODO: take a second look at remapping -- only want to color pixel if the curve overlaps the center.
+        S16 pen_start = FontMapValue(scanline_x, glyph_min_x, glyph_max_x, bitmap_min_x, bitmap_max_x) - 0.5f;
+        S16 pen_stop  = FontMapValue(x_value, glyph_min_x, glyph_max_x, bitmap_min_x, bitmap_max_x) - 0.5f;
         if (pen_down) {
-          for (S16 i = pen_x; i <= pen_x + pixel_dist; i++) {
-            bitmap->data[(pen_y * bitmap_height) + i] = 255;
+          // TODO: antialias edges
+          for (S16 i = pen_start; i <= pen_stop; i++) {
+            bitmap->data[((bitmap_height - pen_y) * bitmap_width) + i] = 255;
           }
         }
-
-        pen_x = draw_to_x + 1;
+        scanline_x = x_value;
         pen_down = !pen_down;
       }
 
@@ -552,10 +618,9 @@ B32 FontBakeBitmap(Arena* arena, U8* data, U32 data_size, F32 pixel_height, Imag
     }
 
     for (U32 i = 0; i < contours.size; i++) {
-      DynamicArray* contour = (DynamicArray*) DynamicArrayGet(&contours, i);
-      DynamicArrayDeinit(contour);
+      DynamicArrayDeinit((DynamicArray*) DynamicArrayGet(&contours, i));
     }
-    DynamicArrayClear(&contours);
+    DynamicArrayDeinit(&intersect_x_vals);
     bitmap_x += scaled_glyph_width;
   }
 

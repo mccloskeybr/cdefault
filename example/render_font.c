@@ -10,7 +10,7 @@
 #define CDEFAULT_RENDER_IMPLEMENTATION
 #include "../cdefault_render.h"
 
-U32 TEST = 1;
+U32 TEST = 'z' - 'A' + 1;
 
 #define CDEFAULT_FONT_IMPLEMENTATION
 #include "../cdefault_font.h"
@@ -25,6 +25,9 @@ int main(void) {
 
   String8 file_data;
   DEBUG_ASSERT(FileReadAll(arena, (U8*) "../data/firacode.ttf", &file_data.str, &file_data.size));
+  U64 arena_pos = ArenaPos(arena);
+
+  Font font;
 
 #if 1
   while (!WindowShouldClose()) {
@@ -37,9 +40,11 @@ int main(void) {
     }
 
     Image font_image;
-    DEBUG_ASSERT(FontBakeBitmap(arena, file_data.str, file_data.size, 32, &font_image, 100, 100));
+    DEBUG_ASSERT(FontInit(&font, file_data.str, file_data.size));
+    DEBUG_ASSERT(FontBakeBitmap(arena, &font, 64, &font_image, 1024, 1024));
     DEBUG_ASSERT(ImageDumpBmp(&font_image, (U8*) "../data/TEST.bmp"));
 
+    ArenaPopTo(arena, arena_pos);
     WindowSwapBuffers();
     WindowFlushEvents();
   }

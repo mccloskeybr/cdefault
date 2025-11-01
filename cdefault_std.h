@@ -801,6 +801,7 @@ void BinHeadW64BE(BinHead* head, U64 x);
 // NOTE: Dynamic Arrays
 ///////////////////////////////////////////////////////////////////////////////
 
+// TODO: remodel this as a series of macros, for better debugger QOL (native type information instead of U8s).
 typedef struct DynamicArray DynamicArray;
 struct DynamicArray {
   Arena* arena;

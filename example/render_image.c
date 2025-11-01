@@ -33,8 +33,8 @@ int main(void) {
     }
 
     DrawImageRot(image_handle, 750, 500, image.width * scale * 25, image.height * scale * 25, theta);
-    theta += 0.05f;
-    scale = F32Sin(TimeSecondsSinceStart());
+    // theta += 0.05f;
+    // scale = F32Sin(TimeSecondsSinceStart());
 
     WindowSwapBuffers();
     WindowFlushEvents();

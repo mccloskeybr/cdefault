@@ -3830,11 +3830,6 @@ static int stbtt_BakeFontBitmap_internal(unsigned char *data, int offset,  // fo
 
    for (i=0; i < num_chars; ++i) {
       int advance, lsb, x0,y0,x1,y1,gw,gh;
-
-      if (first_char + i == 85) {
-        int asdf = 123;
-      }
-
       int g = stbtt_FindGlyphIndex(&f, first_char + i);
       stbtt_GetGlyphHMetrics(&f, g, &advance, &lsb);
       stbtt_GetGlyphBitmapBox(&f, g, scale,scale, &x0,&y0,&x1,&y1);
