@@ -16,7 +16,7 @@ struct Mesh {
   U32  indices_size;
 };
 
-B32 MeshLoadFile(Arena* arena, Mesh* mesh, U8* file_path);
+B32 MeshLoadFile(Arena* arena, Mesh* mesh, String8 file_path);
 B32 MeshLoad(Arena* arena, Mesh* mesh, U8* file_data, U32 file_data_size);
 
 #endif // CDEFAULT_MESH_H_
@@ -187,7 +187,7 @@ B32 MeshLoad(Arena* arena, Mesh* mesh, U8* file_data, U32 file_data_size) {
   return false;
 }
 
-B32 MeshLoadFile(Arena* arena, Mesh* mesh, U8* file_path) {
+B32 MeshLoadFile(Arena* arena, Mesh* mesh, String8 file_path) {
   B32 success = false;
   String8 file_data;
   Arena* file_arena = ArenaAllocate();

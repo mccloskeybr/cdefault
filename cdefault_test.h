@@ -34,7 +34,7 @@ void LogTestReport(); // NOTE: Prints the final test report to stdout. Must be c
 #define EXPECT_S64_EQ(a, b)         EXPECT_BASE((a) == (b), "Expected S64s equal, but got: %ld, %ld", (a), (b))
 #define EXPECT_U8_EQ(a, b)          EXPECT_BASE((a) == (b), "Expected U8s equal, but got: %u, %u", (a), (b))
 #define EXPECT_U16_EQ(a, b)         EXPECT_BASE((a) == (b), "Expected U16s equal, but got: %u, %u", (a), (b))
-#define EXPECT_U32_EQ(a, b)         EXPECT_BASE((a) == (b), "Expected U32s equal, but got: %xu, %xu", (a), (b))
+#define EXPECT_U32_EQ(a, b)         EXPECT_BASE((a) == (b), "Expected U32s equal, but got: %u, %u", (a), (b))
 #define EXPECT_U64_EQ(a, b)         EXPECT_BASE((a) == (b), "Expected U64s equal, but got: %lu, %lu", (a), (b))
 #define EXPECT_F32_EQ(a, b)         EXPECT_BASE((a) == (b), "Expected F32s equal, but got: %.5f, %.5f", (a), (b))
 #define EXPECT_F32_APPROX_EQ(a, b)  EXPECT_BASE(F32ApproxEq(a, b), "Expected F32s approximately equal, but got: %.5f, %.5f", (a), (b))

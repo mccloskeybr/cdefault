@@ -41,10 +41,10 @@ struct Image {
   U8* data;
 };
 
-B32  ImageLoadFile(Arena* arena, Image* image, ImageFormat format, U8* file_path);
+B32  ImageLoadFile(Arena* arena, Image* image, ImageFormat format, String8 file_path);
 B32  ImageLoad(Arena* arena, Image* image, ImageFormat format, U8* file_data, U32 image_data_size);
 void ImageConvert(Arena* arena, Image* to, Image* from, ImageFormat to_format);
-B32  ImageDumpBmp(Image* image, U8* file_path); // NOTE: Preserves alpha channel, if present.
+B32  ImageDumpBmp(Image* image, String8 file_path); // NOTE: Preserves alpha channel, if present.
 
 B32  ImageLoadBmp(Arena* arena, Image* image, ImageFormat format, U8* file_data, U32 image_data_size);
 
@@ -353,7 +353,7 @@ image_load_bmp_exit:
   return success;
 }
 
-B32 ImageLoadFile(Arena* arena, Image* image, ImageFormat format, U8* file_path) {
+B32 ImageLoadFile(Arena* arena, Image* image, ImageFormat format, String8 file_path) {
   B32 success = false;
   String8 file_data;
   Arena* file_arena = ArenaAllocate();
@@ -431,7 +431,7 @@ void ImageConvert(Arena* arena, Image* to, Image* from, ImageFormat to_format) {
   }
 }
 
-B32 ImageDumpBmp(Image* image, U8* file_path) {
+B32 ImageDumpBmp(Image* image, String8 file_path) {
   // NOTE: convert to RGBA for convenience.
   Arena* temp_arena = ArenaAllocate();
   Image temp_image;

@@ -3,244 +3,195 @@
 #define CDEFAULT_TEST_IMPLEMENTATION
 #include "../cdefault_test.h"
 
+typedef struct List List;
+struct List {
+  U16* data;
+  U32 size;
+  U32 capacity;
+};
+
+Arena* arena;
+
 void InsertTest(void) {
-  U32 x;
-  DynamicArray a;
-  DynamicArrayInit(&a, sizeof(U32), 10);
+  List list;
+  MEMORY_ZERO_STRUCT(&list);
 
-  x = 10;
-  EXPECT_TRUE(DynamicArrayInsert(&a, (U8*) &x, 0));
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 10);
-  EXPECT_U32_EQ(a.size, 1);
+  DA_INSERT(arena, &list, 10, 0);
+  EXPECT_U32_EQ(list.size, 1);
+  EXPECT_U32_EQ(list.data[0], 10);
 
-  x = 20;
-  EXPECT_TRUE(DynamicArrayInsert(&a, (U8*) &x, 0));
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 20);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 10);
-  EXPECT_U32_EQ(a.size, 2);
+  DA_INSERT(arena, &list, 20, 0);
+  EXPECT_U32_EQ(list.size, 2);
+  EXPECT_U32_EQ(list.data[0], 20);
+  EXPECT_U32_EQ(list.data[1], 10);
 
-  x = 30;
-  EXPECT_TRUE(DynamicArrayInsert(&a, (U8*) &x, 1));
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 20);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 30);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 2), 10);
-  EXPECT_U32_EQ(a.size, 3);
+  DA_INSERT(arena, &list, 30, 1);
+  EXPECT_U32_EQ(list.size, 3);
+  EXPECT_U32_EQ(list.data[0], 20);
+  EXPECT_U32_EQ(list.data[1], 30);
+  EXPECT_U32_EQ(list.data[2], 10);
 
-  x = 40;
-  EXPECT_TRUE(DynamicArrayInsert(&a, (U8*) &x, 3));
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 20);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 30);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 2), 10);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 3), 40);
-  EXPECT_U32_EQ(a.size, 4);
-
-  DynamicArrayDeinit(&a);
+  DA_INSERT(arena, &list, 40, 3);
+  EXPECT_U32_EQ(list.size, 4);
+  EXPECT_U32_EQ(list.data[0], 20);
+  EXPECT_U32_EQ(list.data[1], 30);
+  EXPECT_U32_EQ(list.data[2], 10);
+  EXPECT_U32_EQ(list.data[3], 40);
 }
 
 void SwapRemoveTest(void) {
-  U32 x;
-  DynamicArray a;
-  DynamicArrayInit(&a, sizeof(U32), 10);
+  List list;
+  MEMORY_ZERO_STRUCT(&list);
 
-  x = 10;
-  DynamicArrayPushBack(&a, (U8*) &x);
-  x = 20;
-  DynamicArrayPushBack(&a, (U8*) &x);
-  x = 30;
-  DynamicArrayPushBack(&a, (U8*) &x);
-  x = 40;
-  DynamicArrayPushBack(&a, (U8*) &x);
-  x = 50;
-  DynamicArrayPushBack(&a, (U8*) &x);
+  DA_PUSH_BACK(arena, &list, 10);
+  DA_PUSH_BACK(arena, &list, 20);
+  DA_PUSH_BACK(arena, &list, 30);
+  DA_PUSH_BACK(arena, &list, 40);
+  DA_PUSH_BACK(arena, &list, 50);
 
-  EXPECT_U32_EQ(a.size, 5);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 10);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 20);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 2), 30);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 3), 40);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 4), 50);
+  EXPECT_U32_EQ(list.size, 5);
+  EXPECT_U32_EQ(list.data[0], 10);
+  EXPECT_U32_EQ(list.data[1], 20);
+  EXPECT_U32_EQ(list.data[2], 30);
+  EXPECT_U32_EQ(list.data[3], 40);
+  EXPECT_U32_EQ(list.data[4], 50);
 
-  EXPECT_TRUE(DynamicArraySwapRemove(&a, 0));
-  EXPECT_U32_EQ(a.size, 4);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 50);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 20);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 2), 30);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 3), 40);
+  DA_SWAP_REMOVE(&list, 0);
+  EXPECT_U32_EQ(list.size, 4);
+  EXPECT_U32_EQ(list.data[0], 50);
+  EXPECT_U32_EQ(list.data[1], 20);
+  EXPECT_U32_EQ(list.data[2], 30);
+  EXPECT_U32_EQ(list.data[3], 40);
 
-  EXPECT_TRUE(DynamicArraySwapRemove(&a, 2));
-  EXPECT_U32_EQ(a.size, 3);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 50);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 20);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 2), 40);
+  DA_SWAP_REMOVE(&list, 2);
+  EXPECT_U32_EQ(list.size, 3);
+  EXPECT_U32_EQ(list.data[0], 50);
+  EXPECT_U32_EQ(list.data[1], 20);
+  EXPECT_U32_EQ(list.data[2], 40);
 
-  EXPECT_TRUE(DynamicArraySwapRemove(&a, 0));
-  EXPECT_U32_EQ(a.size, 2);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 40);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 20);
+  DA_SWAP_REMOVE(&list, 0);
+  EXPECT_U32_EQ(list.size, 2);
+  EXPECT_U32_EQ(list.data[0], 40);
+  EXPECT_U32_EQ(list.data[1], 20);
 
-  EXPECT_TRUE(DynamicArraySwapRemove(&a, 1));
-  EXPECT_U32_EQ(a.size, 1);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 40);
+  DA_SWAP_REMOVE(&list, 1);
+  EXPECT_U32_EQ(list.size, 1);
+  EXPECT_U32_EQ(list.data[0], 40);
 
-  EXPECT_TRUE(DynamicArraySwapRemove(&a, 0));
-  EXPECT_U32_EQ(a.size, 0);
-
-  EXPECT_FALSE(DynamicArraySwapRemove(&a, 0));
-
-  DynamicArrayDeinit(&a);
+  DA_SWAP_REMOVE(&list, 0);
+  EXPECT_U32_EQ(list.size, 0);
 }
 
 void RemoveTest(void) {
-  U32 x;
-  DynamicArray a;
-  DynamicArrayInit(&a, sizeof(U32), 10);
+  List list;
+  MEMORY_ZERO_STRUCT(&list);
 
-  x = 10;
-  DynamicArrayPushBack(&a, (U8*) &x);
-  x = 20;
-  DynamicArrayPushBack(&a, (U8*) &x);
-  x = 30;
-  DynamicArrayPushBack(&a, (U8*) &x);
-  x = 40;
-  DynamicArrayPushBack(&a, (U8*) &x);
-  x = 50;
-  DynamicArrayPushBack(&a, (U8*) &x);
+  DA_PUSH_BACK(arena, &list, 10);
+  DA_PUSH_BACK(arena, &list, 20);
+  DA_PUSH_BACK(arena, &list, 30);
+  DA_PUSH_BACK(arena, &list, 40);
+  DA_PUSH_BACK(arena, &list, 50);
 
-  EXPECT_U32_EQ(a.size, 5);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 10);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 20);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 2), 30);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 3), 40);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 4), 50);
+  EXPECT_U32_EQ(list.size, 5);
+  EXPECT_U32_EQ(list.data[0], 10);
+  EXPECT_U32_EQ(list.data[1], 20);
+  EXPECT_U32_EQ(list.data[2], 30);
+  EXPECT_U32_EQ(list.data[3], 40);
+  EXPECT_U32_EQ(list.data[4], 50);
 
-  EXPECT_TRUE(DynamicArrayRemove(&a, 0));
-  EXPECT_U32_EQ(a.size, 4);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 20);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 30);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 2), 40);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 3), 50);
+  DA_SHIFT_REMOVE(&list, 0);
+  EXPECT_U32_EQ(list.size, 4);
+  EXPECT_U32_EQ(list.data[0], 20);
+  EXPECT_U32_EQ(list.data[1], 30);
+  EXPECT_U32_EQ(list.data[2], 40);
+  EXPECT_U32_EQ(list.data[3], 50);
 
-  EXPECT_TRUE(DynamicArrayRemove(&a, 2));
-  EXPECT_U32_EQ(a.size, 3);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 20);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 30);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 2), 50);
+  DA_SHIFT_REMOVE(&list, 2);
+  EXPECT_U32_EQ(list.size, 3);
+  EXPECT_U32_EQ(list.data[0], 20);
+  EXPECT_U32_EQ(list.data[1], 30);
+  EXPECT_U32_EQ(list.data[2], 50);
 
-  EXPECT_TRUE(DynamicArrayRemove(&a, 0));
-  EXPECT_U32_EQ(a.size, 2);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 30);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 50);
+  DA_SHIFT_REMOVE(&list, 0);
+  EXPECT_U32_EQ(list.size, 2);
+  EXPECT_U32_EQ(list.data[0], 30);
+  EXPECT_U32_EQ(list.data[1], 50);
 
-  EXPECT_TRUE(DynamicArrayRemove(&a, 1));
-  EXPECT_U32_EQ(a.size, 1);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 30);
+  DA_SHIFT_REMOVE(&list, 1);
+  EXPECT_U32_EQ(list.size, 1);
+  EXPECT_U32_EQ(list.data[0], 30);
 
-  EXPECT_TRUE(DynamicArrayRemove(&a, 0));
-  EXPECT_U32_EQ(a.size, 0);
-
-  EXPECT_FALSE(DynamicArrayRemove(&a, 0));
-
-  DynamicArrayDeinit(&a);
+  DA_SHIFT_REMOVE(&list, 0);
+  EXPECT_U32_EQ(list.size, 0);
 }
 
 void PushBackTest(void) {
-  U32 x;
-  DynamicArray a;
-  DynamicArrayInit(&a, sizeof(U32), 10);
+  List list;
+  MEMORY_ZERO_STRUCT(&list);
 
-  x = 10;
-  DynamicArrayPushBack(&a, (U8*) &x);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 10);
-  EXPECT_U32_EQ(a.size, 1);
+  DA_PUSH_BACK(arena, &list, 10);
+  EXPECT_U32_EQ(list.size, 1);
+  EXPECT_U32_EQ(list.data[0], 10);
 
-  x = 20;
-  DynamicArrayPushBack(&a, (U8*) &x);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 10);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 20);
-  EXPECT_U32_EQ(a.size, 2);
+  DA_PUSH_BACK(arena, &list, 20);
+  EXPECT_U32_EQ(list.size, 2);
+  EXPECT_U32_EQ(list.data[0], 10);
+  EXPECT_U32_EQ(list.data[1], 20);
 
-  x = 30;
-  DynamicArrayPushBack(&a, (U8*) &x);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 10);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 20);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 2), 30);
-  EXPECT_U32_EQ(a.size, 3);
-
-  DynamicArrayDeinit(&a);
+  DA_PUSH_BACK(arena, &list, 30);
+  EXPECT_U32_EQ(list.size, 3);
+  EXPECT_U32_EQ(list.data[0], 10);
+  EXPECT_U32_EQ(list.data[1], 20);
+  EXPECT_U32_EQ(list.data[2], 30);
 }
 
 void PopBackTest(void) {
-  U32 x;
-  DynamicArray a;
-  DynamicArrayInit(&a, sizeof(U32), 10);
+  List list;
+  MEMORY_ZERO_STRUCT(&list);
 
-  x = 10;
-  DynamicArrayPushBack(&a, (U8*) &x);
-  x = 20;
-  DynamicArrayPushBack(&a, (U8*) &x);
-  x = 30;
-  DynamicArrayPushBack(&a, (U8*) &x);
+  DA_PUSH_BACK(arena, &list, 10);
+  DA_PUSH_BACK(arena, &list, 20);
+  DA_PUSH_BACK(arena, &list, 30);
 
-  EXPECT_U32_EQ(a.size, 3);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 10);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 20);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 2), 30);
+  EXPECT_U32_EQ(list.size, 3);
+  EXPECT_U32_EQ(list.data[0], 10);
+  EXPECT_U32_EQ(list.data[1], 20);
+  EXPECT_U32_EQ(list.data[2], 30);
 
-  EXPECT_TRUE(DynamicArrayPopBack(&a));
-  EXPECT_U32_EQ(a.size, 2);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 10);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 20);
+  DA_POP_BACK(&list);
+  EXPECT_U32_EQ(list.size, 2);
+  EXPECT_U32_EQ(list.data[0], 10);
+  EXPECT_U32_EQ(list.data[1], 20);
 
-  EXPECT_TRUE(DynamicArrayPopBack(&a));
-  EXPECT_U32_EQ(a.size, 1);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 10);
+  DA_POP_BACK(&list);
+  EXPECT_U32_EQ(list.size, 1);
+  EXPECT_U32_EQ(list.data[0], 10);
 
-  EXPECT_TRUE(DynamicArrayPopBack(&a));
-  EXPECT_U32_EQ(a.size, 0);
-
-  EXPECT_FALSE(DynamicArrayPopBack(&a));
-
-  DynamicArrayDeinit(&a);
+  DA_POP_BACK(&list);
+  EXPECT_U32_EQ(list.size, 0);
 }
 
 void ExpandCapacityTest(void) {
-  U32 x;
-  DynamicArray a;
-  DynamicArrayInit(&a, sizeof(U32), 1);
+  List list;
+  MEMORY_ZERO_STRUCT(&list);
 
-  x = 10;
-  DynamicArrayPushBack(&a, (U8*) &x);
-  EXPECT_U32_EQ(a.size, 1);
-  EXPECT_U32_EQ(a.capacity, 1);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 10);
+  for (U32 i = 0; i < DA_INITIAL_CAPACITY; i++) {
+    DA_PUSH_BACK(arena, &list, i * 10);
+    EXPECT_U32_EQ(list.capacity, DA_INITIAL_CAPACITY);
+    EXPECT_U32_EQ(list.size, i + 1);
+    EXPECT_U16_EQ(list.data[i], i * 10);
+  }
 
-  DynamicArrayPushBack(&a, (U8*) &x);
-  EXPECT_U32_EQ(a.size, 2);
-  EXPECT_U32_EQ(a.capacity, 2);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 10);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 10);
-
-  DynamicArrayPushBack(&a, (U8*) &x);
-  EXPECT_U32_EQ(a.size, 3);
-  EXPECT_U32_EQ(a.capacity, 4);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 10);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 10);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 2), 10);
-
-  DynamicArrayPushBack(&a, (U8*) &x);
-  DynamicArrayPushBack(&a, (U8*) &x);
-  EXPECT_U32_EQ(a.size, 5);
-  EXPECT_U32_EQ(a.capacity, 8);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 0), 10);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 1), 10);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 2), 10);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 3), 10);
-  EXPECT_U32_EQ(*(U32*) DynamicArrayGet(&a, 4), 10);
-
-  DynamicArrayDeinit(&a);
+  for (U32 i = 0; i < DA_INITIAL_CAPACITY; i++) {
+    DA_PUSH_BACK(arena, &list, i * 20);
+    EXPECT_U32_EQ(list.capacity, DA_INITIAL_CAPACITY * 2);
+    EXPECT_U32_EQ(list.size, DA_INITIAL_CAPACITY + i + 1);
+    EXPECT_U16_EQ(list.data[DA_INITIAL_CAPACITY + i], i * 20);
+  }
 }
 
 int main(void) {
+  arena = ArenaAllocate();
   RUN_TEST(InsertTest);
   RUN_TEST(SwapRemoveTest);
   RUN_TEST(RemoveTest);

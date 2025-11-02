@@ -24,10 +24,10 @@ int main(void) {
 
   U32 image_handle, mesh_handle;
   Image image;
-  DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, (U8*) "../data/16bpp.bmp"));
+  DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, Str8Lit("../data/16bpp.bmp")));
   RendererRegisterImage(&image_handle, image.data, image.width, image.height);
   Mesh obj;
-  DEBUG_ASSERT(MeshLoadFile(arena, &obj, (U8*) "../data/teapot.obj"));
+  DEBUG_ASSERT(MeshLoadFile(arena, &obj, Str8Lit("../data/teapot.obj")));
   RendererRegisterMesh(&mesh_handle, image_handle, obj.points, obj.normals, obj.uvs, obj.vertices_size, obj.indices, obj.indices_size);
 
   Camera* camera = RendererCamera3D();

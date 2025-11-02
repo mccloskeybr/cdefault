@@ -14,7 +14,7 @@ int main(void) {
   DEBUG_ASSERT(AudioInit());
 
   Sound sound;
-  DEBUG_ASSERT(SoundOpenFile(&sound, (U8*) "../data/test.wav"));
+  DEBUG_ASSERT(SoundOpenFile(&sound, Str8Lit("../data/test.wav")));
 
   AudioStreamSpec spec;
   MEMORY_ZERO_STRUCT(&spec);

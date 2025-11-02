@@ -65,6 +65,14 @@ struct FontSplineNode {
   S16 control_y;
 };
 
+typedef struct FontContour FontContour;
+struct FontContour {
+  Arena* arena;
+  FontSplineNode* data;
+  U32 size;
+  U32 capacity;
+};
+
 // NOTE: evaluates quadratic bezier lerps for a single dimension.
 static F32 FontCurveEvaluateBezier(F32 start, F32 end, F32 control, F32 t) {
   F32 start_to_control = F32Lerp(start, control, t);
@@ -305,9 +313,11 @@ B32 FontBakeBitmap(Arena* arena, Font* font, F32 pixel_height, Image* bitmap, U1
   bitmap->data   = ARENA_PUSH_ARRAY(arena, U8, bitmap_width * bitmap_height);
   MEMORY_ZERO(bitmap->data, sizeof(U8) * (bitmap_width * bitmap_height));
 
-  Arena* temp_arena = ArenaAllocate();
-  DynamicArray contours;
-  DynamicArrayInit(&contours, sizeof(DynamicArray), 8);
+  Arena* vertex_arena   = ArenaAllocate();
+  Arena* contours_arena = ArenaAllocate();
+  U32 contours_size     = 0;
+  U32 contours_capacity = 0;
+  FontContour* contours = NULL;
 
   BinHead h;
   BinHeadInit(&h, font->data, font->data_size);
@@ -396,7 +406,7 @@ B32 FontBakeBitmap(Arena* arena, Font* font, F32 pixel_height, Image* bitmap, U1
         U8* points = BinHeadDecay(&h);
 
         U16 num_vertices = ReadU16BE(end_pts_of_contours + (2 * (num_contours - 1))) + 1;
-        FontVertex* vertices = ARENA_PUSH_ARRAY(temp_arena, FontVertex, num_vertices);
+        FontVertex* vertices = ARENA_PUSH_ARRAY(vertex_arena, FontVertex, num_vertices);
 
         U8 flags = 0;
         U16 flag_num_repeat = 0;
@@ -453,11 +463,12 @@ B32 FontBakeBitmap(Arena* arena, Font* font, F32 pixel_height, Image* bitmap, U1
         U16 contour_idx      = 0;
         U16 start_of_contour = 0;
         U16 end_of_contour   = ReadU16BE(end_pts_of_contours + (contour_idx * 2));
-        DynamicArrayClear(&contours);
+        contours_size        = 0;
         while (true) {
-          // TODO: likely a better way to store contours than creating a dynamic array for each one?
-          DynamicArray contour;
-          DynamicArrayInit(&contour, sizeof(FontSplineNode), 32);
+          FontContour contour;
+          MEMORY_ZERO_STRUCT(&contour);
+          contour.arena = ArenaAllocate();
+
           for (U16 j = start_of_contour; j <= end_of_contour; j++) {
             // NOTE: loop points around so they stay within [start_of_contour, end_of_contour].
             FontVertex* p0 = &vertices[start_of_contour + (((j + 0) - start_of_contour) % (end_of_contour + 1 - start_of_contour))];
@@ -512,9 +523,9 @@ B32 FontBakeBitmap(Arena* arena, Font* font, F32 pixel_height, Image* bitmap, U1
                 spline_node.control_y = p1->y;
               }
             }
-            DynamicArrayPushBackSafe(&contour, &spline_node);
+            DA_PUSH_BACK(contour.arena, &contour, spline_node);
           }
-          DynamicArrayPushBackSafe(&contours, &contour);
+          DA_PUSH_BACK_EX(contours_arena, contours, contours_size, contours_capacity, contour);
           contour_idx++;
           if (contour_idx >= num_contours) { break; }
           start_of_contour = end_of_contour + 1;
@@ -525,22 +536,25 @@ B32 FontBakeBitmap(Arena* arena, Font* font, F32 pixel_height, Image* bitmap, U1
         TODO();
       }
     }
+    ArenaClear(vertex_arena);
 
     // NOTE: rasterize the glyph into the bitmap
     // TODO: should we reference the encoded winding order here?
     S16 pen_y = bitmap_min_y;
-    DynamicArray intersect_x_vals;
-    DynamicArrayInit(&intersect_x_vals, sizeof(F32), 32);
+    Arena* intersect_x_vals_arena = ArenaAllocate();
+    U32 intersect_x_vals_size     = 0;
+    U32 intersect_x_vals_capacity = 0;
+    F32* intersect_x_vals         = NULL;
     while (pen_y <= bitmap_max_y) {
       F32 scanline_y = FontMapValue(pen_y + 0.5f, bitmap_min_y, bitmap_max_y, glyph_min_y, glyph_max_y);
 
       // NOTE: find all points that intersect with the current scanline.
-      DynamicArrayClear(&intersect_x_vals);
-      for (U32 i = 0; i < contours.size; i++) {
-        DynamicArray* contour = (DynamicArray*) DynamicArrayGet(&contours, i);
+      intersect_x_vals_size = 0;
+      for (U32 i = 0; i < contours_size; i++) {
+        FontContour* contour = &contours[i];
         for (U32 j = 0; j < contour->size; j++) {
-          FontSplineNode* curr = (FontSplineNode*) DynamicArrayGet(contour, j);
-          FontSplineNode* next = (FontSplineNode*) DynamicArrayGet(contour, (j + 1) % contour->size);
+          FontSplineNode* curr = &contour->data[j];
+          FontSplineNode* next = &contour->data[(j + 1) % contour->size];
 
           F32 a = curr->start_y - (2 * curr->control_y) + next->start_y;
           F32 b = 2 * (curr->control_y - curr->start_y);
@@ -557,11 +571,11 @@ B32 FontBakeBitmap(Arena* arena, Font* font, F32 pixel_height, Image* bitmap, U1
           }
           if (scanline_y < curve_min_y || scanline_y > curve_max_y) { continue; }
 
-          // NOTE: find Ts for x-intersections on given scanline
+          // NOTE: find Ts for x-intersections on given scanline y
           F32 t[2];
           U32 t_size = 0;
           if (F32Abs(a) > 0.00001) {
-            // is a parabola
+            // curve is a parabola
             F32 det = (b * b) - (4 * a * c);
             if (det > 0) {
               det = F32Sqrt(det);
@@ -573,7 +587,7 @@ B32 FontBakeBitmap(Arena* arena, Font* font, F32 pixel_height, Image* bitmap, U1
               }
             }
           } else if (F32Abs(b) > 0.00001) {
-            // is a line
+            // curve is a line
             t[t_size++] = -c / b;
           } else {
             continue;
@@ -587,16 +601,16 @@ B32 FontBakeBitmap(Arena* arena, Font* font, F32 pixel_height, Image* bitmap, U1
               x_intersect = MAX(glyph_min_x, x_intersect);
               x_intersect = MIN(glyph_max_x, x_intersect);
             }
-            DynamicArrayPushBackSafe(&intersect_x_vals, &x_intersect);
+            DA_PUSH_BACK_EX(intersect_x_vals_arena, intersect_x_vals, intersect_x_vals_size, intersect_x_vals_capacity, x_intersect);
           }
         }
       }
-      SORT_ASC(F32, (F32*) intersect_x_vals.data, intersect_x_vals.size);
+      SORT_ASC(F32, intersect_x_vals, intersect_x_vals_size);
 
       F32 scanline_x = glyph_min_x;
       B32 pen_down = false;
-      for (U32 i = 0; i < intersect_x_vals.size; i++) {
-        F32 x_value = *(F32*) DynamicArrayGet(&intersect_x_vals, i);
+      for (U32 i = 0; i < intersect_x_vals_size; i++) {
+        F32 x_value = intersect_x_vals[i];
         if (x_value < scanline_x) {
           pen_down = !pen_down;
           continue;
@@ -605,7 +619,7 @@ B32 FontBakeBitmap(Arena* arena, Font* font, F32 pixel_height, Image* bitmap, U1
         S16 pen_start = FontMapValue(scanline_x, glyph_min_x, glyph_max_x, bitmap_min_x, bitmap_max_x) - 0.5f;
         S16 pen_stop  = FontMapValue(x_value, glyph_min_x, glyph_max_x, bitmap_min_x, bitmap_max_x) - 0.5f;
         if (pen_down) {
-          // TODO: antialias edges
+          // TODO: antialias curve edges
           for (S16 i = pen_start; i <= pen_stop; i++) {
             bitmap->data[((bitmap_height - pen_y) * bitmap_width) + i] = 255;
           }
@@ -617,17 +631,15 @@ B32 FontBakeBitmap(Arena* arena, Font* font, F32 pixel_height, Image* bitmap, U1
       pen_y += 1;
     }
 
-    for (U32 i = 0; i < contours.size; i++) {
-      DynamicArrayDeinit((DynamicArray*) DynamicArrayGet(&contours, i));
-    }
-    DynamicArrayDeinit(&intersect_x_vals);
+    for (U32 i = 0; i < contours_size; i++) { ArenaRelease(contours[i].arena); }
+    ArenaRelease(intersect_x_vals_arena);
     bitmap_x += scaled_glyph_width;
   }
 
   success = true;
 font_bake_bitmap_end:
-  ArenaRelease(temp_arena);
-  DynamicArrayDeinit(&contours);
+  ArenaRelease(vertex_arena);
+  ArenaRelease(contours_arena);
   if (!success) { ArenaPopTo(arena, base_pos); }
   return success;
 }

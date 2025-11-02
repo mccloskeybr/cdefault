@@ -24,7 +24,7 @@ int main(void) {
   Arena* arena = ArenaAllocate();
 
   String8 file_data;
-  DEBUG_ASSERT(FileReadAll(arena, (U8*) "../data/firacode.ttf", &file_data.str, &file_data.size));
+  DEBUG_ASSERT(FileReadAll(arena, Str8Lit("../data/firacode.ttf"), &file_data.str, &file_data.size));
   U64 arena_pos = ArenaPos(arena);
 
   Font font;
@@ -42,7 +42,7 @@ int main(void) {
     Image font_image;
     DEBUG_ASSERT(FontInit(&font, file_data.str, file_data.size));
     DEBUG_ASSERT(FontBakeBitmap(arena, &font, 64, &font_image, 1024, 1024));
-    DEBUG_ASSERT(ImageDumpBmp(&font_image, (U8*) "../data/TEST.bmp"));
+    DEBUG_ASSERT(ImageDumpBmp(&font_image, Str8Lit("../data/TEST.bmp")));
 
     ArenaPopTo(arena, arena_pos);
     WindowSwapBuffers();

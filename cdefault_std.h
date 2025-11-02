@@ -421,6 +421,73 @@ void  MemoryDecommit(void* ptr, U64 size);
 #define DLL_POP_BACK(head, tail, prev, next)  \
     DLL_REMOVE(head, tail, tail, prev, next);
 
+// NOTE: Dynamic array.
+//
+// E.g.
+// struct List {
+//   U32* data;
+//   U32 size;
+//   U32 capacity;
+// }
+//
+// Arena* arena = ArenaAllocate();
+// List list;
+// MEMORY_ZERO_STRUCT(&list);
+// DA_PUSH_BACK(arena, &list, 10);
+// DA_INSERT(arena, &list, 10, 0);
+// DA_SWAP_REMOVE(&list, 0);
+//
+// NOTE: while the list is active, it must have *exclusive* access to the arena,
+// otherwise data may moved around in a confusing / unexpected way. probably best
+// to just have a dedicated arena per dynamic array to reduce the chance of confusion.
+
+#ifndef DA_INITIAL_CAPACITY
+#define DA_INITIAL_CAPACITY 10
+#endif
+
+#define DA_RESERVE(arena, list, expected_capacity) \
+  DA_RESERVE_EX(arena, (list)->data, (list)->capacity, expected_capacity);
+#define DA_PUSH_BACK(arena, list, item) \
+  DA_PUSH_BACK_EX(arena, (list)->data, (list)->size, (list)->capacity, item);
+#define DA_POP_BACK(list) \
+  DA_POP_BACK_EX((list)->size);
+#define DA_INSERT(arena, list, item, idx) \
+  DA_INSERT_EX(arena, (list)->data, (list)->size, (list)->capacity, item, idx);
+#define DA_SWAP_REMOVE(list, idx) \
+  DA_SWAP_REMOVE_EX((list)->data, (list)->size, idx);
+#define DA_SHIFT_REMOVE(list, idx) \
+  DA_SHIFT_REMOVE_EX((list)->data, (list)->size, idx);
+
+#define DA_RESERVE_EX(arena, data, capacity, expected_capacity) \
+  if (capacity == 0) {                                          \
+    capacity = DA_INITIAL_CAPACITY;                             \
+    data = _ArenaPush(arena, sizeof(*data) * capacity, 1);      \
+  }                                                             \
+  while (capacity < expected_capacity) {                        \
+    _ArenaPush(arena, sizeof(*data) * capacity, 1);             \
+    capacity *= 2;                                              \
+  }
+#define DA_PUSH_BACK_EX(arena, data, size, capacity, item) \
+  DA_RESERVE_EX(arena, data, capacity, size + 1);          \
+  data[size++] = item;
+#define DA_POP_BACK_EX(size) \
+  DEBUG_ASSERT(size > 0);    \
+  size--;
+#define DA_INSERT_EX(arena, data, size, capacity, item, idx)       \
+  DEBUG_ASSERT(idx <= size);                                       \
+  DA_RESERVE_EX(arena, data, capacity, size + 1);                  \
+  for (S32 _i = size; _i > idx; _i--) { data[_i] = data[_i - 1]; } \
+  data[idx] = item;                                                \
+  size++;
+#define DA_SWAP_REMOVE_EX(data, size, idx) \
+  DEBUG_ASSERT(idx < size);                \
+  data[idx] = data[size - 1];              \
+  size--;
+#define DA_SHIFT_REMOVE_EX(data, size, idx)                              \
+  DEBUG_ASSERT(idx < size);                                              \
+  for (S32 _i = idx; _i < (S32) size; _i++) { data[_i] = data[_i + 1]; } \
+  size--;
+
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Log
 ///////////////////////////////////////////////////////////////////////////////
@@ -796,37 +863,6 @@ void BinHeadW32LE(BinHead* head, U32 x);
 void BinHeadW32BE(BinHead* head, U32 x);
 void BinHeadW64LE(BinHead* head, U64 x);
 void BinHeadW64BE(BinHead* head, U64 x);
-
-///////////////////////////////////////////////////////////////////////////////
-// NOTE: Dynamic Arrays
-///////////////////////////////////////////////////////////////////////////////
-
-// TODO: remodel this as a series of macros, for better debugger QOL (native type information instead of U8s).
-typedef struct DynamicArray DynamicArray;
-struct DynamicArray {
-  Arena* arena;
-  U8* data;
-  U32 size;
-  U32 capacity;
-  U32 elem_size;
-};
-
-void DynamicArrayInit(DynamicArray* array, U32 element_size, U32 capacity);
-void DynamicArrayDeinit(DynamicArray* array);
-void DynamicArrayPushBack(DynamicArray* array, U8* e);
-B32  DynamicArrayInsert(DynamicArray* array, U8* e, U32 i);
-B32  DynamicArrayPopBack(DynamicArray* array);
-B32  DynamicArraySwapRemove(DynamicArray* array, U32 i);
-B32  DynamicArrayRemove(DynamicArray* array, U32 i);
-U8*  DynamicArrayGet(DynamicArray* array, U32 i);
-void DynamicArrayClear(DynamicArray* array);
-
-#define DynamicArrayPushBackSafe(a, t)  \
-  DynamicArrayPushBack(a, (U8*) t);     \
-  DEBUG_ASSERT(sizeof(*t) == (a)->elem_size);
-#define DynamicArrayInsertSafe(a, t, i) \
-  DynamicArrayInsert(a, (U8*) t, i);    \
-  DEBUG_ASSERT(sizeof(*t) == (a)->elem_size);
 
 #endif // CDEFAULT_H_
 
@@ -2296,73 +2332,6 @@ void BinHeadW64BE(BinHead* head, U64 x) {
   U32 b = x & 0xffffffff;
   BinHeadW32BE(head, a);
   BinHeadW32BE(head, b);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// NOTE: Dynamic Array Implementation
-///////////////////////////////////////////////////////////////////////////////
-
-static void DynamicArrayMaybeExpand(DynamicArray* array) {
-  if (array->size == array->capacity) {
-    _ArenaPush(array->arena, array->elem_size * array->capacity, 1);
-    array->capacity *= 2;
-  }
-}
-
-void DynamicArrayInit(DynamicArray* array, U32 element_size, U32 capacity) {
-  MEMORY_ZERO_STRUCT(array);
-  array->arena = ArenaAllocate();
-  array->capacity = capacity;
-  array->elem_size = element_size;
-  array->data = _ArenaPush(array->arena, element_size * capacity, 1);
-}
-
-void DynamicArrayDeinit(DynamicArray* array) {
-  ArenaRelease(array->arena);
-}
-
-void DynamicArrayPushBack(DynamicArray* array, U8* e) {
-  DynamicArrayMaybeExpand(array);
-  MEMORY_COPY(&array->data[array->elem_size * array->size], e, array->elem_size);
-  array->size++;
-}
-
-B32 DynamicArrayInsert(DynamicArray* array, U8* e, U32 i) {
-  if (i > array->size) { return false; }
-  DynamicArrayMaybeExpand(array);
-  MEMORY_MOVE(&array->data[(i + 1) * array->elem_size], &array->data[i * array->elem_size], (array->size - i + 1) * array->elem_size);
-  MEMORY_COPY(&array->data[i * array->elem_size], e, array->elem_size);
-  array->size++;
-  return true;
-}
-
-B32 DynamicArrayPopBack(DynamicArray* array) {
-  if (array->size == 0) { return false; }
-  array->size -= 1;
-  return true;
-}
-
-B32 DynamicArraySwapRemove(DynamicArray* array, U32 i) {
-  if (i >= array->size) { return false; }
-  MEMORY_COPY(&array->data[i * array->elem_size], &array->data[(array->size - 1) * array->elem_size], array->elem_size);
-  array->size--;
-  return true;
-}
-
-B32 DynamicArrayRemove(DynamicArray* array, U32 i) {
-  if (i >= array->size) { return false; }
-  MEMORY_MOVE(&array->data[(i) * array->elem_size], &array->data[(i + 1) * array->elem_size], (array->size - i) * array->elem_size);
-  array->size--;
-  return true;
-}
-
-U8* DynamicArrayGet(DynamicArray* array, U32 i) {
-  if (i >= array->size) { return NULL; }
-  return &array->data[i * array->elem_size];
-}
-
-void DynamicArrayClear(DynamicArray* array) {
-  array->size = 0;
 }
 
 #endif // CDEFAULT_STD_IMPLEMENTATION
