@@ -11,6 +11,7 @@
 // shader abstraction?
 // draw more shapes
 // softer edges?
+// open gl error detection
 
 typedef struct Camera Camera;
 struct Camera {
@@ -51,7 +52,8 @@ void WindowGetMouseDeltaPositionV(V2* pos);
 void RendererSetProjection2D(M4 projection);
 void RendererSetProjection3D(M4 projection);
 Camera* RendererCamera3D();
-void RendererRegisterImage(U32* image_handle, U8* image_bytes, U32 width, U32 height); // NOTE: Expects RGBA byte values (0 -> 255)
+void RendererRegisterImageRGBA(U32* image_handle, U8* image_bytes, U32 width, U32 height); // NOTE: Expects RGBA byte values (0 -> 255)
+void RendererRegisterImageR(U32* image_handle, U8* image_bytes, U32 width, U32 height); // NOTE: Expects R byte values (0 -> 255)
 void RendererRegisterMesh(U32* mesh_handle, U32 image_handle, V3* points, V3* normals, V2* uvs, U32 vertices_size, U32* indices, U32 indices_size);
 void RendererReleaseImage(U32 image_handle);
 void RendererReleaseMesh(U32 mesh_handle);
@@ -98,6 +100,12 @@ void DrawImage(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 heig
 void DrawImageV(U32 image_handle, V2 pos, V2 size);
 void DrawImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 angle_rad);
 void DrawImageRotV(U32 image_handle, V2 pos, V2 size, F32 angle_rad);
+void DrawSubImage(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y);
+void DrawSubImageV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv);
+void DrawSubImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 angle_rad, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y);
+void DrawSubImageRotV(U32 image_handle, V2 center, V2 size, F32 angle_rad, V2 min_uv, V2 max_uv);
+void DrawFontCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 red, F32 green, F32 blue);
+void DrawFontCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, V3 color);
 
 // NOTE: 3D API
 void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale);
@@ -346,6 +354,14 @@ struct Renderer {
 
   GLuint image_shader;
   GLint  image_camera_uniform;
+  GLuint image_min_uv_uniform;
+  GLuint image_max_uv_uniform;
+
+  GLuint font_shader;
+  GLint  font_camera_uniform;
+  GLuint font_min_uv_uniform;
+  GLuint font_max_uv_uniform;
+  GLuint font_color_uniform;
 
   GLuint mesh_shader;
   GLint  mesh_camera_uniform;
@@ -523,11 +539,13 @@ static B32 RendererInit(void) {
   char* image_vertex_shader_source =
     "#version 330 core\n"
     "uniform mat4 to_camera_transform;\n"
+    "uniform vec2 min_uv;\n"
+    "uniform vec2 max_uv;\n"
     "layout (location = 0) in vec2 in_pos;\n"
     "layout (location = 1) in vec2 in_tex_coord;\n"
     "out vec2 tex_coord;\n"
     "void main() {\n"
-    "  tex_coord = in_tex_coord;\n"
+    "  tex_coord = mix(min_uv, max_uv, in_tex_coord);\n"
     "  gl_Position = to_camera_transform * vec4(in_pos, 0.0, 1.0);\n"
     "}\0";
   char* image_fragment_shader_source =
@@ -540,6 +558,36 @@ static B32 RendererInit(void) {
     "}\0";
   DEBUG_ASSERT(RendererCompileShader(&r->image_shader, image_vertex_shader_source, image_fragment_shader_source));
   r->image_camera_uniform = g->glGetUniformLocation(r->image_shader, "to_camera_transform");
+  r->image_min_uv_uniform = g->glGetUniformLocation(r->image_shader, "min_uv");
+  r->image_max_uv_uniform = g->glGetUniformLocation(r->image_shader, "max_uv");
+
+  char* font_vertex_shader_source =
+    "#version 330 core\n"
+    "uniform mat4 to_camera_transform;\n"
+    "uniform vec2 min_uv;\n"
+    "uniform vec2 max_uv;\n"
+    "layout (location = 0) in vec2 in_pos;\n"
+    "layout (location = 1) in vec2 in_tex_coord;\n"
+    "out vec2 tex_coord;\n"
+    "void main() {\n"
+    "  tex_coord = mix(min_uv, max_uv, in_tex_coord);\n"
+    "  gl_Position = to_camera_transform * vec4(in_pos, 0.0, 1.0);\n"
+    "}\0";
+  char* font_fragment_shader_source =
+    "#version 330 core\n"
+    "uniform sampler2D texture_image;\n"
+    "uniform vec3 color;\n"
+    "in vec2 tex_coord;\n"
+    "out vec4 frag_color;\n"
+    "void main() { \n"
+    "  float alpha = texture(texture_image, tex_coord).r;\n"
+    "  frag_color = vec4(color, alpha);\n"
+    "}\0";
+  DEBUG_ASSERT(RendererCompileShader(&r->font_shader, font_vertex_shader_source, font_fragment_shader_source));
+  r->font_camera_uniform = g->glGetUniformLocation(r->font_shader, "to_camera_transform");
+  r->font_min_uv_uniform = g->glGetUniformLocation(r->font_shader, "min_uv");
+  r->font_max_uv_uniform = g->glGetUniformLocation(r->font_shader, "max_uv");
+  r->font_color_uniform  = g->glGetUniformLocation(r->font_shader, "color");
 
   char* mesh_vertex_shader_source =
     "#version 330 core\n"
@@ -568,12 +616,12 @@ static B32 RendererInit(void) {
   r->mesh_texture_uniform = g->glGetUniformLocation(r->mesh_shader, "texture_image");
 
   F32 quad_vertices[6][4] = {
-    {-0.5f, +0.5f, 0, 0 },
-    {-0.5f, -0.5f, 0, 1 },
-    {+0.5f, -0.5f, 1, 1 },
-    {-0.5f, +0.5f, 0, 0 },
-    {+0.5f, -0.5f, 1, 1 },
-    {+0.5f, +0.5f, 1, 0 },
+    {-0.5f, +0.5f, 0, 1 },
+    {-0.5f, -0.5f, 0, 0 },
+    {+0.5f, -0.5f, 1, 0 },
+    {-0.5f, +0.5f, 0, 1 },
+    {+0.5f, -0.5f, 1, 0 },
+    {+0.5f, +0.5f, 1, 1 },
   };
   g->glGenBuffers(1, &r->quad_vbo);
   g->glBindBuffer(GL_ARRAY_BUFFER, r->quad_vbo);
@@ -634,11 +682,21 @@ Camera* RendererCamera3D() {
   return &r->camera_3d;
 }
 
-void RendererRegisterImage(U32* image_handle, U8* image_bytes, U32 width, U32 height) {
+void RendererRegisterImageRGBA(U32* image_handle, U8* image_bytes, U32 width, U32 height) {
   OpenGLAPI* g = &_ogl;
   g->glGenTextures(1, image_handle);
   g->glBindTexture(GL_TEXTURE_2D, *image_handle);
   g->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_bytes);
+  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  g->glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void RendererRegisterImageR(U32* image_handle, U8* image_bytes, U32 width, U32 height) {
+  OpenGLAPI* g = &_ogl;
+  g->glGenTextures(1, image_handle);
+  g->glBindTexture(GL_TEXTURE_2D, *image_handle);
+  g->glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, image_bytes);
   g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   g->glBindTexture(GL_TEXTURE_2D, 0);
@@ -1023,11 +1081,29 @@ void DrawImageV(U32 image_handle, V2 pos, V2 size) {
 }
 
 void DrawImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 angle_rad) {
+  DrawSubImageRot(image_handle, center_x, center_y, width, height, angle_rad, 0, 0, 1, 1);
+}
+
+void DrawImageRotV(U32 image_handle, V2 pos, V2 size, F32 angle_rad) {
+  DrawImageRot(image_handle, pos.x, pos.y, size.x, size.y, angle_rad);
+}
+
+void DrawSubImage(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y) {
+  DrawSubImageRot(image_handle, center_x, center_y, width, height, 0, min_uv_x, min_uv_y, max_uv_x, max_uv_y);
+}
+
+void DrawSubImageV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv) {
+  DrawSubImage(image_handle, center.x, center.y, size.x, size.y, min_uv.x, min_uv.y, max_uv.x, max_uv.y);
+}
+
+void DrawSubImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 angle_rad, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y) {
   Renderer* r = &_renderer;
   OpenGLAPI* g = &_ogl;
 
-  V3 pos   = { center_x, center_y, 0 };
-  V3 scale = { width, height, 1 };
+  V2 min_uv = { min_uv_x, min_uv_y };
+  V2 max_uv = { max_uv_x, max_uv_y };
+  V3 pos    = { center_x, center_y, 0 };
+  V3 scale  = { width, height, 1 };
   V4 rot;
   V4RotateAroundAxis(&rot, &V3_Z_POS, angle_rad);
   M4 image_to_world, image_to_camera, image_to_camera_t;
@@ -1037,6 +1113,8 @@ void DrawImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 h
 
   g->glUseProgram(r->image_shader);
   g->glUniformMatrix4fv(r->image_camera_uniform, 1, GL_FALSE, (GLfloat*) &image_to_camera_t);
+  g->glUniform2fv(r->image_min_uv_uniform, 1, (GLfloat*) &min_uv);
+  g->glUniform2fv(r->image_max_uv_uniform, 1, (GLfloat*) &max_uv);
   g->glBindTexture(GL_TEXTURE_2D, image_handle);
   g->glBindVertexArray(r->quad_vao);
   g->glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -1045,8 +1123,41 @@ void DrawImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 h
   g->glUseProgram(0);
 }
 
-void DrawImageRotV(U32 image_handle, V2 pos, V2 size, F32 angle_rad) {
-  DrawImageRot(image_handle, pos.x, pos.y, size.x, size.y, angle_rad);
+void DrawSubImageRotV(U32 image_handle, V2 center, V2 size, F32 angle_rad, V2 min_uv, V2 max_uv) {
+  DrawSubImageRot(image_handle, center.x, center.y, size.x, size.y, angle_rad, min_uv.x, min_uv.y, max_uv.x, max_uv.y);
+}
+
+void DrawFontCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 red, F32 green, F32 blue) {
+  Renderer* r = &_renderer;
+  OpenGLAPI* g = &_ogl;
+
+  V3 color  = { red, green, blue };
+  V2 min_uv = { min_uv_x, min_uv_y };
+  V2 max_uv = { max_uv_x, max_uv_y };
+  V3 pos    = { center_x, center_y, 0 };
+  V3 scale  = { width, height, 1 };
+  V4 rot;
+  V4RotateAroundAxis(&rot, &V3_Z_POS, 0);
+  M4 image_to_world, image_to_camera, image_to_camera_t;
+  M4FromTransform(&image_to_world, &pos, &rot, &scale);
+  M4MultM4(&image_to_camera, &r->world_to_camera_2d, &image_to_world);
+  M4Transpose(&image_to_camera_t, &image_to_camera);
+
+  g->glUseProgram(r->font_shader);
+  g->glUniformMatrix4fv(r->font_camera_uniform, 1, GL_FALSE, (GLfloat*) &image_to_camera_t);
+  g->glUniform2fv(r->font_min_uv_uniform, 1, (GLfloat*) &min_uv);
+  g->glUniform2fv(r->font_max_uv_uniform, 1, (GLfloat*) &max_uv);
+  g->glUniform3fv(r->font_color_uniform, 1, (GLfloat*) &color);
+  g->glBindTexture(GL_TEXTURE_2D, image_handle);
+  g->glBindVertexArray(r->quad_vao);
+  g->glDrawArrays(GL_TRIANGLES, 0, 6);
+  g->glBindTexture(GL_TEXTURE_2D, 0);
+  g->glBindVertexArray(0);
+  g->glUseProgram(0);
+}
+
+void DrawFontCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, V3 color) {
+  DrawFontCharacter(image_handle, center.x, center.y, size.x, size.y, min_uv.x, min_uv.y, max_uv.x, max_uv.y, color.r, color.g, color.b);
 }
 
 void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale) {

@@ -2,8 +2,7 @@
 #define CDEFAULT_STD_H_
 
 // TODO: wide strings (String16)
-// TODO: more test functions? light framework?
-// TODO: assert --> message box w/ error
+// TODO: assert --> message box w/ error?
 
 #if defined(_WIN32)
 #  define OS_WINDOWS 1
@@ -520,9 +519,9 @@ struct Arena {
   U64 pos;
 };
 
-#define ARENA_PUSH_ARRAY(arena, type, count) (type*) _ArenaPush(arena, sizeof(type) * count, MAX(8, ALIGN_OF(type)))
+#define ARENA_PUSH_ARRAY(arena, type, count) (type*) _ArenaPush(arena, sizeof(type) * (count), MAX(8, ALIGN_OF(type)))
 #define ARENA_PUSH_STRUCT(arena, type) ARENA_PUSH_ARRAY(arena, type, 1)
-#define ARENA_POP_ARRAY(arena, type, count) ArenaPop(arena, sizeof(type) * count)
+#define ARENA_POP_ARRAY(arena, type, count) ArenaPop(arena, sizeof(type) * (count))
 #define ARENA_POP_STRUCT(arena, type) ARENA_POP_ARRAY(arena, type, 1)
 
 #define ArenaAllocate() _ArenaAllocate(CDEFAULT_ARENA_RESERVE_SIZE, CDEFAULT_ARENA_COMMIT_SIZE)

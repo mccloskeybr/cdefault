@@ -106,6 +106,7 @@ B32 ImageLoadBmp(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
     LOG_ERROR("[IMAGE] Bad BMP file - expected a color plane of 1, got %d.", color_plane);
     return false;
   }
+  // NOTE: BMP is normally ordered bottom to top.
   B8 y_flipped = false;
   if (temp_image.height < 0) {
     temp_image.height *= -1;
@@ -337,8 +338,6 @@ B32 ImageLoadBmp(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
     }
   }
 
-  // NOTE: BMP is normally ordered from bottom to top. Flip it by default to order from top to bottom.
-  y_flipped = !y_flipped;
   if (y_flipped) {
     for (U32 i = 0; i < temp_image.height / 2; i++) {
       U8* a = temp_image.data + (i * temp_image.width * 4);
@@ -457,7 +456,8 @@ B32 ImageDumpBmp(Image* image, String8 file_path) {
   // NOTE: winv4 header
   BinHeadW32LE(&h, header_size);
   BinHeadW32LE(&h, temp_image.width);
-  BinHeadW32LE(&h, ((S32)temp_image.height) * -1); // NOTE: BMP is bottom up.
+  // NOTE: internal raw format matches BMP bottom->up, so don't flip.
+  BinHeadW32LE(&h, (S32) temp_image.height);
   BinHeadW16LE(&h, 1);  // color planes
   BinHeadW16LE(&h, 32); // bits per pixel
   BinHeadW32LE(&h, 3);  // bitfield compression
