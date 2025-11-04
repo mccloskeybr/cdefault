@@ -106,6 +106,8 @@ void DrawSubImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F3
 void DrawSubImageRotV(U32 image_handle, V2 center, V2 size, F32 angle_rad, V2 min_uv, V2 max_uv);
 void DrawFontCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 red, F32 green, F32 blue);
 void DrawFontCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, V3 color);
+void DrawFontSdfCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 red, F32 green, F32 blue);
+void DrawFontSdfCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, V3 color);
 
 // NOTE: 3D API
 void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale);
@@ -363,6 +365,12 @@ struct Renderer {
   GLuint font_max_uv_uniform;
   GLuint font_color_uniform;
 
+  GLuint font_sdf_shader;
+  GLint  font_sdf_camera_uniform;
+  GLuint font_sdf_min_uv_uniform;
+  GLuint font_sdf_max_uv_uniform;
+  GLuint font_sdf_color_uniform;
+
   GLuint mesh_shader;
   GLint  mesh_camera_uniform;
   GLint  mesh_texture_uniform;
@@ -588,6 +596,37 @@ static B32 RendererInit(void) {
   r->font_min_uv_uniform = g->glGetUniformLocation(r->font_shader, "min_uv");
   r->font_max_uv_uniform = g->glGetUniformLocation(r->font_shader, "max_uv");
   r->font_color_uniform  = g->glGetUniformLocation(r->font_shader, "color");
+
+  char* font_sdf_vertex_shader_source =
+    "#version 330 core\n"
+    "uniform mat4 to_camera_transform;\n"
+    "uniform vec2 min_uv;\n"
+    "uniform vec2 max_uv;\n"
+    "layout (location = 0) in vec2 in_pos;\n"
+    "layout (location = 1) in vec2 in_tex_coord;\n"
+    "out vec2 tex_coord;\n"
+    "void main() {\n"
+    "  tex_coord = mix(min_uv, max_uv, in_tex_coord);\n"
+    "  gl_Position = to_camera_transform * vec4(in_pos, 0.0, 1.0);\n"
+    "}\0";
+  char* font_sdf_fragment_shader_source =
+    "#version 330 core\n"
+    "uniform sampler2D texture_image;\n"
+    "uniform vec3 color;\n"
+    "in vec2 tex_coord;\n"
+    "out vec4 frag_color;\n"
+    "void main() { \n"
+    "  float smoothing = 0.2;\n" // configurable?
+    "  float threshold = 0.5;\n" // configurable?
+    "  float distance  = texture(texture_image, tex_coord).r;\n"
+    "  float alpha     = smoothstep(threshold + smoothing, threshold - smoothing, distance);\n"
+    "  frag_color      = vec4(color, alpha);\n"
+    "}\0";
+  DEBUG_ASSERT(RendererCompileShader(&r->font_sdf_shader, font_sdf_vertex_shader_source, font_sdf_fragment_shader_source));
+  r->font_sdf_camera_uniform = g->glGetUniformLocation(r->font_sdf_shader, "to_camera_transform");
+  r->font_sdf_min_uv_uniform = g->glGetUniformLocation(r->font_sdf_shader, "min_uv");
+  r->font_sdf_max_uv_uniform = g->glGetUniformLocation(r->font_sdf_shader, "max_uv");
+  r->font_sdf_color_uniform  = g->glGetUniformLocation(r->font_sdf_shader, "color");
 
   char* mesh_vertex_shader_source =
     "#version 330 core\n"
@@ -1158,6 +1197,39 @@ void DrawFontCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, 
 
 void DrawFontCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, V3 color) {
   DrawFontCharacter(image_handle, center.x, center.y, size.x, size.y, min_uv.x, min_uv.y, max_uv.x, max_uv.y, color.r, color.g, color.b);
+}
+
+void DrawFontSdfCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 red, F32 green, F32 blue) {
+  Renderer* r = &_renderer;
+  OpenGLAPI* g = &_ogl;
+
+  V3 color  = { red, green, blue };
+  V2 min_uv = { min_uv_x, min_uv_y };
+  V2 max_uv = { max_uv_x, max_uv_y };
+  V3 pos    = { center_x, center_y, 0 };
+  V3 scale  = { width, height, 1 };
+  V4 rot;
+  V4RotateAroundAxis(&rot, &V3_Z_POS, 0);
+  M4 image_to_world, image_to_camera, image_to_camera_t;
+  M4FromTransform(&image_to_world, &pos, &rot, &scale);
+  M4MultM4(&image_to_camera, &r->world_to_camera_2d, &image_to_world);
+  M4Transpose(&image_to_camera_t, &image_to_camera);
+
+  g->glUseProgram(r->font_sdf_shader);
+  g->glUniformMatrix4fv(r->font_sdf_camera_uniform, 1, GL_FALSE, (GLfloat*) &image_to_camera_t);
+  g->glUniform2fv(r->font_sdf_min_uv_uniform, 1, (GLfloat*) &min_uv);
+  g->glUniform2fv(r->font_sdf_max_uv_uniform, 1, (GLfloat*) &max_uv);
+  g->glUniform3fv(r->font_sdf_color_uniform, 1, (GLfloat*) &color);
+  g->glBindTexture(GL_TEXTURE_2D, image_handle);
+  g->glBindVertexArray(r->quad_vao);
+  g->glDrawArrays(GL_TRIANGLES, 0, 6);
+  g->glBindTexture(GL_TEXTURE_2D, 0);
+  g->glBindVertexArray(0);
+  g->glUseProgram(0);
+}
+
+void DrawFontSdfCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, V3 color) {
+  DrawFontSdfCharacter(image_handle, center.x, center.y, size.x, size.y, min_uv.x, min_uv.y, max_uv.x, max_uv.y, color.r, color.g, color.b);
 }
 
 void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale) {

@@ -14,16 +14,27 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "third_party/stb_truetype.h"
 
-#define ATLAS_WIDTH  2048.0f
-#define ATLAS_HEIGHT 2048.0f
-#define FONT_SIZE    24.0f
+#define BMP_ATLAS_WIDTH  2048.0f
+#define BMP_ATLAS_HEIGHT 2048.0f
+#define SDF_ATLAS_WIDTH  256.0f
+#define SDF_ATLAS_HEIGHT 256.0f
+#define FONT_SIZE        64.0f
 
 void DrawString(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 x, F32 y) {
   V2 cursor = { x, y };
   for (S32 i = 0; i < str.size; i++) {
     V2 center, size, min_uv, max_uv;
-    DEBUG_ASSERT(FontAtlasPlace(atlas, str.str[i], &cursor, &center, &size, &min_uv, &max_uv));
+    DEBUG_ASSERT(FontAtlasPlace(atlas, BMP_ATLAS_WIDTH, BMP_ATLAS_HEIGHT, str.str[i], &cursor, &center, &size, &min_uv, &max_uv));
     DrawFontCharacterV(atlas_handle, center, size, min_uv, max_uv, V3_BLACK);
+  }
+}
+
+void DrawStringSdf(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 x, F32 y) {
+  V2 cursor = { x, y };
+  for (S32 i = 0; i < str.size; i++) {
+    V2 center, size, min_uv, max_uv;
+    DEBUG_ASSERT(FontAtlasPlace(atlas, SDF_ATLAS_WIDTH, SDF_ATLAS_HEIGHT, str.str[i], &cursor, &center, &size, &min_uv, &max_uv));
+    DrawFontSdfCharacterV(atlas_handle, center, size, min_uv, max_uv, V3_BLACK);
   }
 }
 
@@ -32,6 +43,9 @@ int main(void) {
   DEBUG_ASSERT(WindowInit(1920, 1080, "render font cdefault"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
   DirSetCurrentToExeDir();
+  F32 dt_s = 0.0f;
+  Stopwatch frame_stopwatch;
+  StopwatchInit(&frame_stopwatch);
   Arena* font_arena = ArenaAllocate();
   Arena* temp_arena = ArenaAllocate();
 
@@ -40,36 +54,51 @@ int main(void) {
 
   Font font;
   DEBUG_ASSERT(FontInit(&font, file_data.str, file_data.size));
-  FontAtlas atlas;
-  DEBUG_ASSERT(FontAtlasBake(font_arena, &font, &atlas, FontCharSetLatin(), FONT_SIZE, ATLAS_WIDTH, ATLAS_HEIGHT));
-  U32 atlas_handle;
-  RendererRegisterImageR(&atlas_handle, atlas.bitmap, atlas.bitmap_width, atlas.bitmap_height);
+  FontAtlas bmp_atlas;
+  U8* bmp_atlas_bitmap;
+  DEBUG_ASSERT(FontAtlasBakeBitmap(
+        font_arena, &font,
+        &bmp_atlas, &bmp_atlas_bitmap, BMP_ATLAS_WIDTH, BMP_ATLAS_HEIGHT,
+        FONT_SIZE, FontCharSetLatin()));
+  U32 bmp_atlas_handle;
+  RendererRegisterImageR(&bmp_atlas_handle, bmp_atlas_bitmap, BMP_ATLAS_WIDTH, BMP_ATLAS_HEIGHT);
 
-  Image font_image;
-  font_image.format = ImageFormat_R;
-  font_image.width  = atlas.bitmap_width;
-  font_image.height = atlas.bitmap_height;
-  font_image.data   = atlas.bitmap;
-  DEBUG_ASSERT(ImageDumpBmp(&font_image, Str8Lit("../data/TEST_2.bmp")));
+  Image font_bitmap_image;
+  font_bitmap_image.format = ImageFormat_R;
+  font_bitmap_image.width  = BMP_ATLAS_WIDTH;
+  font_bitmap_image.height = BMP_ATLAS_HEIGHT;
+  font_bitmap_image.data   = bmp_atlas_bitmap;
+  DEBUG_ASSERT(ImageDumpBmp(&font_bitmap_image, Str8Lit("../data/TEST_2.bmp")));
 
-  F32 dt_s = 0.0f;
-  Stopwatch frame_stopwatch;
-  StopwatchInit(&frame_stopwatch);
+  FontAtlas sdf_atlas;
+  U8* sdf_atlas_bitmap;
+  DEBUG_ASSERT(FontAtlasBakeSdfFromBitmap(
+        font_arena,
+        &sdf_atlas, &sdf_atlas_bitmap, SDF_ATLAS_WIDTH, SDF_ATLAS_HEIGHT,
+        &bmp_atlas, bmp_atlas_bitmap, BMP_ATLAS_WIDTH, BMP_ATLAS_HEIGHT));
+  U32 sdf_atlas_handle;
+  RendererRegisterImageR(&sdf_atlas_handle, sdf_atlas_bitmap, SDF_ATLAS_WIDTH, SDF_ATLAS_HEIGHT);
+
+  Image font_sdf_image;
+  font_sdf_image.format = ImageFormat_R;
+  font_sdf_image.width  = SDF_ATLAS_WIDTH;
+  font_sdf_image.height = SDF_ATLAS_HEIGHT;
+  font_sdf_image.data   = sdf_atlas_bitmap;
+  DEBUG_ASSERT(ImageDumpBmp(&font_sdf_image, Str8Lit("../data/TEST_3.bmp")));
 
   while (!WindowShouldClose()) {
     if (WindowIsKeyPressed(Key_Control) && WindowIsKeyJustPressed(Key_C)) {
       LOG_INFO("SIGINT received");
       exit(0);
     }
-
-    DrawString(Str8Lit("Hello, world!"), &atlas, atlas_handle, 128, 256);
-    DrawString(Str8Lit("Text rendering is hard!"), &atlas, atlas_handle, 512, 512);
-
     String8 fps = Str8Format(temp_arena, "%0.2f FPS", 1.0f / dt_s);
-    DrawString(fps, &atlas, atlas_handle, 128, 512);
+
+    DrawStringSdf(Str8Lit("Hello, world!"), &sdf_atlas, sdf_atlas_handle, 128, 256);
+    DrawStringSdf(Str8Lit("Text rendering is hard!"), &sdf_atlas, sdf_atlas_handle, 512, 512);
+    DrawStringSdf(fps, &sdf_atlas, sdf_atlas_handle, 128, 512);
+
     dt_s = StopwatchReadSeconds(&frame_stopwatch);
     StopwatchReset(&frame_stopwatch);
-
     ArenaClear(temp_arena);
     WindowSwapBuffers();
     WindowFlushEvents();

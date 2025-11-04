@@ -70,6 +70,7 @@ F32 F32ToDeg(F32 rad);
 F32 F32Ceil(F32 x);
 F32 F32Floor(F32 x);
 F32 F32Round(F32 x);
+F32 F32MapRange(F32 x, F32 a_min, F32 a_max, F32 b_min, F32 b_max);
 
 B64 F64ApproxEq(F64 x, F64 y);
 F64 F64Abs(F64 x);
@@ -87,6 +88,7 @@ F64 F64ToDeg(F64 rad);
 F64 F64Ceil(F64 x);
 F64 F64Floor(F64 x);
 F64 F64Round(F64 x);
+F64 F64MapRange(F64 x, F64 a_min, F64 a_max, F64 b_min, F64 b_max);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: V2
@@ -303,6 +305,7 @@ F32 F32ToDeg(F32 rad) { return rad * (180.0f / F32_PI); }
 F32 F32Ceil(F32 x) { return ceilf(x); }
 F32 F32Floor(F32 x) { return floorf(x); }
 F32 F32Round(F32 x) { return F32Floor(x + 0.5f); }
+F32 F32MapRange(F32 x, F32 a_min, F32 a_max, F32 b_min, F32 b_max) { return b_min + ((x - a_min) / (a_max - a_min)) * (b_max - b_min); }
 
 B64 F64ApproxEq(F64 x, F64 y) { return F64Abs(x - y) < 0.00001; }
 F64 F64Abs(F64 x) { return fabs(x); }
@@ -320,6 +323,7 @@ F64 F64ToDeg(F64 rad) { return rad * (180.0 / F64_PI); }
 F64 F64Ceil(F64 x) { return ceil(x); }
 F64 F64Floor(F64 x) { return floor(x); }
 F64 F64Round(F64 x) { return F64Floor(x + 0.5); }
+F64 F64MapRange(F64 x, F64 a_min, F64 a_max, F64 b_min, F64 b_max) { return b_min + ((x - a_min) / (a_max - a_min)) * (b_max - b_min); }
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: V2 implementation
