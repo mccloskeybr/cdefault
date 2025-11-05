@@ -726,8 +726,6 @@ void RendererRegisterImageRGBA(U32* image_handle, U8* image_bytes, U32 width, U3
   g->glGenTextures(1, image_handle);
   g->glBindTexture(GL_TEXTURE_2D, *image_handle);
   g->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_bytes);
-  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   g->glBindTexture(GL_TEXTURE_2D, 0);
 }
 
@@ -736,8 +734,6 @@ void RendererRegisterImageR(U32* image_handle, U8* image_bytes, U32 width, U32 h
   g->glGenTextures(1, image_handle);
   g->glBindTexture(GL_TEXTURE_2D, *image_handle);
   g->glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, image_bytes);
-  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   g->glBindTexture(GL_TEXTURE_2D, 0);
 }
 
@@ -1155,6 +1151,8 @@ void DrawSubImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F3
   g->glUniform2fv(r->image_min_uv_uniform, 1, (GLfloat*) &min_uv);
   g->glUniform2fv(r->image_max_uv_uniform, 1, (GLfloat*) &max_uv);
   g->glBindTexture(GL_TEXTURE_2D, image_handle);
+  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   g->glBindVertexArray(r->quad_vao);
   g->glDrawArrays(GL_TRIANGLES, 0, 6);
   g->glBindTexture(GL_TEXTURE_2D, 0);
@@ -1188,6 +1186,8 @@ void DrawFontCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, 
   g->glUniform2fv(r->font_max_uv_uniform, 1, (GLfloat*) &max_uv);
   g->glUniform3fv(r->font_color_uniform, 1, (GLfloat*) &color);
   g->glBindTexture(GL_TEXTURE_2D, image_handle);
+  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   g->glBindVertexArray(r->quad_vao);
   g->glDrawArrays(GL_TRIANGLES, 0, 6);
   g->glBindTexture(GL_TEXTURE_2D, 0);
@@ -1221,6 +1221,8 @@ void DrawFontSdfCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 widt
   g->glUniform2fv(r->font_sdf_max_uv_uniform, 1, (GLfloat*) &max_uv);
   g->glUniform3fv(r->font_sdf_color_uniform, 1, (GLfloat*) &color);
   g->glBindTexture(GL_TEXTURE_2D, image_handle);
+  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   g->glBindVertexArray(r->quad_vao);
   g->glDrawArrays(GL_TRIANGLES, 0, 6);
   g->glBindTexture(GL_TEXTURE_2D, 0);
@@ -1250,6 +1252,8 @@ void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale) {
   g->glUseProgram(r->mesh_shader);
   g->glUniformMatrix4fv(r->mesh_camera_uniform, 1, GL_FALSE, (GLfloat*) &mesh_to_camera_t);
   g->glBindTexture(GL_TEXTURE_2D, mesh->image_handle);
+  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   g->glBindVertexArray(mesh->vao);
   g->glDrawElements(GL_TRIANGLES, mesh->indices_size, GL_UNSIGNED_INT, 0);
 

@@ -8,6 +8,7 @@ libraries are sufficiently modularized to plug and play for a variety of usecase
 NOTE: Windows is explicitly supported. Linux is partially supported. I'll get around to Mac eventually.
 
 *  `cdefault_audio.h`      - Unified API for playing audio on operating systems.
+*  `cdefault_font.h`       - TTF file parser & font rasterizer (supports generating single-channel bitmap and SDF atlases).
 *  `cdefault_geometry.h`   - Structs and functions for 2/3D geometry, with a focus on collision detection.
 *  `cdefault_image.h`      - Image file importer.
 *  `cdefault_io.h`         - Filesytem API.

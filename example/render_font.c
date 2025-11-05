@@ -16,9 +16,10 @@
 
 #define BMP_ATLAS_WIDTH  2048.0f
 #define BMP_ATLAS_HEIGHT 2048.0f
-#define SDF_ATLAS_WIDTH  256.0f
-#define SDF_ATLAS_HEIGHT 256.0f
-#define FONT_SIZE        64.0f
+#define SDF_ATLAS_WIDTH  1024.0f
+#define SDF_ATLAS_HEIGHT 1024.0f
+#define BMP_FONT_HEIGHT  300.0f
+#define SDF_FONT_HEIGHT  24.0f
 
 void DrawString(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 x, F32 y) {
   V2 cursor = { x, y };
@@ -59,7 +60,7 @@ int main(void) {
   DEBUG_ASSERT(FontAtlasBakeBitmap(
         font_arena, &font,
         &bmp_atlas, &bmp_atlas_bitmap, BMP_ATLAS_WIDTH, BMP_ATLAS_HEIGHT,
-        FONT_SIZE, FontCharSetLatin()));
+        BMP_FONT_HEIGHT, FontCharSetLatin()));
   U32 bmp_atlas_handle;
   RendererRegisterImageR(&bmp_atlas_handle, bmp_atlas_bitmap, BMP_ATLAS_WIDTH, BMP_ATLAS_HEIGHT);
 
@@ -72,10 +73,11 @@ int main(void) {
 
   FontAtlas sdf_atlas;
   U8* sdf_atlas_bitmap;
-  DEBUG_ASSERT(FontAtlasBakeSdfFromBitmap(
-        font_arena,
+  DEBUG_ASSERT(FontAtlasBakeSdf(
+        font_arena, &font,
         &sdf_atlas, &sdf_atlas_bitmap, SDF_ATLAS_WIDTH, SDF_ATLAS_HEIGHT,
-        &bmp_atlas, bmp_atlas_bitmap, BMP_ATLAS_WIDTH, BMP_ATLAS_HEIGHT));
+        BMP_FONT_HEIGHT, SDF_FONT_HEIGHT, FontCharSetLatin()));
+
   U32 sdf_atlas_handle;
   RendererRegisterImageR(&sdf_atlas_handle, sdf_atlas_bitmap, SDF_ATLAS_WIDTH, SDF_ATLAS_HEIGHT);
 
@@ -96,6 +98,11 @@ int main(void) {
     DrawStringSdf(Str8Lit("Hello, world!"), &sdf_atlas, sdf_atlas_handle, 128, 256);
     DrawStringSdf(Str8Lit("Text rendering is hard!"), &sdf_atlas, sdf_atlas_handle, 512, 512);
     DrawStringSdf(fps, &sdf_atlas, sdf_atlas_handle, 128, 512);
+    /*
+    DrawString(Str8Lit("Hello, world!"), &bmp_atlas, bmp_atlas_handle, 128, 256);
+    DrawString(Str8Lit("Text rendering is hard!"), &bmp_atlas, bmp_atlas_handle, 512, 512);
+    DrawString(fps, &bmp_atlas, bmp_atlas_handle, 128, 512);
+    */
 
     dt_s = StopwatchReadSeconds(&frame_stopwatch);
     StopwatchReset(&frame_stopwatch);
