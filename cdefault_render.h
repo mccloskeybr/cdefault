@@ -271,6 +271,7 @@ typedef void   glBlendFunc_Fn(GLenum, GLenum);
 typedef void   glClear_Fn(GLenum);
 typedef void   glDrawArrays_Fn(GLenum, GLint, GLsizei);
 typedef void   glDrawElements_Fn(GLenum, GLsizei, GLenum, const void*);
+typedef void   glPixelStorei_Fn(GLenum, GLint);
 
 // NOTE: platform agnostic open gl api.
 typedef struct OpenGLAPI OpenGLAPI;
@@ -317,6 +318,7 @@ struct OpenGLAPI {
   glClear_Fn*                   glClear;
   glDrawArrays_Fn*              glDrawArrays;
   glDrawElements_Fn*            glDrawElements;
+  glPixelStorei_Fn*             glPixelStorei;
 };
 static OpenGLAPI _ogl;
 
@@ -444,6 +446,9 @@ static B32 RendererInit(void) {
   MEMORY_ZERO_STRUCT(r);
   OpenGLAPI* g = &_ogl;
   B32 success = false; // TODO: error checking.
+
+  S32 max_texture_size;
+  glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_texture_size);
 
   LOG_INFO("[RENDER] Initializing OpenGL renderer.");
 
@@ -616,10 +621,10 @@ static B32 RendererInit(void) {
     "in vec2 tex_coord;\n"
     "out vec4 frag_color;\n"
     "void main() { \n"
-    "  float smoothing = 0.2;\n" // configurable?
+    "  float smoothing = 0.25;\n" // configurable?
     "  float threshold = 0.5;\n" // configurable?
     "  float distance  = texture(texture_image, tex_coord).r;\n"
-    "  float alpha     = smoothstep(threshold + smoothing, threshold - smoothing, distance);\n"
+    "  float alpha     = smoothstep(threshold - smoothing, threshold + smoothing, distance);\n"
     "  frag_color      = vec4(color, alpha);\n"
     "}\0";
   DEBUG_ASSERT(RendererCompileShader(&r->font_sdf_shader, font_sdf_vertex_shader_source, font_sdf_fragment_shader_source));
@@ -725,6 +730,7 @@ void RendererRegisterImageRGBA(U32* image_handle, U8* image_bytes, U32 width, U3
   OpenGLAPI* g = &_ogl;
   g->glGenTextures(1, image_handle);
   g->glBindTexture(GL_TEXTURE_2D, *image_handle);
+  g->glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
   g->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_bytes);
   g->glBindTexture(GL_TEXTURE_2D, 0);
 }
@@ -733,6 +739,7 @@ void RendererRegisterImageR(U32* image_handle, U8* image_bytes, U32 width, U32 h
   OpenGLAPI* g = &_ogl;
   g->glGenTextures(1, image_handle);
   g->glBindTexture(GL_TEXTURE_2D, *image_handle);
+  g->glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
   g->glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, image_bytes);
   g->glBindTexture(GL_TEXTURE_2D, 0);
 }
@@ -1487,6 +1494,7 @@ B32 WIN_WindowInit(S32 width, S32 height, char* title) {
   _ogl.glClear = glClear;
   _ogl.glDrawArrays = glDrawArrays;
   _ogl.glDrawElements = glDrawElements;
+  _ogl.glPixelStorei = glPixelStorei;
 
 #undef WIN_LINK_GL
 
