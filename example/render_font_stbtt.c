@@ -46,7 +46,7 @@ int main(void) {
   Arena* arena = ArenaAllocate();
 
   String8 file_data;
-  DEBUG_ASSERT(FileReadAll(arena, Str8Lit("../data/firacode.ttf"), &file_data.str, &file_data.size));
+  DEBUG_ASSERT(FileReadAll(arena, Str8Lit("c:/windows/fonts/times.ttf"), &file_data.str, &file_data.size));
   stbtt_BakeFontBitmap(file_data.str, 0, FONT_SIZE, atlas_bitmap, ATLAS_WIDTH, ATLAS_HEIGHT, ' ', '~' - ' ', cdata);
   RendererRegisterImageR(&font_atlas, atlas_bitmap, ATLAS_WIDTH, ATLAS_HEIGHT);
 

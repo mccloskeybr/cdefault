@@ -621,8 +621,8 @@ static B32 RendererInit(void) {
     "in vec2 tex_coord;\n"
     "out vec4 frag_color;\n"
     "void main() { \n"
-    "  float smoothing = 0.25;\n" // configurable?
-    "  float threshold = 0.5;\n" // configurable?
+    "  float smoothing = 0.2;\n" // TODO: configurable?
+    "  float threshold = 0.5;\n" // TODO: configurable?
     "  float distance  = texture(texture_image, tex_coord).r;\n"
     "  float alpha     = smoothstep(threshold - smoothing, threshold + smoothing, distance);\n"
     "  frag_color      = vec4(color, alpha);\n"

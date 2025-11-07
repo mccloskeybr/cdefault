@@ -15,7 +15,7 @@
 #include "third_party/stb_truetype.h"
 
 #define BMP_FONT_HEIGHT  300.0f
-#define SDF_FONT_HEIGHT  24.0f
+#define SDF_FONT_HEIGHT  32.0f
 
 void DrawString(String8 str, FontAtlas* atlas, U32 atlas_handle, U32 atlas_width, U32 atlas_height, F32 x, F32 y) {
   V2 cursor = { x, y };
@@ -47,7 +47,8 @@ int main(void) {
   Arena* temp_arena = ArenaAllocate();
 
   String8 file_data;
-  DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("../data/firacode.ttf"), &file_data.str, &file_data.size));
+  // DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("../data/firacode.ttf"), &file_data.str, &file_data.size));
+  DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/times.ttf"), &file_data.str, &file_data.size));
 
   Font font;
   DEBUG_ASSERT(FontInit(&font, file_data.str, file_data.size));
@@ -95,10 +96,10 @@ int main(void) {
     String8 fps = Str8Format(temp_arena, "%0.2f FPS", 1.0f / dt_s);
 
     DrawStringSdf(Str8Lit("Hello, world!"), &sdf_atlas, sdf_atlas_handle, sdf_atlas_width, sdf_atlas_height, 128, 256);
-    DrawStringSdf(Str8Lit("Text rendering is hard!"), &sdf_atlas, sdf_atlas_width, sdf_atlas_height, sdf_atlas_handle, 512, 512);
+    DrawStringSdf(Str8Lit("Text rendering is hard!"), &sdf_atlas, sdf_atlas_handle, sdf_atlas_width, sdf_atlas_height, 512, 512);
     DrawStringSdf(fps, &sdf_atlas, sdf_atlas_handle, sdf_atlas_width, sdf_atlas_height, 128, 512);
 
-    DrawStringSdf(Str8Lit("ABCQRTabpqg"), &sdf_atlas, sdf_atlas_handle, sdf_atlas_width, sdf_atlas_height, 512, 512);
+    // DrawStringSdf(Str8Lit("ABCQRTabpqg"), &sdf_atlas, sdf_atlas_handle, sdf_atlas_width, sdf_atlas_height, 512, 512);
 
     // DrawString(Str8Lit("Hello, world!"), &bmp_atlas, bmp_atlas_handle, bmp_atlas_width, bmp_atlas_height, 128, 256);
     // DrawString(Str8Lit("Text rendering is hard!"), &bmp_atlas, bmp_atlas_handle, bmp_atlas_width, bmp_atlas_height, 512, 512);

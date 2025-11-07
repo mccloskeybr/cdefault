@@ -671,7 +671,6 @@ F64  RandF64(RandomSeries* rand, F64 min, F64 max);
 // NOTE: String
 ///////////////////////////////////////////////////////////////////////////////
 
-// TODO: refactor for in-place modifications?
 typedef struct String8 String8;
 struct String8 {
   U8* str;

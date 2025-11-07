@@ -4,8 +4,12 @@
 #include "cdefault_std.h"
 #include "cdefault_math.h"
 
-// TODO: compound glyphs
-// TODO: iron out bugs with rasterizing
+// NOTE: this is a font atlas generation library, which can be used for rendering fonts. it is a very simple implementation and does no e.g. gridfitting.
+// it supports bitmap rasterization (no antialiasing) and SDF bitmap generation, which produces acceptable results at high scales and ok results at low scales.
+// stb_truetype was used as a reference when creating this library.
+
+// TODO: iron out bugs with rasterizing.
+// TODO: support kern table.
 
 // NOTE: point is the start point of the curve. The end point is the sequential curve in the list's start point.
 typedef struct GlyphCurve GlyphCurve;
@@ -54,17 +58,17 @@ struct FontAtlas {
   AtlasChar* character_map[256];
 };
 
-typedef enum LocFormat LocFormat;
-enum LocFormat {
-  LocFormat_U16,
-  LocFormat_U32,
-};
-
 typedef struct FontCharSet FontCharSet;
 struct FontCharSet {
   U32* codepoints;
   U32  codepoints_size;
   FontCharSet* next;
+};
+
+typedef enum LocFormat LocFormat;
+enum LocFormat {
+  LocFormat_U16,
+  LocFormat_U32,
 };
 
 typedef struct Font Font;
@@ -87,7 +91,7 @@ struct Font {
 B32 FontInit(Font* font, U8* data, U32 data_size);
 B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap, U32* atlas_width, U32* atlas_height, F32 pixel_height, FontCharSet* char_set);
 B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap, U32* atlas_width, U32* atlas_height, F32 bmp_pixel_height, F32 sdf_pixel_height, FontCharSet* char_set);
-// TODO: remove this vv
+// TODO: figure out what to do with this VV
 B32 FontAtlasPlace(FontAtlas* atlas, U32 atlas_width, U32 atlas_height, U32 codepoint, F32 scale, V2* cursor, V2* center, V2* size, V2* min_uv, V2* max_uv);
 
 FontCharSet* FontCharSetConcat(FontCharSet* set, FontCharSet* to_concat);
@@ -122,14 +126,21 @@ AtlasChar* FontAtlasGet(FontAtlas* atlas, U32 codepoint);
 #define FONT_MICROSOFT_EID_UNICODE_BMP  1
 #define FONT_MICROSOFT_EID_UNICODE_FULL 10
 
-#define FLAG_ON_CURVE(flags)      (flags) & BIT(0)
-#define FLAG_X_U8(flags)          (flags) & BIT(1)    // NOTE: if false, is U16
-#define FLAG_Y_U8(flags)          (flags) & BIT(2)    // NOTE: if false, is U16
-#define FLAG_REPEAT(flags)        (flags) & BIT(3)
-#define FLAG_X_U8_SIGN_POS(flags) (flags) & BIT(4)    // NOTE: only use if x format is U8
-#define FLAG_X_U16_DELTA(flags)   !((flags) & BIT(4)) // NOTE: only use if x format is U16
-#define FLAG_Y_U8_SIGN_POS(flags) (flags) & BIT(5)    // NOTE: only use if y format is U8
-#define FLAG_Y_U16_DELTA(flags)   !((flags) & BIT(5)) // NOTE: only use if y format is U16
+#define FLAG_ON_CURVE(flags)             ((flags) & BIT(0))
+#define FLAG_X_U8(flags)                 ((flags) & BIT(1))    // NOTE: if false, is U16
+#define FLAG_Y_U8(flags)                 ((flags) & BIT(2))    // NOTE: if false, is U16
+#define FLAG_REPEAT(flags)               ((flags) & BIT(3))
+#define FLAG_X_U8_SIGN_POS(flags)        ((flags) & BIT(4))    // NOTE: only use if x format is U8
+#define FLAG_X_U16_DELTA(flags)          (!((flags) & BIT(4))) // NOTE: only use if x format is U16
+#define FLAG_Y_U8_SIGN_POS(flags)        ((flags) & BIT(5))    // NOTE: only use if y format is U8
+#define FLAG_Y_U16_DELTA(flags)          (!((flags) & BIT(5))) // NOTE: only use if y format is U16
+
+#define COMPOUND_FLAG_ARE_U16(flags)     ((flags) & BIT(0))
+#define COMPOUND_FLAG_ARE_XY_VALS(flags) ((flags) & BIT(1))
+#define COMPOUND_FLAG_SCALE(flags)       ((flags) & BIT(3))
+#define COMPOUND_FLAG_MORE(flags)        ((flags) & BIT(5))
+#define COMPOUND_FLAG_SEP_SCALES(flags)  ((flags) & BIT(6))
+#define COMPOUND_FLAG_2X2MAT(flags)      ((flags) & BIT(7))
 
 // NOTE: evaluates quadratic bezier lerps for a single dimension.
 static F32 FontCurveEvaluateBezier(F32 start, F32 end, F32 control, F32 t) {
@@ -304,6 +315,7 @@ B32 FontInit(Font* font, U8* data, U32 data_size) {
   return true;
 }
 
+// TODO: in relevant places, fall back on "no glyph present" glyph instead of erroring up.
 B32 FontGetGlyphIndex(Font* font, U32 codepoint, U32* glyph_index) {
   *glyph_index = 0;
   BinHead h;
@@ -322,6 +334,60 @@ B32 FontGetGlyphIndex(Font* font, U32 codepoint, U32* glyph_index) {
       *glyph_index = BinHeadR8(&h);
       return true;
     } break;
+
+    case 4: {
+      if (codepoint > 0xffff) {
+        LOG_ERROR("[FONT] Codepoint exceeds bounds for subtable 4: %d", codepoint);
+        return false;
+      }
+
+      BinHeadSkip(&h, 2, sizeof(U16));
+      U16 seg_count      = BinHeadR16BE(&h) / 2;
+      U16 search_range   = BinHeadR16BE(&h) / 2;
+      U16 entry_selector = BinHeadR16BE(&h);
+      U16 range_shift    = BinHeadR16BE(&h);
+
+      U8* end_codes = BinHeadDecay(&h);
+      BinHeadSkip(&h, seg_count, sizeof(U16));
+      BinHeadSkip(&h, 1, sizeof(U16));
+      U8* start_codes = BinHeadDecay(&h);
+      BinHeadSkip(&h, seg_count, sizeof(U16));
+      U8* id_deltas = BinHeadDecay(&h);
+      BinHeadSkip(&h, seg_count, sizeof(U16));
+      U8* offsets = BinHeadDecay(&h);
+      BinHeadSkip(&h, seg_count, sizeof(U16));
+      U8* glyph_idx_arr = BinHeadDecay(&h);
+
+      U32 search = 0;
+      if (codepoint > ReadU16BE(end_codes + range_shift)) {
+        search += range_shift;
+      }
+
+      while (entry_selector > 0) {
+        search_range /= 2;
+        U16 end = ReadU16BE(end_codes + search + (search_range * 2) - 2);
+        if (codepoint > end) { search += search_range * 2; }
+        entry_selector -= 1;
+      }
+
+      U16 item = search / 2;
+      U16 start_code = ReadU16BE(start_codes + (item * 2));
+      U16 end_code   = ReadU16BE(end_codes + (item * 2));
+      if (codepoint < start_code || end_code < codepoint) {
+        LOG_ERROR("[FONT] Failed to find valid character segment / glyph index for codepoint: %d", codepoint);
+        return false;
+      }
+
+      U16 offset = ReadU16BE(offsets + (item * 2));
+      if (offset == 0) {
+        S16 delta = ReadU16BE(id_deltas + (item * 2));
+        *glyph_index = codepoint + delta;
+      } else {
+        *glyph_index = ReadU16BE(glyph_idx_arr + offset + ((codepoint - start_code) * 2) + (item * 2));
+      }
+      return true;
+    } break;
+
     case 12:
     case 13: {
       BinHeadSkip(&h, 10, sizeof(U8));
@@ -355,6 +421,7 @@ B32 FontGetGlyphIndex(Font* font, U32 codepoint, U32* glyph_index) {
       return true;
     } break;
   }
+
   LOG_ERROR("[FONT] Unimplemented cmap subtable format encountered: %d", cmap_format);
   return false;
 }
@@ -506,9 +573,9 @@ B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShap
     }
 
     // NOTE: decompress / build final glyph contour
-    U16 contour_idx      = 0;
+    U16 contours_idx     = 0;
     U16 start_of_contour = 0;
-    U16 end_of_contour   = ReadU16BE(end_pts_of_contours + (contour_idx * 2));
+    U16 end_of_contour   = ReadU16BE(end_pts_of_contours + (contours_idx * 2));
     while (true) {
       GlyphContour contour;
       MEMORY_ZERO_STRUCT(&contour);
@@ -578,14 +645,124 @@ B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShap
       }
       // NOTE: pop dynamic array excess
       ARENA_POP_ARRAY(arena, GlyphCurve, curves_capacity - contour.curves_size);
-      shape->contours[contour_idx++] = contour;
-      if (contour_idx >= contours_size) { break; }
+      shape->contours[contours_idx++] = contour;
+      if (contours_idx >= contours_size) { break; }
       start_of_contour = end_of_contour + 1;
-      end_of_contour   = ReadU16BE(end_pts_of_contours + (contour_idx * 2));
+      end_of_contour   = ReadU16BE(end_pts_of_contours + (contours_idx * 2));
     }
   } else if (contours_size < 0) {
     // NOTE: parse compound shape
-    TODO();
+
+    // NOTE: determine the number of contours for the compound shape, for allocation.
+    contours_size = 0;
+    BinHead h_copy = h;
+    while (true) {
+      U16 flags                = BinHeadR16BE(&h_copy);
+      U16 compound_glyph_index = BinHeadR16BE(&h_copy);
+      if (COMPOUND_FLAG_ARE_XY_VALS(flags)) {
+        if (COMPOUND_FLAG_ARE_U16(flags)) { BinHeadSkip(&h_copy, 2, sizeof(U16)); }
+        else                              { BinHeadSkip(&h_copy, 2, sizeof(U8));  }
+      }
+      if      (COMPOUND_FLAG_SCALE(flags))      { BinHeadSkip(&h_copy, 1, sizeof(U16)); }
+      else if (COMPOUND_FLAG_SEP_SCALES(flags)) { BinHeadSkip(&h_copy, 2, sizeof(U16)); }
+      else if (COMPOUND_FLAG_2X2MAT(flags))     { BinHeadSkip(&h_copy, 4, sizeof(U16)); }
+
+      S32 compound_glyph_glyf_offset;
+      if (!FontGetGlyphGlyfOffset(font, compound_glyph_index, &compound_glyph_glyf_offset)) {
+        LOG_ERROR("[FONT] Unable to retrieve glyf offset of compound shape.");
+        goto font_get_glyph_shape_end;
+      }
+
+      BinHead compound_glyph_glyf_h;
+      BinHeadInit(&compound_glyph_glyf_h, font->data, font->data_size);
+      BinHeadSetPos(&compound_glyph_glyf_h, compound_glyph_glyf_offset);
+      S16 compound_glyph_contours_size = BinHeadR16BE(&compound_glyph_glyf_h);
+      if (compound_glyph_contours_size < 0) {
+        LOG_ERROR("[FONT] Invalid state observed, compound glyph is made of additional compound glyphs.");
+        goto font_get_glyph_shape_end;
+      }
+      contours_size += (U32) compound_glyph_contours_size;
+
+      if (!COMPOUND_FLAG_MORE(flags)) { break; }
+    }
+    shape->contours      = ARENA_PUSH_ARRAY(arena, GlyphContour, contours_size);
+    shape->contours_size = contours_size;
+
+    // NOTE: determine and save the shapes for each contour.
+    U16 contours_idx = 0;
+    while (true) {
+      U16 flags                = BinHeadR16BE(&h);
+      U16 compound_glyph_index = BinHeadR16BE(&h);
+      F32 matrix[6]            = { 1, 0, 0, 1, 0, 0 };
+      if (COMPOUND_FLAG_ARE_XY_VALS(flags)) {
+        if (COMPOUND_FLAG_ARE_U16(flags)) {
+          matrix[4] = BinHeadR16BE(&h);
+          matrix[5] = BinHeadR16BE(&h);
+        } else {
+          matrix[4] = BinHeadR8(&h);
+          matrix[5] = BinHeadR8(&h);
+        }
+      } else {
+        LOG_ERROR("[FONT] Defining compound glyphs by points is not supported.");
+        goto font_get_glyph_shape_end;
+      }
+      if (COMPOUND_FLAG_SCALE(flags)) {
+        F32 scale = (F32) BinHeadR16BE(&h) / 16384.0f;
+        matrix[0] = scale;
+        matrix[3] = scale;
+        matrix[1] = 0;
+        matrix[2] = 0;
+      } else if (COMPOUND_FLAG_SEP_SCALES(flags)) {
+        F32 x_scale = (F32) BinHeadR16BE(&h) / 16384.0f;
+        F32 y_scale = (F32) BinHeadR16BE(&h) / 16384.0f;
+        matrix[0] = x_scale;
+        matrix[3] = y_scale;
+        matrix[1] = 0;
+        matrix[2] = 0;
+      } else if (COMPOUND_FLAG_2X2MAT(flags)) {
+        matrix[0] = (F32) BinHeadR16BE(&h) / 16384.0f;
+        matrix[1] = (F32) BinHeadR16BE(&h) / 16384.0f;
+        matrix[2] = (F32) BinHeadR16BE(&h) / 16384.0f;
+        matrix[3] = (F32) BinHeadR16BE(&h) / 16384.0f;
+      }
+
+      F32 m = F32Sqrt((matrix[0] * matrix[0]) + (matrix[1] * matrix[1]));
+      F32 n = F32Sqrt((matrix[2] * matrix[2]) + (matrix[3] * matrix[3]));
+
+      // NOTE: assertion should pass, we retrieved before when sizing the contours list.
+      S32 compound_glyph_glyf_offset;
+      DEBUG_ASSERT(FontGetGlyphGlyfOffset(font, compound_glyph_index, &compound_glyph_glyf_offset));
+
+      GlyphShape component_shape;
+      if (!FontGetGlyphShape(temp_arena, font, compound_glyph_glyf_offset, &component_shape)) {
+        LOG_ERROR("[FONT] Failed to determine compound glyph shape.");
+        goto font_get_glyph_shape_end;
+      }
+
+      // NOTE: apply transformation to the component contour and save it on self.
+      if (component_shape.contours_size > 0) {
+        for (U32 i = 0; i < component_shape.contours_size; i++) {
+          GlyphContour contour;
+          MEMORY_ZERO_STRUCT(&contour);
+
+          U32 curves_capacity = 0;
+          GlyphContour* component_contour = &component_shape.contours[i];
+          for (U32 j = 0; j < component_contour->curves_size; j++) {
+            GlyphCurve* curve = &component_contour->curves[j];
+            curve->point_x   = m * ((matrix[0] * curve->point_x) + (matrix[2] * curve->point_y) + matrix[4]);
+            curve->point_y   = n * ((matrix[1] * curve->point_x) + (matrix[3] * curve->point_y) + matrix[5]);
+            curve->control_x = m * ((matrix[0] * curve->control_x) + (matrix[2] * curve->control_y) + matrix[4]);
+            curve->control_y = n * ((matrix[1] * curve->control_x) + (matrix[3] * curve->control_y) + matrix[5]);
+            DA_PUSH_BACK_EX(arena, contour.curves, contour.curves_size, curves_capacity, *curve);
+          }
+          ARENA_POP_ARRAY(arena, GlyphCurve, curves_capacity - contour.curves_size);
+          shape->contours[contours_idx++] = contour;
+        }
+      }
+
+      if (!COMPOUND_FLAG_MORE(flags)) { break; }
+    }
+    DEBUG_ASSERT(contours_idx == contours_size);
   }
 
   success = true;
@@ -718,7 +895,7 @@ B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap,
   }
 
   U16 pad = 2;
-  if (!FontSuggestAtlasSize(font, char_set, scale, atlas_width, atlas_height, pad, pad)) {
+  if (!FontSuggestAtlasSize(font, char_set, scale, atlas_width, atlas_height, pad * 2, pad * 2)) {
     goto font_atlas_bake_bitmap_end;
   }
   *bitmap = ARENA_PUSH_ARRAY(arena, U8, *atlas_width * *atlas_height);
@@ -754,7 +931,7 @@ B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap,
 
       GlyphShape glyph_shape;
       if (!FontGetGlyphShape(temp_arena, font, glyph_glyf_offset, &glyph_shape)) {
-        LOG_ERROR("[FONT] Failed to determine glyph shape.");
+        LOG_ERROR("[FONT] Failed to determine glyph shape for codepoint: %d.", codepoint);
         goto font_atlas_bake_bitmap_end;
       }
 
@@ -865,7 +1042,7 @@ B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap, U3
 
       GlyphShape glyph_shape;
       if (!FontGetGlyphShape(temp_arena, font, glyph_glyf_offset, &glyph_shape)) {
-        LOG_ERROR("[FONT] Failed to determine glyph shape.");
+        LOG_ERROR("[FONT] Failed to determine glyph shape for codepoint: %d.", codepoint);
         goto font_atlas_bake_sdf_end;
       }
 
@@ -1027,5 +1204,11 @@ FontCharSet* FontCharSetLatin() {
 #undef FLAG_X_U16_DELTA
 #undef FLAG_Y_U8_SIGN_POS
 #undef FLAG_Y_U16_DELTA
+#undef COMPOUND_FLAG_ARE_U16
+#undef COMPOUND_FLAG_ARE_XY_VALS
+#undef COMPOUND_FLAG_SCALE
+#undef COMPOUND_FLAG_MORE
+#undef COMPOUND_FLAG_SEP_SCALES
+#undef COMPOUND_FLAG_2X2MAT
 
 #endif // CDEFAULT_FONT_IMPLEMENTATION
