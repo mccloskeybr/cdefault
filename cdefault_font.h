@@ -118,7 +118,7 @@ AtlasChar* FontAtlasGet(FontAtlas* atlas, U32 codepoint);
 #ifdef CDEFAULT_FONT_IMPLEMENTATION
 #undef CDEFAULT_FONT_IMPLEMENTATION
 // https://tchayen.github.io/posts/ttf-file-parsing
-// https://github.com/nothings/stb/blob/master/stb_truetype.s
+// https://github.com/nothings/stb/blob/master/stb_truetype.h
 // https://developer.apple.com/fonts/TrueType-Reference-Manual/
 
 #define FONT_PID_UNICODE_ENCODING       0

@@ -982,7 +982,7 @@ void DrawRoundedRectangleRot(F32 center_x, F32 center_y, F32 width, F32 height, 
   V4 rot;
   V4RotateAroundAxis(&rot, &V3_Z_POS, angle_rad);
   M4 rect_to_world, rect_to_camera, rect_to_camera_t;
-  M4FromTransform(&rect_to_world, &pos, &rot, &scale);
+  rect_to_world = M4FromTransform(&pos, &rot, &scale);
   M4MultM4(&rect_to_camera, &r->world_to_camera_2d, &rect_to_world);
   M4Transpose(&rect_to_camera_t, &rect_to_camera);
 
@@ -1019,7 +1019,7 @@ void DrawRoundedRectangleFrameRot(F32 center_x, F32 center_y, F32 width, F32 hei
   V4 rot;
   V4RotateAroundAxis(&rot, &V3_Z_POS, angle_rad);
   M4 frame_to_world, frame_to_camera, frame_to_camera_t;
-  M4FromTransform(&frame_to_world, &pos, &rot, &scale);
+  frame_to_world = M4FromTransform(&pos, &rot, &scale);
   M4MultM4(&frame_to_camera, &r->world_to_camera_2d, &frame_to_world);
   M4Transpose(&frame_to_camera_t, &frame_to_camera);
 
@@ -1085,7 +1085,7 @@ void DrawTriangle(F32 x1, F32 y1, F32 x2, F32 y2, F32 x3, F32 y3, F32 red, F32 g
   V3 scale = { x_scale, y_scale, 1 };
   V4 rot = V4_QUAT_IDENT;
   M4 tri_to_world, tri_to_camera, tri_to_camera_t;
-  M4FromTransform(&tri_to_world, &pos, &rot, &scale);
+  tri_to_world = M4FromTransform(&pos, &rot, &scale);
   M4MultM4(&tri_to_camera, &r->world_to_camera_2d, &tri_to_world);
   M4Transpose(&tri_to_camera_t, &tri_to_camera);
 
@@ -1149,7 +1149,7 @@ void DrawSubImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F3
   V4 rot;
   V4RotateAroundAxis(&rot, &V3_Z_POS, angle_rad);
   M4 image_to_world, image_to_camera, image_to_camera_t;
-  M4FromTransform(&image_to_world, &pos, &rot, &scale);
+  image_to_world = M4FromTransform(&pos, &rot, &scale);
   M4MultM4(&image_to_camera, &r->world_to_camera_2d, &image_to_world);
   M4Transpose(&image_to_camera_t, &image_to_camera);
 
@@ -1183,7 +1183,7 @@ void DrawFontCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, 
   V4 rot;
   V4RotateAroundAxis(&rot, &V3_Z_POS, 0);
   M4 image_to_world, image_to_camera, image_to_camera_t;
-  M4FromTransform(&image_to_world, &pos, &rot, &scale);
+  image_to_world = M4FromTransform(&pos, &rot, &scale);
   M4MultM4(&image_to_camera, &r->world_to_camera_2d, &image_to_world);
   M4Transpose(&image_to_camera_t, &image_to_camera);
 
@@ -1218,7 +1218,7 @@ void DrawFontSdfCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 widt
   V4 rot;
   V4RotateAroundAxis(&rot, &V3_Z_POS, 0);
   M4 image_to_world, image_to_camera, image_to_camera_t;
-  M4FromTransform(&image_to_world, &pos, &rot, &scale);
+  image_to_world = M4FromTransform(&pos, &rot, &scale);
   M4MultM4(&image_to_camera, &r->world_to_camera_2d, &image_to_world);
   M4Transpose(&image_to_camera_t, &image_to_camera);
 
@@ -1252,7 +1252,7 @@ void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale) {
   M4 camera, world_to_camera, mesh_to_world, mesh_to_camera, mesh_to_camera_t;
   M4LookAt(&camera, &r->camera_3d.pos, &camera_target, &r->camera_3d.up_dir);
   M4MultM4(&world_to_camera, &r->projection_3d, &camera);
-  M4FromTransform(&mesh_to_world, &pos, &rot, &scale);
+  mesh_to_world = M4FromTransform(&pos, &rot, &scale);
   M4MultM4(&mesh_to_camera, &world_to_camera, &mesh_to_world);
   M4Transpose(&mesh_to_camera_t, &mesh_to_camera);
 
