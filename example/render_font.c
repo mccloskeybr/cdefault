@@ -47,8 +47,8 @@ int main(void) {
   Arena* temp_arena = ArenaAllocate();
 
   String8 file_data;
-  // DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("../data/firacode.ttf"), &file_data.str, &file_data.size));
-  DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/times.ttf"), &file_data.str, &file_data.size));
+  DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("../data/firacode.ttf"), &file_data.str, &file_data.size));
+  // DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/times.ttf"), &file_data.str, &file_data.size));
 
   Font font;
   DEBUG_ASSERT(FontInit(&font, file_data.str, file_data.size));

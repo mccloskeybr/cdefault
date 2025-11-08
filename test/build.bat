@@ -15,7 +15,7 @@ REM cl %FLAGS% vector_test.c /Fobuild/vector_test.obj /Febin/vector_test.exe /li
 REM cl %FLAGS% matrix_test.c /Fobuild/matrix_test.obj /Febin/matrix_test.exe /link %LIBS%
 REM cl %FLAGS% time_test.c /Fobuild/time_test.obj /Febin/time_test.exe /link %LIBS%
 REM cl %FLAGS% sort_test.c /Fobuild/sort_test.obj /Febin/sort_test.exe /link %LIBS%
-REM cl %FLAGS% bin_head_test.c /Fobuild/bin_head_test.obj /Febin/bin_head_test.exe /link %LIBS%
+cl %FLAGS% bin_stream_test.c /Fobuild/bin_stream_test.obj /Febin/bin_stream_test.exe /link %LIBS%
 REM cl %FLAGS% dynamic_array_test.c /Fobuild/dynamic_array_test.obj /Febin/dynamic_array_test.exe /link %LIBS%
 REM cl %FLAGS% json_test.c /Fobuild/json_test.obj /Febin/json_test.exe /link %LIBS%
 
@@ -29,13 +29,13 @@ REM bin\vector_test.exe
 REM bin\matrix_test.exe
 REM bin\time_test.exe
 REM bin\sort_test.exe
-REM bin\bin_head_test.exe
+bin\bin_stream_test.exe
 REM bin\dynamic_array_test.exe
 REM bin\json_test.exe
 
-cl %FLAGS% collision_ray_test.c /Fobuild/collision_line_test.obj /Febin/collision_ray_test.exe /link %LIBS%
-cl %FLAGS% collision_line_test.c /Fobuild/collision_line_test.obj /Febin/collision_line_test.exe /link %LIBS%
-cl %FLAGS% collision_aabb_test.c /Fobuild/collision_aabb_test.obj /Febin/collision_aabb_test.exe /link %LIBS%
-cl %FLAGS% collision_circle_test.c /Fobuild/collision_circle_test.obj /Febin/collision_circle_test.exe /link %LIBS%
-cl %FLAGS% collision_convex_hull_test.c /Fobuild/collision_convex_hull_test.obj /Febin/collision_convex_hull_test.exe /link %LIBS%
-cl %FLAGS% physics_test.c /Fobuild/physics_test.obj /Febin/physics_test.exe /link %LIBS%
+REM cl %FLAGS% collision_ray_test.c /Fobuild/collision_line_test.obj /Febin/collision_ray_test.exe /link %LIBS%
+REM cl %FLAGS% collision_line_test.c /Fobuild/collision_line_test.obj /Febin/collision_line_test.exe /link %LIBS%
+REM cl %FLAGS% collision_aabb_test.c /Fobuild/collision_aabb_test.obj /Febin/collision_aabb_test.exe /link %LIBS%
+REM cl %FLAGS% collision_circle_test.c /Fobuild/collision_circle_test.obj /Febin/collision_circle_test.exe /link %LIBS%
+REM cl %FLAGS% collision_convex_hull_test.c /Fobuild/collision_convex_hull_test.obj /Febin/collision_convex_hull_test.exe /link %LIBS%
+REM cl %FLAGS% physics_test.c /Fobuild/physics_test.obj /Febin/physics_test.exe /link %LIBS%

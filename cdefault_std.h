@@ -824,43 +824,54 @@ S32 SortCompareString8Desc(void* a, void* b); // NOTE: Lexicographic ordering
 // NOTE: Bin read / write
 ///////////////////////////////////////////////////////////////////////////////
 
-U8  ReadU8(U8* bytes);
-U16 ReadU16LE(U8* bytes);
-U16 ReadU16BE(U8* bytes);
-U32 ReadU32LE(U8* bytes);
-U32 ReadU32BE(U8* bytes);
-U64 ReadU64LE(U8* bytes);
-U64 ReadU64BE(U8* bytes);
+// NOTE: Unsafe conversion from raw bytes to some sized representation.
 
-// Convenience struct for traversing binary blobs, e.g. file data.
-// E.g. read or write by bytes at a time, automatically updating a running position count.
+U8  BinRead8(U8* bytes);
+U16 BinRead16LE(U8* bytes);
+U16 BinRead16BE(U8* bytes);
+U32 BinRead32LE(U8* bytes);
+U32 BinRead32BE(U8* bytes);
+U64 BinRead64LE(U8* bytes);
+U64 BinRead64BE(U8* bytes);
 
-typedef struct BinHead BinHead;
-struct BinHead {
+// NOTE: Safe wrapper around the above. Throws debug (!!) assertions when exceeding bounds.
+// Orients around a pos cursor, which is convenient for reading / writing file bin blobs.
+
+typedef struct BinStream BinStream;
+struct BinStream {
   U8* bytes;
-  U32 bytes_size;
-  U32 pos;
+  U64 bytes_size;
+  U64 pos;
 };
 
-void BinHeadInit(BinHead* head, U8* bytes, U32 bytes_size);
-void BinHeadSetPos(BinHead* head, U32 pos);
-void BinHeadReset(BinHead* head);
-void BinHeadSkip(BinHead* head, U32 num, S32 size);
-U8*  BinHeadDecay(BinHead* head);
-U8   BinHeadR8(BinHead* head);
-U16  BinHeadR16LE(BinHead* head);
-U16  BinHeadR16BE(BinHead* head);
-U32  BinHeadR32LE(BinHead* head);
-U32  BinHeadR32BE(BinHead* head);
-U64  BinHeadR64LE(BinHead* head);
-U64  BinHeadR64BE(BinHead* head);
-void BinHeadW8(BinHead* head, U8 x);
-void BinHeadW16LE(BinHead* head, U16 x);
-void BinHeadW16BE(BinHead* head, U16 x);
-void BinHeadW32LE(BinHead* head, U32 x);
-void BinHeadW32BE(BinHead* head, U32 x);
-void BinHeadW64LE(BinHead* head, U64 x);
-void BinHeadW64BE(BinHead* head, U64 x);
+void BinStreamInit(BinStream* stream, U8* bytes, U32 bytes_size);
+void BinStreamSeek(BinStream* stream, U32 pos);
+void BinStreamSkip(BinStream* stream, U32 num, S32 size);
+U8*  BinStreamDecay(BinStream* stream);
+
+U8   BinStreamPull8(BinStream* stream);
+U16  BinStreamPull16LE(BinStream* stream);
+U16  BinStreamPull16BE(BinStream* stream);
+U32  BinStreamPull32LE(BinStream* stream);
+U32  BinStreamPull32BE(BinStream* stream);
+U64  BinStreamPull64LE(BinStream* stream);
+U64  BinStreamPull64BE(BinStream* stream);
+
+void BinStreamPush8(BinStream* stream, U8 x);
+void BinStreamPush16LE(BinStream* stream, U16 x);
+void BinStreamPush16BE(BinStream* stream, U16 x);
+void BinStreamPush32LE(BinStream* stream, U32 x);
+void BinStreamPush32BE(BinStream* stream, U32 x);
+void BinStreamPush64LE(BinStream* stream, U64 x);
+void BinStreamPush64BE(BinStream* stream, U64 x);
+
+U8   BinStreamPeek8(BinStream* stream, S32 offset, U32 size);
+U16  BinStreamPeek16LE(BinStream* stream, S32 offset, U32 size);
+U16  BinStreamPeek16BE(BinStream* stream, S32 offset, U32 size);
+U32  BinStreamPeek32LE(BinStream* stream, S32 offset, U32 size);
+U32  BinStreamPeek32BE(BinStream* stream, S32 offset, U32 size);
+U64  BinStreamPeek64LE(BinStream* stream, S32 offset, U32 size);
+U64  BinStreamPeek64BE(BinStream* stream, S32 offset, U32 size);
 
 #endif // CDEFAULT_H_
 
@@ -2174,162 +2185,208 @@ S32 SortCompareString8Desc(void* a, void* b) {
 // NOTE: Bin read / write Implementation
 ///////////////////////////////////////////////////////////////////////////////
 
-U8 ReadU8(U8* bytes) {
+U8 BinRead8(U8* bytes) {
   return *bytes;
 }
 
-U16 ReadU16LE(U8* bytes) {
-  U8 x = ReadU8(bytes);
-  U8 y = ReadU8(bytes + 1);
+U16 BinRead16LE(U8* bytes) {
+  U8 x = BinRead8(bytes);
+  U8 y = BinRead8(bytes + 1);
   return (((U16) x) + (((U16) y) << 8));
 }
 
-U16 ReadU16BE(U8* bytes) {
-  U8 x = ReadU8(bytes);
-  U8 y = ReadU8(bytes + 1);
+U16 BinRead16BE(U8* bytes) {
+  U8 x = BinRead8(bytes);
+  U8 y = BinRead8(bytes + 1);
   return ((((U16) x) << 8) + ((U16) y));
 }
 
-U32 ReadU32LE(U8* bytes) {
-  U16 x = ReadU16LE(bytes);
-  U16 y = ReadU16LE(bytes + 2);
+U32 BinRead32LE(U8* bytes) {
+  U16 x = BinRead16LE(bytes);
+  U16 y = BinRead16LE(bytes + 2);
   return (((U32) x) + (((U32) y) << 16));
 }
 
-U32 ReadU32BE(U8* bytes) {
-  U16 x = ReadU16BE(bytes);
-  U16 y = ReadU16BE(bytes + 2);
+U32 BinRead32BE(U8* bytes) {
+  U16 x = BinRead16BE(bytes);
+  U16 y = BinRead16BE(bytes + 2);
   return ((((U32) x) << 16) + ((U32) y));
 }
 
-U64 ReadU64LE(U8* bytes) {
-  U32 x = ReadU32LE(bytes);
-  U32 y = ReadU32LE(bytes + 4);
+U64 BinRead64LE(U8* bytes) {
+  U32 x = BinRead32LE(bytes);
+  U32 y = BinRead32LE(bytes + 4);
   return (((U64) x) + (((U64) y) << 32));
 }
 
-U64 ReadU64BE(U8* bytes) {
-  U32 x = ReadU32BE(bytes);
-  U32 y = ReadU32BE(bytes + 4);
+U64 BinRead64BE(U8* bytes) {
+  U32 x = BinRead32BE(bytes);
+  U32 y = BinRead32BE(bytes + 4);
   return ((((U64) x) << 32) + ((U64) y));
 }
 
-void BinHeadInit(BinHead* head, U8* bytes, U32 bytes_size) {
-  head->bytes = bytes;
-  head->bytes_size = bytes_size;
-  head->pos = 0;
+void BinStreamInit(BinStream* stream, U8* bytes, U32 bytes_size) {
+  stream->bytes = bytes;
+  stream->bytes_size = bytes_size;
+  stream->pos = 0;
 }
 
-void BinHeadSetPos(BinHead* head, U32 pos) {
-  head->pos = pos;
+void BinStreamSeek(BinStream* stream, U32 pos) {
+  DEBUG_ASSERT(pos <= stream->bytes_size);
+  stream->pos = pos;
 }
 
-void BinHeadReset(BinHead* head) {
-  BinHeadSetPos(head, 0);
+void BinStreamSkip(BinStream* stream, U32 num, S32 size) {
+  stream->pos += num * size;
 }
 
-void BinHeadSkip(BinHead* head, U32 num, S32 size) {
-  head->pos += num * size;
+U8* BinStreamDecay(BinStream* stream) {
+  return &stream->bytes[stream->pos];
 }
 
-U8* BinHeadDecay(BinHead* head) {
-  return &head->bytes[head->pos];
-}
-
-U8 BinHeadR8(BinHead* head) {
-  DEBUG_ASSERT(head->pos + 1 <= head->bytes_size);
-  U8 result = ReadU8(head->bytes + head->pos);
-  head->pos += 1;
+U8 BinStreamPull8(BinStream* stream) {
+  DEBUG_ASSERT(stream->pos + 1 <= stream->bytes_size);
+  U8 result = BinRead8(stream->bytes + stream->pos);
+  stream->pos += 1;
   return result;
 }
 
-U16 BinHeadR16LE(BinHead* head) {
-  DEBUG_ASSERT(head->pos + 2 <= head->bytes_size);
-  U16 result = ReadU16LE(head->bytes + head->pos);
-  head->pos += 2;
+U16 BinStreamPull16LE(BinStream* stream) {
+  DEBUG_ASSERT(stream->pos + 2 <= stream->bytes_size);
+  U16 result = BinRead16LE(stream->bytes + stream->pos);
+  stream->pos += 2;
   return result;
 }
 
-U16 BinHeadR16BE(BinHead* head) {
-  DEBUG_ASSERT(head->pos + 2 <= head->bytes_size);
-  U16 result = ReadU16BE(head->bytes + head->pos);
-  head->pos += 2;
+U16 BinStreamPull16BE(BinStream* stream) {
+  DEBUG_ASSERT(stream->pos + 2 <= stream->bytes_size);
+  U16 result = BinRead16BE(stream->bytes + stream->pos);
+  stream->pos += 2;
   return result;
 }
 
-U32 BinHeadR32LE(BinHead* head) {
-  DEBUG_ASSERT(head->pos + 4 <= head->bytes_size);
-  U32 result = ReadU32LE(head->bytes + head->pos);
-  head->pos += 4;
+U32 BinStreamPull32LE(BinStream* stream) {
+  DEBUG_ASSERT(stream->pos + 4 <= stream->bytes_size);
+  U32 result = BinRead32LE(stream->bytes + stream->pos);
+  stream->pos += 4;
   return result;
 }
 
-U32 BinHeadR32BE(BinHead* head) {
-  DEBUG_ASSERT(head->pos + 4 <= head->bytes_size);
-  U32 result = ReadU32BE(head->bytes + head->pos);
-  head->pos += 4;
+U32 BinStreamPull32BE(BinStream* stream) {
+  DEBUG_ASSERT(stream->pos + 4 <= stream->bytes_size);
+  U32 result = BinRead32BE(stream->bytes + stream->pos);
+  stream->pos += 4;
   return result;
 }
 
-U64 BinHeadR64LE(BinHead* head) {
-  DEBUG_ASSERT(head->pos + 8 <= head->bytes_size);
-  U64 result = ReadU64LE(head->bytes + head->pos);
-  head->pos += 8;
+U64 BinStreamPull64LE(BinStream* stream) {
+  DEBUG_ASSERT(stream->pos + 8 <= stream->bytes_size);
+  U64 result = BinRead64LE(stream->bytes + stream->pos);
+  stream->pos += 8;
   return result;
 }
 
-U64 BinHeadR64BE(BinHead* head) {
-  DEBUG_ASSERT(head->pos + 8 <= head->bytes_size);
-  U64 result = ReadU64BE(head->bytes + head->pos);
-  head->pos += 8;
+U64 BinStreamPull64BE(BinStream* stream) {
+  DEBUG_ASSERT(stream->pos + 8 <= stream->bytes_size);
+  U64 result = BinRead64BE(stream->bytes + stream->pos);
+  stream->pos += 8;
   return result;
 }
 
-void BinHeadW8(BinHead* head, U8 x) {
-  DEBUG_ASSERT(head->pos < head->bytes_size);
-  head->bytes[head->pos++] = x;
+void BinStreamPush8(BinStream* stream, U8 x) {
+  DEBUG_ASSERT(stream->pos < stream->bytes_size);
+  stream->bytes[stream->pos++] = x;
 }
 
-void BinHeadW16LE(BinHead* head, U16 x) {
+void BinStreamPush16LE(BinStream* stream, U16 x) {
   U8 a = x & 0xff;
   U8 b = (x >> 8) & 0xff;
-  BinHeadW8(head, a);
-  BinHeadW8(head, b);
+  BinStreamPush8(stream, a);
+  BinStreamPush8(stream, b);
 }
 
-void BinHeadW16BE(BinHead* head, U16 x) {
+void BinStreamPush16BE(BinStream* stream, U16 x) {
   U8 a = (x >> 8) & 0xff;
   U8 b = x & 0xff;
-  BinHeadW8(head, a);
-  BinHeadW8(head, b);
+  BinStreamPush8(stream, a);
+  BinStreamPush8(stream, b);
 }
 
-void BinHeadW32LE(BinHead* head, U32 x) {
+void BinStreamPush32LE(BinStream* stream, U32 x) {
   U16 a = x & 0xffff;
   U16 b = (x >> 16) & 0xffff;
-  BinHeadW16LE(head, a);
-  BinHeadW16LE(head, b);
+  BinStreamPush16LE(stream, a);
+  BinStreamPush16LE(stream, b);
 }
 
-void BinHeadW32BE(BinHead* head, U32 x) {
+void BinStreamPush32BE(BinStream* stream, U32 x) {
   U16 a = (x >> 16) & 0xffff;
   U16 b = x & 0xffff;
-  BinHeadW16BE(head, a);
-  BinHeadW16BE(head, b);
+  BinStreamPush16BE(stream, a);
+  BinStreamPush16BE(stream, b);
 }
 
-void BinHeadW64LE(BinHead* head, U64 x) {
+void BinStreamPush64LE(BinStream* stream, U64 x) {
   U32 a = x & 0xffffffff;
   U32 b = (x >> 32) & 0xffffffff;
-  BinHeadW32LE(head, a);
-  BinHeadW32LE(head, b);
+  BinStreamPush32LE(stream, a);
+  BinStreamPush32LE(stream, b);
 }
 
-void BinHeadW64BE(BinHead* head, U64 x) {
+void BinStreamPush64BE(BinStream* stream, U64 x) {
   U32 a = (x >> 32) & 0xffffffff;
   U32 b = x & 0xffffffff;
-  BinHeadW32BE(head, a);
-  BinHeadW32BE(head, b);
+  BinStreamPush32BE(stream, a);
+  BinStreamPush32BE(stream, b);
+}
+
+U8 BinStreamPeek8(BinStream* stream, S32 offset, U32 size) {
+  offset = offset * size;
+  if (offset < 0) { DEBUG_ASSERT(stream->pos >= (-1 * offset)); }
+  DEBUG_ASSERT(stream->pos + offset + 1 <= stream->bytes_size);
+  return BinRead8(stream->bytes + stream->pos + offset);
+}
+
+U16 BinStreamPeek16LE(BinStream* stream, S32 offset, U32 size) {
+  offset = offset * size;
+  if (offset < 0) { DEBUG_ASSERT(stream->pos >= (-1 * offset)); }
+  DEBUG_ASSERT(stream->pos + offset + 2 <= stream->bytes_size);
+  return BinRead16LE(stream->bytes + stream->pos + offset);
+}
+
+U16 BinStreamPeek16BE(BinStream* stream, S32 offset, U32 size) {
+  offset = offset * size;
+  if (offset < 0) { DEBUG_ASSERT(stream->pos >= (-1 * offset)); }
+  DEBUG_ASSERT(stream->pos + offset + 2 <= stream->bytes_size);
+  return BinRead16BE(stream->bytes + stream->pos + offset);
+}
+
+U32 BinStreamPeek32LE(BinStream* stream, S32 offset, U32 size) {
+  offset = offset * size;
+  if (offset < 0) { DEBUG_ASSERT(stream->pos >= (-1 * offset)); }
+  DEBUG_ASSERT(stream->pos + offset + 4 <= stream->bytes_size);
+  return BinRead32LE(stream->bytes + stream->pos + offset);
+}
+
+U32 BinStreamPeek32BE(BinStream* stream, S32 offset, U32 size) {
+  offset = offset * size;
+  if (offset < 0) { DEBUG_ASSERT(stream->pos >= (-1 * offset)); }
+  DEBUG_ASSERT(stream->pos + offset + 4 <= stream->bytes_size);
+  return BinRead32BE(stream->bytes + stream->pos + offset);
+}
+
+U64 BinStreamPeek64LE(BinStream* stream, S32 offset, U32 size) {
+  offset = offset * size;
+  if (offset < 0) { DEBUG_ASSERT(stream->pos >= (-1 * offset)); }
+  DEBUG_ASSERT(stream->pos + offset + 8 <= stream->bytes_size);
+  return BinRead64LE(stream->bytes + stream->pos + offset);
+}
+
+U64 BinStreamPeek64BE(BinStream* stream, S32 offset, U32 size) {
+  offset = offset * size;
+  if (offset < 0) { DEBUG_ASSERT(stream->pos >= (-1 * offset)); }
+  DEBUG_ASSERT(stream->pos + offset + 8 <= stream->bytes_size);
+  return BinRead64BE(stream->bytes + stream->pos + offset);
 }
 
 #endif // CDEFAULT_STD_IMPLEMENTATION

@@ -102,24 +102,24 @@ B32 SoundOpenWav(Sound* sound, FileHandle file) {
   S32 bytes_read;
   if (!FileHandleRead(&sound->file, bytes, STATIC_ARRAY_SIZE(bytes), &bytes_read)) { return false; }
 
-  BinHead r;
-  BinHeadInit(&r, bytes, bytes_read);
-  if (!(BinHeadR8(&r) == 'R' && BinHeadR8(&r) == 'I' &&
-        BinHeadR8(&r) == 'F' && BinHeadR8(&r) == 'F')) { return false; }
-  BinHeadSkip(&r, 4, sizeof(U8));
-  if (!(BinHeadR8(&r) == 'W' && BinHeadR8(&r) == 'A' &&
-        BinHeadR8(&r) == 'V' && BinHeadR8(&r) == 'E')) { return false; }
-  if (!(BinHeadR8(&r) == 'f' && BinHeadR8(&r) == 'm' &&
-        BinHeadR8(&r) == 't' && BinHeadR8(&r) == ' ')) { return false; }
+  BinStream s;
+  BinStreamInit(&s, bytes, bytes_read);
+  if (!(BinStreamPull8(&s) == 'R' && BinStreamPull8(&s) == 'I' &&
+        BinStreamPull8(&s) == 'F' && BinStreamPull8(&s) == 'F')) { return false; }
+  BinStreamSkip(&s, 4, sizeof(U8));
+  if (!(BinStreamPull8(&s) == 'W' && BinStreamPull8(&s) == 'A' &&
+        BinStreamPull8(&s) == 'V' && BinStreamPull8(&s) == 'E')) { return false; }
+  if (!(BinStreamPull8(&s) == 'f' && BinStreamPull8(&s) == 'm' &&
+        BinStreamPull8(&s) == 't' && BinStreamPull8(&s) == ' ')) { return false; }
 
   // NOTE: chunk_size can be variable depending on the WAV version.
-  U32 chunk_size      = BinHeadR32LE(&r);
-  U16 bin_fmt         = BinHeadR16LE(&r);
-  sound->channels     = BinHeadR16LE(&r);
-  sound->frequency    = BinHeadR32LE(&r);
-  BinHeadR32LE(&r); // avg_byte_per_sec
-  BinHeadR16LE(&r); // block_align
-  U16 bits_per_sample = BinHeadR16LE(&r);
+  U32 chunk_size      = BinStreamPull32LE(&s);
+  U16 bin_fmt         = BinStreamPull16LE(&s);
+  sound->channels     = BinStreamPull16LE(&s);
+  sound->frequency    = BinStreamPull32LE(&s);
+  BinStreamPull32LE(&s); // avg_byte_per_sec
+  BinStreamPull16LE(&s); // block_align
+  U16 bits_per_sample = BinStreamPull16LE(&s);
 
   // TODO: handle WAVE_FORMAT_EXTENSIBLE
   switch (bin_fmt) {
@@ -141,17 +141,17 @@ B32 SoundOpenWav(Sound* sound, FileHandle file) {
     } break;
   }
 
-  BinHeadSetPos(&r, 20 + chunk_size);
+  BinStreamSeek(&s, 20 + chunk_size);
   // NOTE: extra chunk may be here for non-PCM formats.
-  U8 c0 = BinHeadR8(&r), c1 = BinHeadR8(&r), c2 = BinHeadR8(&r), c3 = BinHeadR8(&r);
+  U8 c0 = BinStreamPull8(&s), c1 = BinStreamPull8(&s), c2 = BinStreamPull8(&s), c3 = BinStreamPull8(&s);
   if (c0 == 'f' && c1 == 'a' && c2 == 'c' && c3 == 't') {
-    BinHeadSkip(&r, 8, sizeof(U8));
-    c0 = BinHeadR8(&r); c1 = BinHeadR8(&r); c2 = BinHeadR8(&r); c3 = BinHeadR8(&r);
+    BinStreamSkip(&s, 8, sizeof(U8));
+    c0 = BinStreamPull8(&s); c1 = BinStreamPull8(&s); c2 = BinStreamPull8(&s); c3 = BinStreamPull8(&s);
   }
 
   if (!(c0 == 'd' && c1 == 'a' && c2 == 't' && c3 == 'a')) { return false; }
-  sound->samples_byte_size = BinHeadR32LE(&r);
-  sound->sound_offset = r.pos;
+  sound->samples_byte_size = BinStreamPull32LE(&s);
+  sound->sound_offset = s.pos;
   sound->samples_pos = 0;
   if (!FileHandleSeek(&sound->file, sound->sound_offset, FileSeekPos_Begin)) {
     LOG_ERROR("[SOUND] Unexpectedly unable to seek to sound start for WAV file.");
