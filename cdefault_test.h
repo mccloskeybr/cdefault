@@ -26,6 +26,8 @@ void LogTestReport(); // NOTE: Prints the final test report to stdout. Must be c
 
 // NOTE: These must be called from test functions directly, to signify expectations / behavior on error.
 // NOTE: Failed expectations will exit the test immediately.
+#define PASS()                      return
+#define FAIL(...)                   EXPECT_BASE(false, __VA_ARGS__)
 #define EXPECT_TRUE(result)         EXPECT_BASE(result, "Expected true, but got false: %s", #result)
 #define EXPECT_FALSE(result)        EXPECT_BASE(!(result), "Expected false, but got true: %s", #result)
 #define EXPECT_S8_EQ(a, b)          EXPECT_BASE((a) == (b), "Expected S8s equal, but got: %d, %d", (a), (b))
@@ -49,10 +51,8 @@ void LogTestReport(); // NOTE: Prints the final test report to stdout. Must be c
 #define EXPECT_V2_APPROX_EQ(a, b)   EXPECT_BASE(F32ApproxEq((a).x, (b).x) && F32ApproxEq((a).y, (b).y), "Expected V2s approximately equal, but got: { %.5f, %.5f }, { %.5f, %.5f }", (a).x, (a).y, (b).x, (b).y)
 #define EXPECT_V3_EQ(a, b)          EXPECT_BASE((a).x == (b).x && (a).y == (b).y && (a).z == (b).z, "Expected V3s equal, but got: { %.5f, %.5f, %.5f }, { %.5f, %.5f, %.5f }", (a).x, (a).y, (a).z, (b).x, (b).y, (b).z)
 #define EXPECT_V3_APPROX_EQ(a, b)   EXPECT_BASE(F32ApproxEq((a).x, (b).x) && F32ApproxEq((a).y, (b).y) && F32ApproxEq((a).z, (b).z), "Expected V3s approximately equal, but got: { %.5f, %.5f, %.5f }, { %.5f, %.5f, %.5f }", (a).x, (a).y, (a).z, (b).x, (b).y, (b).z)
-#define EXPECT_V4_EQ(a, b)          EXPECT_BASE((a).x == (b).x && (a).y == (b).y && (a).z == (b).z && (a).w == (b).w, "Expected V4s equal, but got: { %.5f, %.5f, %.5f, %.5f }, { %.5f, %.5f, %.5f, %.5f }", (a).x, (a).y, (x).z, (a).w, (b).x, (b).y, (b).z, (y).w)
-#define EXPECT_V4_APPROX_EQ(a, b)   EXPECT_BASE(F32ApproxEq((a).x, (b).x) && F32ApproxEq((a).y, (b).y) && F32ApproxEq((a).z, (b).z) && F32ApproxEq((a).w, (b).w), "Expected V4s approximately equal, but got: { %.5f, %.5f, %.5f, %.5f }, { %.5f, %.5f, %.5f, %.5f }", (a).x, (a).y, (x).z, (a).w, (b).x, (b).y, (b).z, (y).w)
-#define FAIL(...)                   EXPECT_BASE(false, __VA_ARGS__)
-#define PASS()                      return
+#define EXPECT_V4_EQ(a, b)          EXPECT_BASE((a).x == (b).x && (a).y == (b).y && (a).z == (b).z && (a).w == (b).w, "Expected V4s equal, but got: { %.5f, %.5f, %.5f, %.5f }, { %.5f, %.5f, %.5f, %.5f }", (a).x, (a).y, (a).z, (a).w, (b).x, (b).y, (b).z, (b).w)
+#define EXPECT_V4_APPROX_EQ(a, b)   EXPECT_BASE(F32ApproxEq((a).x, (b).x) && F32ApproxEq((a).y, (b).y) && F32ApproxEq((a).z, (b).z) && F32ApproxEq((a).w, (b).w), "Expected V4s approximately equal, but got: { %.5f, %.5f, %.5f, %.5f }, { %.5f, %.5f, %.5f, %.5f }", (a).x, (a).y, (a).z, (a).w, (b).x, (b).y, (b).z, (b).w)
 
 // NOTE: Custom expectations can use EXPECT_BASE as a foundation.
 #define EXPECT_BASE(result, ...)                            \
@@ -65,7 +65,7 @@ void LogTestReport(); // NOTE: Prints the final test report to stdout. Must be c
     return;                                                 \
   }
 
-void _RunTest(String8 runner_file_name, String8 test_name, Test_Fn* test_fn);
+void _RunTest(String8 test_file, String8 test_name, Test_Fn* test_fn);
 
 #endif // CDEFAULT_TEST_H_
 
@@ -78,7 +78,6 @@ struct TestContext {
   B32 is_initialized;
   U32 num_pass;
   U32 num_fail;
-  String8 runner_file_name;
   String8List report;
 
   B32 failed;
@@ -88,24 +87,20 @@ struct TestContext {
 };
 static TestContext _cdef_test_context;
 
-static void TestInit(String8 runner_file_name) {
+void _RunTest(String8 test_file, String8 test_name, Test_Fn* test_fn) {
   TestContext* c = &_cdef_test_context;
-  MEMORY_ZERO_STRUCT(c);
-  c->arena = ArenaAllocate();
-  c->runner_file_name = runner_file_name;
-  c->is_initialized = true;
-}
-
-void _RunTest(String8 runner_file_name, String8 test_name, Test_Fn* test_fn) {
-  TestContext* c = &_cdef_test_context;
-  if (!c->is_initialized) { TestInit(runner_file_name); }
+  if (!c->is_initialized) {
+    MEMORY_ZERO_STRUCT(c);
+    c->arena = ArenaAllocate();
+    c->is_initialized = true;
+  }
 
   test_fn();
   if (c->failed) {
     c->num_fail++;
 
     String8ListNode* test_result = ARENA_PUSH_STRUCT(c->arena, String8ListNode);
-    test_result->string = Str8Format(c->arena, "[" ANSI_COLOR_RED "FAIL" ANSI_COLOR_RESET "]: %.*s\n", test_name.size, test_name.str);
+    test_result->string = Str8Format(c->arena, "[" ANSI_COLOR_RED "FAIL" ANSI_COLOR_RESET "] : %.*s:%.*s\n", test_file.size, test_file.str, test_name.size, test_name.str);
     Str8ListAppend(&c->report, test_result);
 
     String8ListNode* error_entry = ARENA_PUSH_STRUCT(c->arena, String8ListNode);
@@ -117,7 +112,7 @@ void _RunTest(String8 runner_file_name, String8 test_name, Test_Fn* test_fn) {
     c->num_pass++;
 
     String8ListNode* test_result = ARENA_PUSH_STRUCT(c->arena, String8ListNode);
-    test_result->string = Str8Format(c->arena, "[" ANSI_COLOR_GREEN "PASS" ANSI_COLOR_RESET "]: %.*s\n", test_name.size, test_name.str);
+    test_result->string = Str8Format(c->arena, "[" ANSI_COLOR_GREEN "PASS" ANSI_COLOR_RESET "] : %.*s:%.*s\n", test_file.size, test_file.str, test_name.size, test_name.str);
     Str8ListAppend(&c->report, test_result);
   }
 }
@@ -126,7 +121,7 @@ void LogTestReport() {
   TestContext* c = &_cdef_test_context;
 
   String8ListNode* report_prefix = ARENA_PUSH_STRUCT(c->arena, String8ListNode);
-  report_prefix->string = Str8Format(c->arena, ANSI_COLOR_YELLOW "%.*s\n" ANSI_COLOR_RESET, c->runner_file_name.size, c->runner_file_name.str);
+  report_prefix->string = Str8Lit("\n");
   Str8ListPrepend(&c->report, report_prefix);
 
   String8ListNode* report_suffix = ARENA_PUSH_STRUCT(c->arena, String8ListNode);

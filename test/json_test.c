@@ -12,8 +12,8 @@ static Arena* arena;
 void JsonParseEmptyTest() {
   JsonObject json;
   EXPECT_TRUE(JsonParse(arena, &json, Str8Lit("{ }")));
-  EXPECT_PTR_NULL(json.nodes_head);
-  EXPECT_PTR_NULL(json.nodes_tail);
+  EXPECT_PTR_NULL(json.head);
+  EXPECT_PTR_NULL(json.tail);
 }
 
 void JsonParseStringTest() {
@@ -106,16 +106,20 @@ void JsonParseArrayTest() {
   EXPECT_TRUE(JsonObjectGetArray(json, Str8Lit("key"), &array));
   EXPECT_U32_EQ(JsonArraySize(array), 3);
 
+  JsonArrayNode* node = array.head;
+
   String8 str_val;
-  EXPECT_TRUE(JsonArrayGetString(array, 0, &str_val));
+  EXPECT_TRUE(JsonValueGetString(&node->value, &str_val));
   EXPECT_STR8_EQ(str_val, Str8Lit("value_1"));
 
+  node = node->next;
   F32 num_val;
-  EXPECT_TRUE(JsonArrayGetNumber(array, 1, &num_val));
+  EXPECT_TRUE(JsonValueGetNumber(&node->value, &num_val));
   EXPECT_F32_APPROX_EQ(num_val, 3);
 
+  node = node->next;
   B32 bool_val;
-  EXPECT_TRUE(JsonArrayGetBool(array, 2, &bool_val));
+  EXPECT_TRUE(JsonValueGetBool(&node->value, &bool_val));
   EXPECT_TRUE(bool_val);
 }
 
@@ -131,6 +135,27 @@ void JsonParseMultiObjectTest() {
   EXPECT_STR8_EQ(str_val, Str8Lit("value"))
   EXPECT_TRUE(JsonObjectGetNumber(json, Str8Lit("key_2"), &num_val));
   EXPECT_F32_APPROX_EQ(num_val, 5);
+}
+
+void JsonParseVectorTest() {
+  JsonObject json;
+  String8 json_str;
+  json_str = Str8Lit("{ \"v2\" : { \"x\": 1, \"y\": 2 },"
+                     "  \"v3\" : { \"x\": 3, \"y\": 4, \"z\": 5 },"
+                     "  \"v4\" : { \"x\": 6, \"y\": 7, \"z\": 8, \"w\": 9 } }");
+  EXPECT_TRUE(JsonParse(arena, &json, json_str));
+
+  V2 v2;
+  EXPECT_TRUE(JsonObjectGetV2(json, Str8Lit("v2"), &v2.e));
+  EXPECT_V2_EQ(v2, V2Assign(1, 2));
+
+  V3 v3;
+  EXPECT_TRUE(JsonObjectGetV3(json, Str8Lit("v3"), &v3.e));
+  EXPECT_V3_EQ(v3, V3Assign(3, 4, 5));
+
+  V4 v4;
+  EXPECT_TRUE(JsonObjectGetV4(json, Str8Lit("v4"), &v4.e));
+  EXPECT_V4_EQ(v4, V4Assign(6, 7, 8, 9));
 }
 
 void JsonConstructEmptyTest() {
@@ -183,7 +208,7 @@ void JsonConstructArrayTest() {
   JsonArray test_array;
   EXPECT_TRUE(JsonObjectGetArray(json, Str8Lit("key"), &test_array));
   String8 value;
-  EXPECT_TRUE(JsonArrayGetString(test_array, 0, &value));
+  EXPECT_TRUE(JsonValueGetString(&test_array.head->value, &value));
   EXPECT_STR8_EQ(value, Str8Lit("inner_value"));
 }
 
@@ -205,6 +230,26 @@ void JsonConstructNullTest() {
   EXPECT_TRUE(JsonObjectGetNull(json, Str8Lit("key")));
 }
 
+void JsonConstructVectorTest() {
+  JsonObject json;
+  MEMORY_ZERO_STRUCT(&json);
+  JsonObjectPushV2(arena, &json, Str8Lit("v2"), V2Assign(1, 2).e);
+  JsonObjectPushV3(arena, &json, Str8Lit("v3"), V3Assign(3, 4, 5).e);
+  JsonObjectPushV4(arena, &json, Str8Lit("v4"), V4Assign(6, 7, 8, 9).e);
+
+  V2 v2;
+  EXPECT_TRUE(JsonObjectGetV2(json, Str8Lit("v2"), &v2.e));
+  EXPECT_V2_EQ(v2, V2Assign(1, 2));
+
+  V3 v3;
+  EXPECT_TRUE(JsonObjectGetV3(json, Str8Lit("v3"), &v3.e));
+  EXPECT_V3_EQ(v3, V3Assign(3, 4, 5));
+
+  V4 v4;
+  EXPECT_TRUE(JsonObjectGetV4(json, Str8Lit("v4"), &v4.e));
+  EXPECT_V4_EQ(v4, V4Assign(6, 7, 8, 9));
+}
+
 int main(void) {
   arena = ArenaAllocate();
   RUN_TEST(JsonParseEmptyTest);
@@ -215,6 +260,7 @@ int main(void) {
   RUN_TEST(JsonParseObjectTest);
   RUN_TEST(JsonParseArrayTest);
   RUN_TEST(JsonParseMultiObjectTest);
+  RUN_TEST(JsonParseVectorTest);
   RUN_TEST(JsonConstructEmptyTest);
   RUN_TEST(JsonConstructStringTest);
   RUN_TEST(JsonConstructNumberTest);
@@ -222,6 +268,7 @@ int main(void) {
   RUN_TEST(JsonConstructArrayTest);
   RUN_TEST(JsonConstructBoolTest);
   RUN_TEST(JsonConstructNullTest);
+  RUN_TEST(JsonConstructVectorTest);
   LogTestReport();
   return 0;
 }

@@ -65,7 +65,7 @@ void M2MultTest(void) {
   V2 expected_mult_v = { 5, 11 };
   V2 mult_v;
   M2MultV2(&mult_v, &m, &v);
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STRUCT(&mult_v, &expected_mult_v));
+  EXPECT_V2_EQ(mult_v, expected_mult_v);
 
   M2 m2 = {
     2, 1,
@@ -169,7 +169,7 @@ void M3MultTest(void) {
   V3 expected_mult_v = { 14, 32, 50 };
   V3 mult_v;
   M3MultV3(&mult_v, &m, &v);
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STRUCT(&mult_v, &expected_mult_v));
+  EXPECT_V3_EQ(mult_v, expected_mult_v);
 
   M3 m2 = {
     3, 2, 1,
