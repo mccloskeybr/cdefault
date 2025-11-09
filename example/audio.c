@@ -1,20 +1,13 @@
-#define CDEFAULT_STD_IMPLEMENTATION
-#include "../cdefault_std.h"
-#define CDEFAULT_MATH_IMPLEMENTATION
-#include "../cdefault_math.h"
-#define CDEFAULT_IO_IMPLEMENTATION
-#include "../cdefault_io.h"
-#define CDEFAULT_AUDIO_IMPLEMENTATION
-#include "../cdefault_audio.h"
-#define CDEFAULT_SOUND_IMPLEMENTATION
-#include "../cdefault_sound.h"
+#define CDEFAULT_IMPLEMENTATION
+#include "../cdefault.h"
 
 int main(void) {
   DEBUG_ASSERT(DirSetCurrentToExeDir());
   DEBUG_ASSERT(AudioInit());
+  Arena* arena = ArenaAllocate();
 
   Sound sound;
-  DEBUG_ASSERT(SoundOpenFile(&sound, Str8Lit("../data/test.wav")));
+  DEBUG_ASSERT(SoundOpenFile(arena, &sound, Str8Lit("../data/test.wav")));
 
   AudioStreamSpec spec;
   MEMORY_ZERO_STRUCT(&spec);

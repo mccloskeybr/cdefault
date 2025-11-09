@@ -1,7 +1,5 @@
-#define CDEFAULT_STD_IMPLEMENTATION
-#include "../cdefault_std.h"
-#define CDEFAULT_TEST_IMPLEMENTATION
-#include "../cdefault_test.h"
+#define CDEFAULT_IMPLEMENTATION
+#include "../cdefault.h"
 
 void PullBETest(void) {
   U8 buffer[15] = {

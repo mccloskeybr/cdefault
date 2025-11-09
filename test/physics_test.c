@@ -1,13 +1,5 @@
-#define CDEFAULT_STD_IMPLEMENTATION
-#include "../cdefault_std.h"
-#define CDEFAULT_GEOMETRY_IMPLEMENTATION
-#include "../cdefault_geometry.h"
-#define CDEFAULT_MATH_IMPLEMENTATION
-#include "../cdefault_math.h"
-#define CDEFAULT_RENDER_IMPLEMENTATION
-#include "../cdefault_render.h"
-#define CDEFAULT_PHYSICS2_IMPLEMENTATION
-#include "../cdefault_physics_2d.h"
+#define CDEFAULT_IMPLEMENTATION
+#include "../cdefault.h"
 
 #define CIRCLE_RADIUS 20
 #define RECT_SIZE (V2) {40, 40}

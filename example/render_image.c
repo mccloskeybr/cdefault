@@ -1,13 +1,5 @@
-#define CDEFAULT_STD_IMPLEMENTATION
-#include "../cdefault_std.h"
-#define CDEFAULT_MATH_IMPLEMENTATION
-#include "../cdefault_math.h"
-#define CDEFAULT_RENDER_IMPLEMENTATION
-#include "../cdefault_render.h"
-#define CDEFAULT_IO_IMPLEMENTATION
-#include "../cdefault_io.h"
-#define CDEFAULT_IMAGE_IMPLEMENTATION
-#include "../cdefault_image.h"
+#define CDEFAULT_IMPLEMENTATION
+#include "../cdefault.h"
 
 int main(void) {
   TimeInit();

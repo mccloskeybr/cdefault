@@ -29,7 +29,6 @@ TODO:
 *  Complete independence from stdlib.
 *  Networking library.
 *  Platform-agnostic input (controllers) library.
-*  Font library.
 
 Credits:
 

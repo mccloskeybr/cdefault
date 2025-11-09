@@ -1,11 +1,5 @@
-#define CDEFAULT_STD_IMPLEMENTATION
-#include "../cdefault_std.h"
-#define CDEFAULT_MATH_IMPLEMENTATION
-#include "../cdefault_math.h"
-#define CDEFAULT_GEOMETRY_IMPLEMENTATION
-#include "../cdefault_geometry.h"
-#define CDEFAULT_TEST_IMPLEMENTATION
-#include "../cdefault_test.h"
+#define CDEFAULT_IMPLEMENTATION
+#include "../cdefault.h"
 
 void V2Test(void) {
   V2 x = V2Assign(1, 2);

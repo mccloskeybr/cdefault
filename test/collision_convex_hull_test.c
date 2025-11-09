@@ -1,11 +1,5 @@
-#define CDEFAULT_STD_IMPLEMENTATION
-#include "../cdefault_std.h"
-#define CDEFAULT_MATH_IMPLEMENTATION
-#include "../cdefault_math.h"
-#define CDEFAULT_RENDER_IMPLEMENTATION
-#include "../cdefault_render.h"
-#define CDEFAULT_GEOMETRY_IMPLEMENTATION
-#include "../cdefault_geometry.h"
+#define CDEFAULT_IMPLEMENTATION
+#include "../cdefault.h"
 
 static void DrawIntersectManifold(V2* hull_points, U32 hull_points_size, IntersectManifold2 manifold, V3 color) {
   V2 start, end;

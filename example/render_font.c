@@ -1,16 +1,5 @@
-#define CDEFAULT_STD_IMPLEMENTATION
-#include "../cdefault_std.h"
-#define CDEFAULT_MATH_IMPLEMENTATION
-#include "../cdefault_math.h"
-#define CDEFAULT_IO_IMPLEMENTATION
-#include "../cdefault_io.h"
-#define CDEFAULT_IMAGE_IMPLEMENTATION
-#include "../cdefault_image.h"
-
-#define CDEFAULT_RENDER_IMPLEMENTATION
-#include "../cdefault_render.h"
-#define CDEFAULT_FONT_IMPLEMENTATION
-#include "../cdefault_font.h"
+#define CDEFAULT_IMPLEMENTATION
+#include "../cdefault.h"
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "third_party/stb_truetype.h"
 
@@ -30,7 +19,7 @@ void DrawStringSdf(String8 str, FontAtlas* atlas, U32 atlas_handle, U32 atlas_wi
   V2 cursor = { x, y };
   for (S32 i = 0; i < str.size; i++) {
     V2 center, size, min_uv, max_uv;
-    DEBUG_ASSERT(FontAtlasPlace(atlas, atlas_width, atlas_height, str.str[i], 1.0f, &cursor, &center, &size, &min_uv, &max_uv));
+    DEBUG_ASSERT(FontAtlasPlace(atlas, atlas_width, atlas_height, str.str[i], 0.6f, &cursor, &center, &size, &min_uv, &max_uv));
     DrawFontSdfCharacterV(atlas_handle, center, size, min_uv, max_uv, V3_BLACK);
   }
 }

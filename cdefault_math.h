@@ -69,6 +69,7 @@ F32 F32Ceil(F32 x);
 F32 F32Floor(F32 x);
 F32 F32Round(F32 x);
 F32 F32MapRange(F32 x, F32 a_min, F32 a_max, F32 b_min, F32 b_max);
+F32 F32Lerp(F32 x, F32 y, F32 t);
 
 B64 F64ApproxEq(F64 x, F64 y);
 F64 F64Abs(F64 x);
@@ -87,6 +88,7 @@ F64 F64Ceil(F64 x);
 F64 F64Floor(F64 x);
 F64 F64Round(F64 x);
 F64 F64MapRange(F64 x, F64 a_min, F64 a_max, F64 b_min, F64 b_max);
+F64 F64Lerp(F64 x, F64 y, F64 t);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: V2
@@ -263,9 +265,9 @@ B32 M3Eq(M3* x, M3* y);
                           0, 0, 0, 1}
 
 M4  M4FromTransform(V3* pos, V4* rot, V3* scale);
-M4* M4Perspective(M4* dest, F32 fov_y_rad, F32 aspect_ratio, F32 near_plane, F32 far_plane);
-M4* M4Orthographic(M4* dest, F32 left, F32 right, F32 bottom, F32 top, F32 near_plane, F32 far_plane);
-M4* M4LookAt(M4* dest, V3* eye, V3* target, V3* up);
+M4  M4Perspective(F32 fov_y_rad, F32 aspect_ratio, F32 near_plane, F32 far_plane);
+M4  M4Orthographic(F32 left, F32 right, F32 bottom, F32 top, F32 near_plane, F32 far_plane);
+M4  M4LookAt(V3* eye, V3* target, V3* up);
 M4* M4AddM4(M4* dest, M4* x, M4* y);
 M4* M4SubM4(M4* dest, M4* x, M4* y);
 M4* M4MultF32(M4* dest, F32 c,  M4* m);
@@ -297,13 +299,13 @@ F32 F32ArcSin(F32 x) { return asinf(x); }
 F32 F32ArcCos(F32 x) { return acosf(x); }
 F32 F32ArcTan(F32 x) { return atanf(x); }
 F32 F32ArcTan2(F32 y, F32 x) { return atan2f(y, x); }
-F32 F32Lerp(F32 x, F32 y, F32 t) { return x + ((y - x) * t); }
 F32 F32ToRad(F32 deg) { return deg * (F32_PI / 180.0f); }
 F32 F32ToDeg(F32 rad) { return rad * (180.0f / F32_PI); }
 F32 F32Ceil(F32 x) { return ceilf(x); }
 F32 F32Floor(F32 x) { return floorf(x); }
 F32 F32Round(F32 x) { return F32Floor(x + 0.5f); }
 F32 F32MapRange(F32 x, F32 a_min, F32 a_max, F32 b_min, F32 b_max) { return b_min + ((x - a_min) / (a_max - a_min)) * (b_max - b_min); }
+F32 F32Lerp(F32 x, F32 y, F32 t) { return x + ((y - x) * t); }
 
 B64 F64ApproxEq(F64 x, F64 y) { return F64Abs(x - y) < 0.00001; }
 F64 F64Abs(F64 x) { return fabs(x); }
@@ -322,6 +324,7 @@ F64 F64Ceil(F64 x) { return ceil(x); }
 F64 F64Floor(F64 x) { return floor(x); }
 F64 F64Round(F64 x) { return F64Floor(x + 0.5); }
 F64 F64MapRange(F64 x, F64 a_min, F64 a_max, F64 b_min, F64 b_max) { return b_min + ((x - a_min) / (a_max - a_min)) * (b_max - b_min); }
+F64 F64Lerp(F64 x, F64 y, F64 t) { return x + ((y - x) * t); }
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: V2 implementation
@@ -1130,6 +1133,7 @@ M4 M4FromTransform(V3* pos, V4* rot, V3* scale) {
   M3MultM3(&rot_scale, &rot_m, &scale_m);
 
   M4 result;
+  MEMORY_ZERO_STRUCT(&result);
   result.e[0][0] = rot_scale.e[0][0];
   result.e[0][1] = rot_scale.e[0][1];
   result.e[0][2] = rot_scale.e[0][2];
@@ -1147,7 +1151,7 @@ M4 M4FromTransform(V3* pos, V4* rot, V3* scale) {
   return result;
 }
 
-M4* M4Perspective(M4* dest, F32 fov_y_rad, F32 aspect_ratio, F32 near_plane, F32 far_plane) {
+M4 M4Perspective(F32 fov_y_rad, F32 aspect_ratio, F32 near_plane, F32 far_plane) {
   F32 tan_half_fov_y = F32Tan(fov_y_rad / 2.0f);
 
   F32 a = 1.0f / (aspect_ratio * tan_half_fov_y);
@@ -1155,16 +1159,16 @@ M4* M4Perspective(M4* dest, F32 fov_y_rad, F32 aspect_ratio, F32 near_plane, F32
   F32 c = - (far_plane + near_plane) / (far_plane - near_plane);
   F32 d = - (2 * far_plane * near_plane) / (far_plane - near_plane);
 
-  *dest = (M4) {
+  M4 result = {
     a,  0,  0,  0,
     0,  b,  0,  0,
     0,  0,  c,  d,
     0,  0, -1,  0,
   };
-  return dest;
+  return result;
 }
 
-M4* M4Orthographic(M4* dest, F32 left, F32 right, F32 bottom, F32 top, F32 near_plane, F32 far_plane) {
+M4 M4Orthographic(F32 left, F32 right, F32 bottom, F32 top, F32 near_plane, F32 far_plane) {
   F32 a = 2 / (right - left);
   F32 b = 2 / (top - bottom);
   F32 c = -2 / (far_plane - near_plane);
@@ -1172,16 +1176,16 @@ M4* M4Orthographic(M4* dest, F32 left, F32 right, F32 bottom, F32 top, F32 near_
   F32 e = -(top + bottom) / (top - bottom);
   F32 f = -(far_plane + near_plane) / (far_plane - near_plane);
 
-  *dest = (M4) {
+  M4 result = {
     a, 0, 0, d,
     0, b, 0, e,
     0, 0, c, f,
     0, 0, 0, 1,
   };
-  return dest;
+  return result;
 }
 
-M4* M4LookAt(M4* dest, V3* eye, V3* target, V3* up) {
+M4 M4LookAt(V3* eye, V3* target, V3* up) {
   V3 x, y, z;
   V3SubV3(&z, eye, target);
   V3Normalize(&z, &z);
@@ -1196,13 +1200,13 @@ M4* M4LookAt(M4* dest, V3* eye, V3* target, V3* up) {
   F32 b = -V3DotV3(&y, eye);
   F32 c = -V3DotV3(&z, eye);
 
-  *dest = (M4) {
+  M4 result = {
     x.x, x.y, x.z, a,
     y.x, y.y, y.z, b,
     z.x, z.y, z.z, c,
       0,   0,   0, 1,
   };
-  return dest;
+  return result;
 }
 
 M4* M4AddM4(M4* dest, M4* x, M4* y) {

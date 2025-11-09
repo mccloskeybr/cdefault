@@ -1,12 +1,6 @@
-#define CDEFAULT_STD_IMPLEMENTATION
-#include "../cdefault_std.h"
-#define CDEFAULT_MATH_IMPLEMENTATION
-#include "../cdefault_math.h"
-#define CDEFAULT_IO_IMPLEMENTATION
-#include "../cdefault_io.h"
-#define CDEFAULT_RENDER_IMPLEMENTATION
-#include "../cdefault_render.h"
-#define STB_TRUETYPE_IMPLEMENTATION  // force following include to generate implementation
+#define CDEFAULT_IMPLEMENTATION
+#include "../cdefault.h"
+#define STB_TRUETYPE_IMPLEMENTATION
 #include "third_party/stb_truetype.h"
 
 #define ATLAS_WIDTH  2048

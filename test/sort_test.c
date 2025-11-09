@@ -1,7 +1,5 @@
-#define CDEFAULT_STD_IMPLEMENTATION
-#include "../cdefault_std.h"
-#define CDEFAULT_TEST_IMPLEMENTATION
-#include "../cdefault_test.h"
+#define CDEFAULT_IMPLEMENTATION
+#include "../cdefault.h"
 
 void SortS8AscTest(void) {
   S8 arr[10] = { 3, 6, 2, 0, 8, 9, 1, 7, 5, 4 };

@@ -3,15 +3,20 @@
 
 #include "cdefault_std.h"
 
-// Example setup:
+// NOTE: this implements a framework for basic unit test running and reporting.
+//
+// e.g.
+//
 // void MyTest1() {
 //   U32 x = 1;
 //   EXPECT_U32_EQ(x, 1); // Will succeed.
 // }
+//
 // void MyTest2() {
 //   U32 x = 1;
 //   EXPECT_U32_EQ(x, 2); // Will fail.
 // }
+//
 // int main(void) {
 //   RUN_TEST(MyTest1);
 //   RUN_TEST(MyTest2);
@@ -120,16 +125,12 @@ void _RunTest(String8 test_file, String8 test_name, Test_Fn* test_fn) {
 void LogTestReport() {
   TestContext* c = &_cdef_test_context;
 
-  String8ListNode* report_prefix = ARENA_PUSH_STRUCT(c->arena, String8ListNode);
-  report_prefix->string = Str8Lit("\n");
-  Str8ListPrepend(&c->report, report_prefix);
-
   String8ListNode* report_suffix = ARENA_PUSH_STRUCT(c->arena, String8ListNode);
   report_suffix->string = Str8Format(c->arena, "Passed: " ANSI_COLOR_GREEN "%d" ANSI_COLOR_RESET ", Failed: " ANSI_COLOR_RED "%d\n" ANSI_COLOR_RESET, c->num_pass, c->num_fail);
   Str8ListAppend(&c->report, report_suffix);
 
   String8 report = Str8ListJoin(c->arena, &c->report);
-  LOG_INFO("%.*s", report.size, report.str);
+  LOG_NO_PREFIX("%.*s", report.size, report.str);
 }
 
 #endif // CDEFAULT_TEST_IMPLEMENTATION

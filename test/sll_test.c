@@ -1,7 +1,5 @@
-#define CDEFAULT_STD_IMPLEMENTATION
-#include "../cdefault_std.h"
-#define CDEFAULT_TEST_IMPLEMENTATION
-#include "../cdefault_test.h"
+#define CDEFAULT_IMPLEMENTATION
+#include "../cdefault.h"
 
 typedef struct Node Node;
 struct Node {

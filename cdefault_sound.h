@@ -4,47 +4,46 @@
 #include "cdefault_io.h"
 #include "cdefault_std.h"
 
-// API for loading sound files, e.g. off of disk.
-// Since sounds are large, the API is fashioned around ingesting sized buffers of audio data.
-//
-// The following file formats are supported:
-// -   WAV: PCM 16, 32, float formats.
-
-// Example
-#if 0
-// Load the sound.
-Sound sound;
-DEBUG_ASSERT(SoundOpenFile(&sound, "data/my_sound.wav"));
-
-// Open an audio stream.
-AudioInit();
-AudioStreamSpec spec;
-spec.channels  = sound.channels;
-spec.frequency = sound.frequency;
-spec.format    = sound.format;
-AudioStreamHandle stream;
-DEBUG_ASSERT(AudioStreamOpen(&stream, spec));
-
-U8* buffer;
-U32 buffer_size, bytes_read;
-while (true) {
-  DEBUG_ASSERT(AudioStreamAcquireBuffer(stream, &buffer, &buffer_size));
-  DEBUG_ASSERT(SoundGetSamples(&sound, buffer, buffer_size, &bytes_read));
-  // NOTE: sound buffer has been exhausted once we fail to read a whole buffer.
-  if (bytes_read < buffer_size) { DEBUG_ASSERT(SoundRestart(&sound)); }
-  DEBUG_ASSERT(AudioStreamReleaseBuffer(stream, buffer, bytes_read));
-  DEBUG_ASSERT(AudioStreamWait(stream));
-}
-
-SoundClose(&sound);
-AudioStreamClose(stream);
-AudioDeinit();
-#endif
-
 // TODO: test WAV PCM24, PCM32, F32
 // TODO: audio format conversion?
 // TODO: switch api to be around samples rather than raw bytes?
 // TODO: support more sound file types
+
+// API for loading sound files, e.g. off of disk.
+// Since sounds are usually large, the API is fashioned around ingesting sized buffers of audio data.
+//
+// The following file formats are supported:
+// -   WAV: PCM 16, 32, float formats.
+//
+// e.g.
+//
+// // Load the sound.
+// Sound sound;
+// DEBUG_ASSERT(SoundOpenFile(&sound, "data/my_sound.wav"));
+//
+// // Open an audio stream.
+// AudioInit();
+// AudioStreamSpec spec;
+// spec.channels  = sound.channels;
+// spec.frequency = sound.frequency;
+// spec.format    = sound.format;
+// AudioStreamHandle stream;
+// DEBUG_ASSERT(AudioStreamOpen(&stream, spec));
+//
+// U8* buffer;
+// U32 buffer_size, bytes_read;
+// while (true) {
+//   DEBUG_ASSERT(AudioStreamAcquireBuffer(stream, &buffer, &buffer_size));
+//   DEBUG_ASSERT(SoundGetSamples(&sound, buffer, buffer_size, &bytes_read));
+//   // NOTE: sound buffer has been exhausted once we fail to read a whole buffer.
+//   if (bytes_read < buffer_size) { DEBUG_ASSERT(SoundRestart(&sound)); }
+//   DEBUG_ASSERT(AudioStreamReleaseBuffer(stream, buffer, bytes_read));
+//   DEBUG_ASSERT(AudioStreamWait(stream));
+// }
+//
+// SoundClose(&sound);
+// AudioStreamClose(stream);
+// AudioDeinit();
 
 typedef enum SoundFileType SoundFileType;
 enum SoundFileType {
@@ -67,19 +66,19 @@ struct Sound {
   U32 channels;
   U32 frequency;
 
-  FileHandle file;
+  FileHandle* file;
   U32 sound_offset;
   U32 samples_byte_size;
   U32 samples_pos;
 };
 
-B32 SoundOpenFile(Sound* sound, String8 file_path);
-B32 SoundOpenFileHandle(Sound* sound, FileHandle file);
+B32 SoundOpenFile(Arena* arena, Sound* sound, String8 file_path);
+B32 SoundOpenFileHandle(Sound* sound, FileHandle* file);
 B32 SoundGetSamplesInterleaved(Sound* sound, U8* sample_bytes, S32 sample_bytes_size, S32* sample_bytes_read);
 B32 SoundRestart(Sound* sound);
 B32 SoundClose(Sound* sound);
 
-B32 SoundOpenWav(Sound* sound, FileHandle file);
+B32 SoundOpenWav(Sound* sound, FileHandle* file);
 B32 SoundGetSamplesInterleavedWav(Sound* sound, U8* sample_bytes, S32 sample_bytes_size, S32* sample_bytes_read);
 
 #endif // CDEFAULT_SOUND_H_
@@ -88,10 +87,10 @@ B32 SoundGetSamplesInterleavedWav(Sound* sound, U8* sample_bytes, S32 sample_byt
 #undef CDEFAULT_SOUND_IMPLEMENTATION
 
 // https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
-B32 SoundOpenWav(Sound* sound, FileHandle file) {
+B32 SoundOpenWav(Sound* sound, FileHandle* file) {
   sound->file = file;
   sound->type = SoundFileType_WAV;
-  if (!FileHandleSeek(&sound->file, 0, FileSeekPos_Begin)) {
+  if (!FileHandleSeek(sound->file, 0, FileSeekPos_Begin)) {
     LOG_ERROR("[SOUND] Unexpectedly unable to seek to file start for WAV file.");
     return false;
   }
@@ -100,7 +99,7 @@ B32 SoundOpenWav(Sound* sound, FileHandle file) {
   // TODO: debug assertions may be thrown if the file is malformed, do we care?
   U8 bytes[128];
   S32 bytes_read;
-  if (!FileHandleRead(&sound->file, bytes, STATIC_ARRAY_SIZE(bytes), &bytes_read)) { return false; }
+  if (!FileHandleRead(sound->file, bytes, STATIC_ARRAY_SIZE(bytes), &bytes_read)) { return false; }
 
   BinStream s;
   BinStreamInit(&s, bytes, bytes_read);
@@ -153,7 +152,7 @@ B32 SoundOpenWav(Sound* sound, FileHandle file) {
   sound->samples_byte_size = BinStreamPull32LE(&s);
   sound->sound_offset = s.pos;
   sound->samples_pos = 0;
-  if (!FileHandleSeek(&sound->file, sound->sound_offset, FileSeekPos_Begin)) {
+  if (!FileHandleSeek(sound->file, sound->sound_offset, FileSeekPos_Begin)) {
     LOG_ERROR("[SOUND] Unexpectedly unable to seek to sound start for WAV file.");
     return false;
   }
@@ -166,7 +165,7 @@ B32 SoundGetSamplesInterleavedWav(Sound* sound, U8* sample_bytes, S32 sample_byt
     *sample_bytes_read = 0;
     return true;
   }
-  if (!FileHandleRead(&sound->file, sample_bytes, sample_bytes_size, sample_bytes_read)) { return false; }
+  if (!FileHandleRead(sound->file, sample_bytes, sample_bytes_size, sample_bytes_read)) { return false; }
   if (sound->samples_pos + *sample_bytes_read >= sound->samples_byte_size) {
     *sample_bytes_read = sound->samples_byte_size - sound->samples_pos;
   }
@@ -181,25 +180,25 @@ B32 SoundGetSamplesInterleaved(Sound* sound, U8* sample_bytes, S32 sample_bytes_
   }
 }
 
-B32 SoundOpenFile(Sound* sound, String8 file_path) {
-  FileHandle file;
-  if (!FileHandleOpen(&file, file_path, FileMode_Read)) { return false; }
+B32 SoundOpenFile(Arena* arena, Sound* sound, String8 file_path) {
+  FileHandle* file = FileHandleAllocate(arena);;
+  if (!FileHandleOpen(file, file_path, FileMode_Read)) { return false; }
   return SoundOpenFileHandle(sound, file);
 }
 
-B32 SoundOpenFileHandle(Sound* sound, FileHandle file) {
+B32 SoundOpenFileHandle(Sound* sound, FileHandle* file) {
   if (SoundOpenWav(sound, file)) { return true; }
   return false;
 }
 
 B32 SoundRestart(Sound* sound) {
-  if (!FileHandleSeek(&sound->file, sound->sound_offset, FileSeekPos_Begin)) { return false; }
+  if (!FileHandleSeek(sound->file, sound->sound_offset, FileSeekPos_Begin)) { return false; }
   sound->samples_pos = 0;
   return true;
 }
 
 B32 SoundClose(Sound* sound) {
-  return FileHandleClose(&sound->file);
+  return FileHandleClose(sound->file);
 }
 
 #endif // CDEFAULT_SOUND_IMPLEMENTATION

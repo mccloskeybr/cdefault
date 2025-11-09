@@ -1,12 +1,6 @@
-#define CDEFAULT_STD_IMPLEMENTATION
-#include "../cdefault_std.h"
-#define CDEFAULT_MATH_IMPLEMENTATION
-#include "../cdefault_math.h"
-#define CDEFAULT_RENDER_IMPLEMENTATION
-#include "../cdefault_render.h"
-#define CDEFAULT_AUDIO_IMPLEMENTATION
-#include "../cdefault_audio.h"
-#include "third_party/stb_vorbis.c"
+#define CDEFAULT_IMPLEMENTATION
+#include "../cdefault.h"
+#include "third_party/stb_vorbis.c" // TODO: use cdefault's.
 
 #define TILE_SIZE     62
 #define TILE_PAD      1

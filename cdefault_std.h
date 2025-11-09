@@ -493,7 +493,9 @@ void  MemoryDecommit(void* ptr, U64 size);
 
 // NOTE: If not initialized, will print to stderr.
 void LogInit(FILE* fd);
+void LogNoPrefix(char* fmt, ...);
 void Log(char* level, char* filename, U32 loc, char* fmt, ...);
+#define LOG_NO_PREFIX(fmt, ...)  LogNoPrefix(fmt, ##__VA_ARGS__)
 #define LOG_INFO(fmt, ...)  Log("INFO",  FILENAME, __LINE__, fmt, ##__VA_ARGS__)
 #define LOG_WARN(fmt, ...)  Log(ANSI_COLOR_YELLOW "WARN" ANSI_COLOR_RESET, FILENAME, __LINE__, fmt, ##__VA_ARGS__)
 #define LOG_ERROR(fmt, ...) Log(ANSI_COLOR_RED "ERR " ANSI_COLOR_RESET, FILENAME, __LINE__, fmt, ##__VA_ARGS__)
@@ -508,8 +510,7 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...);
 ///////////////////////////////////////////////////////////////////////////////
 
 #define PAGE_SIZE KB(4)
-// #define CDEFAULT_ARENA_RESERVE_SIZE ALIGN_POW_2(MB(64), PAGE_SIZE)
-#define CDEFAULT_ARENA_RESERVE_SIZE ALIGN_POW_2(GB(10), PAGE_SIZE)
+#define CDEFAULT_ARENA_RESERVE_SIZE ALIGN_POW_2(MB(64), PAGE_SIZE)
 #define CDEFAULT_ARENA_COMMIT_SIZE  ALIGN_POW_2(PAGE_SIZE, PAGE_SIZE)
 
 typedef struct Arena Arena;
@@ -725,6 +726,8 @@ String8 _Str8CStr(U8* c_str);
 #define Str8Lit(s) Str8((U8*) s, sizeof(s) - 1)
 String8 Str8Copy(Arena* arena, String8 string);
 String8 Str8Substring(String8 s, S32 start, S32 one_past_last);
+String8 Str8TrimFront(String8 s);
+String8 Str8TrimBack(String8 s);
 String8 Str8Trim(String8 s);
 String8 Str8ReplaceAll(Arena* arena, String8 src, String8 from, String8 to);
 B32     Str8ReplaceAllChar(String8* str, U8 from, U8 to);
@@ -972,6 +975,14 @@ void LogInit(FILE* fd) {
   _cdef_log_config.is_initialized = true;
 }
 
+static void LogNoPrefixV(char* fmt, va_list args) {
+  if (UNLIKELY(!_cdef_log_config.is_initialized)) { LogInit(stderr); }
+  MutexLock(&_cdef_log_config.mtx);
+  vfprintf(_cdef_log_config.fd, fmt, args);
+  fprintf(_cdef_log_config.fd, "\n");
+  MutexUnlock(&_cdef_log_config.mtx);
+}
+
 static void LogV(char* level, char* filename, U32 loc, char* fmt, va_list args) {
   if (UNLIKELY(!_cdef_log_config.is_initialized)) { LogInit(stderr); }
   MutexLock(&_cdef_log_config.mtx);
@@ -979,6 +990,13 @@ static void LogV(char* level, char* filename, U32 loc, char* fmt, va_list args) 
   vfprintf(_cdef_log_config.fd, fmt, args);
   fprintf(_cdef_log_config.fd, "\n");
   MutexUnlock(&_cdef_log_config.mtx);
+}
+
+void LogNoPrefix(char* fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  LogNoPrefixV(fmt, args);
+  va_end(args);
 }
 
 void Log(char* level, char* filename, U32 loc, char* fmt, ...) {

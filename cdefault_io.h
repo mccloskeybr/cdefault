@@ -53,6 +53,7 @@ B32 DirGetExeDir(Arena* arena, String8* file_path);  // NOTE: Gets the directory
 
 B32 PathPop(String8* path); // NOTE: Pops the right most part of the path off. E.g. /a/b/c -> /a/b
 
+FileHandle* FileHandleAllocate(Arena* arena);
 B32 FileHandleOpen(FileHandle* file, String8 file_path, FileMode mode);  // NOTE: Opens a file. Mode must include read and / or write. Implicitly places a shared or exclusive lock depending on the mode.
 B32 FileHandleClose(FileHandle* file);                               // NOTE: Closes a file, releases any locks held on that file.
 B32 FileHandleStat(FileHandle* file, FileStats* stats);              // NOTE: Like FileStat, but on a FileHandle instead of a path.
@@ -574,6 +575,10 @@ B32 PathPop(String8* path) {
 
 B32 FileHandleStat(FileHandle* file, FileStats* stats) {
   return CDEFAULT_IO_BACKEND_FN(FileHandleStat(file, stats));
+}
+
+FileHandle* FileHandleAllocate(Arena* arena) {
+  return ARENA_PUSH_STRUCT(arena, FileHandle);
 }
 
 B32 FileHandleOpen(FileHandle* file, String8 file_path, FileMode mode) {

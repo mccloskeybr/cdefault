@@ -1,11 +1,5 @@
-#define CDEFAULT_STD_IMPLEMENTATION
-#include "../cdefault_std.h"
-#define CDEFAULT_MATH_IMPLEMENTATION
-#include "../cdefault_math.h"
-#define CDEFAULT_JSON_IMPLEMENTATION
-#include "../cdefault_json.h"
-#define CDEFAULT_TEST_IMPLEMENTATION
-#include "../cdefault_test.h"
+#define CDEFAULT_IMPLEMENTATION
+#include "../cdefault.h"
 
 static Arena* arena;
 

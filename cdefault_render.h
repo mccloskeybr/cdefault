@@ -679,14 +679,12 @@ static B32 RendererInit(void) {
   g->glBindVertexArray(0);
   g->glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-  M4 projection_2d;
   S32 width, height;
   WindowGetDims(NULL, NULL, &width, &height);
-  M4Orthographic(&projection_2d, 0, width, 0, height, 0.01f, 100.0f);
+  M4 projection_2d = M4Orthographic(0, width, 0, height, 0.01f, 100.0f);
   RendererSetProjection2D(projection_2d);
 
-  M4 projection_3d;
-  M4Perspective(&projection_3d, F32_PI / 4.0f, 16.0f / 9.0f, 0.01f, 100.0f);
+  M4 projection_3d = M4Perspective(F32_PI / 4.0f, 16.0f / 9.0f, 0.01f, 100.0f);
   RendererSetProjection3D(projection_3d);
   r->camera_3d.pos      = (V3) {0, 0, 0 };
   r->camera_3d.look_dir = V3_Z_NEG;
@@ -711,8 +709,7 @@ void RendererSetProjection2D(M4 projection_2d) {
   V3 pos    = { 0, 0, 1 }; // NOTE: seat camera Z back so items can exist at z = 0.
   V3 target = V3_Z_NEG;
   V3 up     = V3_Y_POS;
-  M4 camera;
-  M4LookAt(&camera, &pos, &target, &up);
+  M4 camera = M4LookAt(&pos, &target, &up);
   M4MultM4(&r->world_to_camera_2d, &projection_2d, &camera);
 }
 
@@ -1250,7 +1247,7 @@ void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale) {
   V3 camera_target;
   V3AddV3(&camera_target, &r->camera_3d.pos, &r->camera_3d.look_dir);
   M4 camera, world_to_camera, mesh_to_world, mesh_to_camera, mesh_to_camera_t;
-  M4LookAt(&camera, &r->camera_3d.pos, &camera_target, &r->camera_3d.up_dir);
+  camera = M4LookAt(&r->camera_3d.pos, &camera_target, &r->camera_3d.up_dir);
   M4MultM4(&world_to_camera, &r->projection_3d, &camera);
   mesh_to_world = M4FromTransform(&pos, &rot, &scale);
   M4MultM4(&mesh_to_camera, &world_to_camera, &mesh_to_world);

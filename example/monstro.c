@@ -1,11 +1,5 @@
-#define CDEFAULT_STD_IMPLEMENTATION
-#include "../cdefault_std.h"
-#define CDEFAULT_MATH_IMPLEMENTATION
-#include "../cdefault_math.h"
-#define CDEFAULT_GEOMETRY_IMPLEMENTATION
-#include "../cdefault_geometry.h"
-#define CDEFAULT_RENDER_IMPLEMENTATION
-#include "../cdefault_render.h"
+#define CDEFAULT_IMPLEMENTATION
+#include "../cdefault.h"
 
 #define WINDOW_WIDTH  1920
 #define WINDOW_HEIGHT 1080

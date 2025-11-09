@@ -2,10 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define CDEFAULT_STD_IMPLEMENTATION
-#include "../cdefault_std.h"
-#define CDEFAULT_TEST_IMPLEMENTATION
-#include "../cdefault_test.h"
+#define CDEFAULT_IMPLEMENTATION
+#include "../cdefault.h"
 
 void LogCustomFileTest(void) {
 #ifdef OS_LINUX

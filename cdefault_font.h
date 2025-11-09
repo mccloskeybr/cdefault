@@ -6,6 +6,8 @@
 
 // TODO: support kern table.
 // TODO: some sdf characters look thicker than they maybe should be?
+// TODO: better atlas fitting / packing
+// TODO: in relevant places, fall back on "no glyph present" glyph instead of erroring up.
 
 // NOTE: this is a font atlas generation library, which can be used for rendering fonts. it is a very simple implementation and does no e.g. gridfitting.
 // it supports bitmap rasterization (no antialiasing) and SDF bitmap generation, which produces acceptable results at high scales and ok results at low scales.
@@ -18,8 +20,8 @@
 // Font font;
 // DEBUG_ASSERT(FontInit(&font, file_data.str, file_data.size));
 //
-// F32 raster_height = 300.0f;
-// F32 sdf_height    = 64.0f;
+// F32 raster_height = 100.0f;
+// F32 sdf_height    = 32.0f;
 //
 // FontAtlas sdf_atlas;
 // U8* sdf_atlas_bitmap;
@@ -207,7 +209,6 @@ static void FontGlyphShapeScale(GlyphShape* shape, F32 scale, S16* min_x, S16* m
 
 // NOTE: this very simply determines the maximum glyph bbox and generates a width / height that fits all characters assuming that bbox.
 // this will be very bad if there is a lot of variance in glyph size, but seemed more desirable than e.g. having a dynamic bitmap size.
-// TODO: consider more sophisticated fitting and atlas packing schemes.
 static B32 FontSuggestAtlasSize(Font* font, FontCharSet* char_set, F32 scale, U32* width, U32* height, F32 pad_x, F32 pad_y) {
   F32 num_glyphs = 0;
   U32 max_glyph_width = 0;
@@ -362,7 +363,6 @@ B32 FontInit(Font* font, U8* data, U32 data_size) {
   return true;
 }
 
-// TODO: in relevant places, fall back on "no glyph present" glyph instead of erroring up.
 B32 FontGetGlyphIndex(Font* font, U32 codepoint, U32* glyph_index) {
   *glyph_index = 0;
   BinStream s;
@@ -1238,13 +1238,8 @@ FontCharSet* FontCharSetConcat(FontCharSet* set, FontCharSet* to_concat) {
 }
 
 FontCharSet* FontCharSetLatin() {
-#if 1
   static U32 latin_characters['~' - ' ' + 1];
   for (U32 c = ' '; c <= '~'; c++) { latin_characters[c - ' '] = c; }
-#else
-  static U32 latin_characters[1];
-  latin_characters[0] = 'E';
-#endif
   static FontCharSet latin_char_set = { latin_characters, STATIC_ARRAY_SIZE(latin_characters), NULL };
   return &latin_char_set;
 }
