@@ -180,8 +180,8 @@ void JsonArrayPushV4(Arena* arena, JsonArray* array, F32 v[4]);
 
 // TODO: truncate string when logging?
 
-static B32 JsonValueParse(Arena* arena, JsonValue* value, String8* orig_str, String8* json_str);
-static B32 JsonObjectParse(Arena* arena, JsonObject* object, String8* orig_str, String8* json_str);
+static B32  JsonValueParse(Arena* arena, JsonValue* value, String8* orig_str, String8* json_str);
+static B32  JsonObjectParse(Arena* arena, JsonObject* object, String8* orig_str, String8* json_str);
 static void JsonValueAppendToStr8List(Arena* arena, JsonValue* value, String8List* json_str_list, B32 pretty, S32 indent);
 static void JsonObjectAppendToStr8List(Arena* arena, JsonObject* object, String8List* json_str_list, B32 pretty, S32 indent);
 
@@ -321,7 +321,7 @@ static B32 JsonObjectParse(Arena* arena, JsonObject* object, String8* orig_str, 
     S32 key_end = Str8Find(*json_str, 0, Str8Lit("\""));
     if (key_end == -1) {
       JSON_LOG_ERROR(orig_str, json_str, "No end to json key");
-      return false;
+      goto json_object_parse_end;
     }
     node->key = Str8(key_str, key_end);
     JsonStrAdvance(json_str, key_end + 1);

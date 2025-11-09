@@ -4,12 +4,27 @@
 #include "cdefault_std.h"
 #include "cdefault_math.h"
 
+// TODO: support kern table.
+// TODO: some sdf characters look thicker than they maybe should be?
+
 // NOTE: this is a font atlas generation library, which can be used for rendering fonts. it is a very simple implementation and does no e.g. gridfitting.
 // it supports bitmap rasterization (no antialiasing) and SDF bitmap generation, which produces acceptable results at high scales and ok results at low scales.
 // stb_truetype was used as a reference when creating this library.
-
-// TODO: iron out bugs with rasterizing.
-// TODO: support kern table.
+//
+// e.g.
+//
+// String8 file_data;
+// DEBUG_ASSERT(FileReadAll(arena, Str8Lit("C:/Windows/Fonts/consola.ttf"), &file_data.str, &file_data.size));
+// Font font;
+// DEBUG_ASSERT(FontInit(&font, file_data.str, file_data.size));
+//
+// F32 raster_height = 300.0f;
+// F32 sdf_height    = 64.0f;
+//
+// FontAtlas sdf_atlas;
+// U8* sdf_atlas_bitmap;
+// U32 sdf_atlas_bitmap_width, sdf_atlas_bitmap_height;
+// DEBUG_ASSERT(FontAtlasBakeSdf(arena, &font, &sdf_atlas, &sdf_atlas_bitmap, &sdf_atlas_bitmap_width, &sdf_atlas_bitmap_height, raster_height, sdf_height, FontCharSetLatin()));
 
 // NOTE: point is the start point of the curve. The end point is the sequential curve in the list's start point.
 typedef struct GlyphCurve GlyphCurve;
@@ -89,8 +104,26 @@ struct Font {
 // NOTE: A Font must be initialized successfully before it can be used by any other function.
 // A reference to the TTF data is stored, so it must outlive the Font object.
 B32 FontInit(Font* font, U8* data, U32 data_size);
-B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap, U32* atlas_width, U32* atlas_height, F32 pixel_height, FontCharSet* char_set);
-B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap, U32* atlas_width, U32* atlas_height, F32 bmp_pixel_height, F32 sdf_pixel_height, FontCharSet* char_set);
+
+// NOTE: bakes a regular raster of each glyph to an atlas. does *not* perform any anti-aliasing on the edges.
+// should only be used for sufficiently large fonts. using an sdf atlas will almost always be better than using this.
+// pixel_height dictates the height (and, consequently, resolution) of each glyph in the bitmap.
+B32 FontAtlasBakeBitmap(
+    Arena* arena, Font* font,
+    FontAtlas* atlas, U8** bitmap, U32* atlas_width, U32* atlas_height,
+    F32 pixel_height, FontCharSet* char_set);
+
+// NOTE: bakes an SDF atlas bitmap, which can be used with a shader to do a decent job of rendering glyphs at arbitrary resolutions.
+// this is done by rasterizing each glyph to a bitmap first, then, for each pixel in the sdf bitmap, compute the distance to the nearest edge.
+// bmp_pixel_height dictates the resolution of the intermediary glyph bitmap raster -- a higher value will be more expensive to compute, but will result in more accurate distance calculations for each sdf texel. 100 is a reasonable default.
+// sdf_pixel_height dictates the resolution of the final sdf bitmap. a higher value leads to more accurate glyph renders, especially at higher resolutions. 32 is a reasonable default.
+// spread_factor dictates the look-around radius when finding the closest edge for each sdf pixel. higher values will lead to a more accurate distance gradient, but is more expensive to compute and may look bad for small sdf characters. 8 / 16 are reasonable defaults.
+B32 FontAtlasBakeSdf(
+    Arena* arena, Font* font, FontAtlas* atlas,
+    U8** bitmap, U32* atlas_width, U32* atlas_height,
+    F32 bmp_pixel_height, F32 sdf_pixel_height, F32 spread_factor,
+    FontCharSet* char_set);
+
 // TODO: figure out what to do with this VV
 B32 FontAtlasPlace(FontAtlas* atlas, U32 atlas_width, U32 atlas_height, U32 codepoint, F32 scale, V2* cursor, V2* center, V2* size, V2* min_uv, V2* max_uv);
 
@@ -103,13 +136,13 @@ B32 FontGetGlyphSizeInfo(Font* font, U32 glyph_index, S32* advance, S32* left_si
 // NOTE: determines the offset of the glyph from the start of the file.
 // returns -1 e.g. if there is no entry in the glyf table (true for e.g. ' ').
 B32 FontGetGlyphGlyfOffset(Font* font, U32 glyph_index, S32* glyf_offset);
-B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShape* shape);
+B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShape* shape); // NOTE: Assumes negative glyph_glyf_offset is for chars with no contours, e.g. ' '.
 
 // NOTE: rasterizes glyph_shape into bmp scaling into the inclusive bounds provided.
 // Expects *bmp to be pre-allocated with size { bmp_width, bmp_height }.
 B32 FontGlyphShapeRasterize(GlyphShape* glyph_shape, U8** bmp, U32 bmp_width, U32 bmp_height, U16 bmp_glyph_min_x, U16 bmp_glyph_min_y, U16 bmp_glyph_max_x, U16 bmp_glyph_max_y);
 
-// NOTE: returns false if codepoint already has a atlas_char represented.
+// NOTE: returns false if codepoint already has an atlas_char represented.
 B32 FontAtlasInsert(FontAtlas* atlas, U32 codepoint, AtlasChar* atlas_char);
 AtlasChar* FontAtlasGet(FontAtlas* atlas, U32 codepoint);
 
@@ -142,11 +175,25 @@ AtlasChar* FontAtlasGet(FontAtlas* atlas, U32 codepoint);
 #define COMPOUND_FLAG_SEP_SCALES(flags)  ((flags) & BIT(6))
 #define COMPOUND_FLAG_2X2MAT(flags)      ((flags) & BIT(7))
 
-// NOTE: evaluates quadratic bezier lerps for a single dimension.
+typedef struct FontIntersectPoint FontIntersectPoint;
+struct FontIntersectPoint {
+  F32 x;
+  S32 winding; // NOTE: +1 for CW, -1 for CCW.
+};
+
+static S32 SortCompareFontIntersectPointAsc(void* a, void* b) {
+  return ((FontIntersectPoint*) a)->x - ((FontIntersectPoint*) b)->x;
+}
+
 static F32 FontCurveEvaluateBezier(F32 start, F32 end, F32 control, F32 t) {
   F32 start_to_control = F32Lerp(start, control, t);
   F32 control_to_end   = F32Lerp(control, end, t);
-  return F32Lerp(start_to_control, control_to_end, t);
+  F32 result           = F32Lerp(start_to_control, control_to_end, t);
+  return result;
+}
+
+static F32 FontCurveEvaluateBezierDerivative(F32 start, F32 end, F32 control, F32 t) {
+  return 2.0f * ((1.0f - t) * (control - start) + (t * (end - control)));
 }
 
 static void FontGlyphShapeScale(GlyphShape* shape, F32 scale, S16* min_x, S16* min_y, S16* max_x, S16* max_y, U16* width, U16* height, F32 x_pad, F32 y_pad) {
@@ -188,18 +235,18 @@ static B32 FontSuggestAtlasSize(Font* font, FontCharSet* char_set, F32 scale, U3
 
       BinStreamSeek(&s, glyph_glyf_offset);
       BinStreamSkip(&s, 1, sizeof(U16));
-      S16 min_x        = BinStreamPull16BE(&s);
-      S16 min_y        = BinStreamPull16BE(&s);
-      S16 max_x        = BinStreamPull16BE(&s);
-      S16 max_y        = BinStreamPull16BE(&s);
-      S16 scaled_min_x = F32Floor(min_x * scale);
-      S16 scaled_min_y = F32Floor(min_y * scale);
-      S16 scaled_max_x = F32Ceil(max_x * scale);
-      S16 scaled_max_y = F32Ceil(max_y * scale);
-      U16 width        = scaled_max_x - scaled_min_x + 1;
-      U16 height       = scaled_max_y - scaled_min_y + 1;
-      max_glyph_width  = MAX(width, max_glyph_width);
-      max_glyph_height = MAX(height, max_glyph_height);
+      S16 min_x         = BinStreamPull16BE(&s);
+      S16 min_y         = BinStreamPull16BE(&s);
+      S16 max_x         = BinStreamPull16BE(&s);
+      S16 max_y         = BinStreamPull16BE(&s);
+      S16 scaled_min_x  = F32Floor(min_x * scale);
+      S16 scaled_min_y  = F32Floor(min_y * scale);
+      S16 scaled_max_x  = F32Ceil(max_x * scale);
+      S16 scaled_max_y  = F32Ceil(max_y * scale);
+      U16 scaled_width  = scaled_max_x - scaled_min_x + 1;
+      U16 scaled_height = scaled_max_y - scaled_min_y + 1;
+      max_glyph_width   = MAX(scaled_width, max_glyph_width);
+      max_glyph_height  = MAX(scaled_height, max_glyph_height);
       num_glyphs++;
     }
   }
@@ -355,8 +402,6 @@ B32 FontGetGlyphIndex(Font* font, U32 codepoint, U32* glyph_index) {
       BinStream id_deltas     = s;
       BinStreamSkip(&s, seg_count, sizeof(U16));
       BinStream offsets       = s;
-      BinStreamSkip(&s, seg_count, sizeof(U16));
-      BinStream glyph_idx_arr = s;
 
       U32 search = 0;
       if (codepoint > BinStreamPeek16BE(&end_codes, range_shift, sizeof(U8))) {
@@ -383,7 +428,7 @@ B32 FontGetGlyphIndex(Font* font, U32 codepoint, U32* glyph_index) {
         S16 delta = BinStreamPeek16BE(&id_deltas, item, sizeof(U16));
         *glyph_index = codepoint + delta;
       } else {
-        *glyph_index = BinStreamPeek16BE(&glyph_idx_arr, offset + ((codepoint - start_code) * 2) + (item * 2), sizeof(U8));
+        *glyph_index = BinStreamPeek16BE(&offsets, offset + (2 * (codepoint - start_code)) + (item * 2), sizeof(U8));
       }
       return true;
     } break;
@@ -645,6 +690,7 @@ B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShap
       }
       // NOTE: pop dynamic array excess
       ARENA_POP_ARRAY(arena, GlyphCurve, curves_capacity - contour.curves_size);
+
       shape->contours[contours_idx++] = contour;
       if (contours_idx >= contours_size) { break; }
       start_of_contour = end_of_contour + 1;
@@ -784,10 +830,10 @@ B32 FontGlyphShapeRasterize(GlyphShape* glyph_shape, U8** bmp, U32 bmp_width, U3
     return false;
   }
 
-  Arena* temp_arena = ArenaAllocate();
-  F32* intersect_x_vals          = NULL;
-  U32  intersect_x_vals_size     = 0;
-  U32  intersect_x_vals_capacity = 0;
+  Arena*              temp_arena                = ArenaAllocate();
+  FontIntersectPoint* intersect_x_vals          = NULL;
+  U32                 intersect_x_vals_size     = 0;
+  U32                 intersect_x_vals_capacity = 0;
 
   S16 pen_y = bmp_glyph_min_y;
   while (pen_y <= bmp_glyph_max_y) {
@@ -805,7 +851,7 @@ B32 FontGlyphShapeRasterize(GlyphShape* glyph_shape, U8** bmp, U32 bmp_width, U3
         F32 b = 2 * (curr->control_y - curr->point_y);
         F32 c = curr->point_y - scanline_y;
 
-        // NOTE: get y-extremes for the given curve
+        // NOTE: get y-extremes for the given curve, determine that the current scanline intersects based on the extents.
         F32 curve_min_y = MIN(curr->point_y, next->point_y);
         F32 curve_max_y = MAX(curr->point_y, next->point_y);
         F32 t_y_extreme = (curr->point_y - curr->control_y) / a;
@@ -839,41 +885,49 @@ B32 FontGlyphShapeRasterize(GlyphShape* glyph_shape, U8** bmp, U32 bmp_width, U3
           continue;
         }
 
+        // NOTE: save intersection points
         for (U32 k = 0; k < t_size; k++) {
-          if (!(0 <= t[k] && t[k] <= 1)) { continue; }
-          F32 x_intersect = FontCurveEvaluateBezier(curr->point_x, next->point_x, curr->control_x, t[k]);
-          if (x_intersect < glyph_shape->min_x || x_intersect > glyph_shape->max_x) {
+          // NOTE: [0, 1), not [0, 1] because the 1 will be double counted at the next curve's t = 0.
+          if (!(0 <= t[k] && t[k] < 1)) { continue; }
+          F32 intersect_x = FontCurveEvaluateBezier(curr->point_x, next->point_x, curr->control_x, t[k]);
+          if (intersect_x < glyph_shape->min_x || intersect_x > glyph_shape->max_x) {
             LOG_WARN("[FONT] Font defined glyph shape exceeds defined bounds! Attempting to recover, but there may be visual artifacts.");
-            x_intersect = MAX(glyph_shape->min_x, x_intersect);
-            x_intersect = MIN(glyph_shape->max_x, x_intersect);
+            intersect_x = MAX(glyph_shape->min_x, intersect_x);
+            intersect_x = MIN(glyph_shape->max_x, intersect_x);
           }
-          DA_PUSH_BACK_EX(temp_arena, intersect_x_vals, intersect_x_vals_size, intersect_x_vals_capacity, x_intersect);
+          F32 intersect_deriv = FontCurveEvaluateBezierDerivative(curr->point_y, next->point_y, curr->control_y, t[k]);
+          if (intersect_deriv == 0) { intersect_deriv = FontCurveEvaluateBezierDerivative(curr->point_x, next->point_x, curr->control_x, t[k]); }
+
+          FontIntersectPoint intersect_point;
+          intersect_point.x = intersect_x;
+          intersect_point.winding = (intersect_deriv > 0) ? +1 : -1;
+          DA_PUSH_BACK_EX(temp_arena, intersect_x_vals, intersect_x_vals_size, intersect_x_vals_capacity, intersect_point);
         }
       }
     }
-    SORT_ASC(F32, intersect_x_vals, intersect_x_vals_size);
+    SORT(FontIntersectPoint, intersect_x_vals, intersect_x_vals_size, SortCompareFontIntersectPointAsc);
 
-    // NOTE: color in the current scanline. this approach assumes that the pen starts up for each
-    // given line and transitions from down <> up at every line boundary.
-    // TODO: refactor to use the winding order. can calculate it ourselves by using curve derivatives.
-    F32 scanline_x = glyph_shape->min_x;
-    B32 pen_down = false;
+    // NOTE: color in the current scanline. we follow the approach described in apple's ttf documentation,
+    // deciding to color lines based on a running accumulated winding order. when != 0, in a shape, when = 0, not in a shape.
+    F32 pen_start = 0;
+    S32 winding   = 0;
     for (U32 i = 0; i < intersect_x_vals_size; i++) {
-      F32 x_value = intersect_x_vals[i];
-      if (x_value < scanline_x) {
-        pen_down = !pen_down;
-        continue;
+      FontIntersectPoint* intersect = &intersect_x_vals[i];
+      B32 winding_was_0             = (winding == 0);
+      winding                       = winding + intersect->winding;
+      B32 winding_became_0          = (winding == 0);
+
+      if (winding_was_0) {
+        // NOTE: entering a shape
+        pen_start = intersect->x;
+
+      } else if (!winding_was_0 && winding_became_0) {
+        // NOTE: exiting a shape
+        // TODO: this doesn't sample from the bmp's center point.
+        U16 bmp_pen_start = F32MapRange(pen_start,    glyph_shape->min_x, glyph_shape->max_x, bmp_glyph_min_x, bmp_glyph_max_x);
+        U16 bmp_pen_stop  = F32MapRange(intersect->x, glyph_shape->min_x, glyph_shape->max_x, bmp_glyph_min_x, bmp_glyph_max_x);
+        for (U16 j = bmp_pen_start; j <= bmp_pen_stop; j++) { (*bmp)[(pen_y * bmp_width) + j] = 255; }
       }
-      // TODO: take a second look at remapping -- only want to color pixel if the curve overlaps the center.
-      U16 pen_start = F32MapRange(scanline_x, glyph_shape->min_x, glyph_shape->max_x, bmp_glyph_min_x, bmp_glyph_max_x);
-      U16 pen_stop  = F32MapRange(x_value, glyph_shape->min_x, glyph_shape->max_x, bmp_glyph_min_x, bmp_glyph_max_x);
-      if (pen_down) {
-        for (U16 j = pen_start; j <= pen_stop; j++) {
-          (*bmp)[(pen_y * bmp_width) + j] = 255;
-        }
-      }
-      scanline_x = x_value;
-      pen_down = !pen_down;
     }
 
     pen_y += 1;
@@ -982,7 +1036,7 @@ font_atlas_bake_bitmap_end:
 }
 
 // https://steamcdn-a.akamaihd.net/apps/valve/2007/SIGGRAPH2007_AlphaTestedMagnification.pdf
-B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap, U32* atlas_width, U32* atlas_height, F32 bmp_pixel_height, F32 sdf_pixel_height, FontCharSet* char_set) {
+B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap, U32* atlas_width, U32* atlas_height, F32 bmp_pixel_height, F32 sdf_pixel_height, F32 spread_factor, FontCharSet* char_set) {
   B32 success = false;
   Arena* temp_arena = ArenaAllocate();
   U64 base_pos = ArenaPos(arena);
@@ -999,8 +1053,6 @@ B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap, U3
     goto font_atlas_bake_sdf_end;
   }
 
-  // TODO: maybe spread_factor should be a function of bmp_pixel_height?
-  F32 spread_factor         = 16;
   S32 h_sdf_kernel_width    = (U32) (spread_factor / 2.0f);
   S32 h_sdf_kernel_height   = (U32) (spread_factor / 2.0f);
   F32 sdf_pad_x             = (sdf_scale / bmp_scale) * h_sdf_kernel_width;
@@ -1186,8 +1238,13 @@ FontCharSet* FontCharSetConcat(FontCharSet* set, FontCharSet* to_concat) {
 }
 
 FontCharSet* FontCharSetLatin() {
+#if 1
   static U32 latin_characters['~' - ' ' + 1];
   for (U32 c = ' '; c <= '~'; c++) { latin_characters[c - ' '] = c; }
+#else
+  static U32 latin_characters[1];
+  latin_characters[0] = 'E';
+#endif
   static FontCharSet latin_char_set = { latin_characters, STATIC_ARRAY_SIZE(latin_characters), NULL };
   return &latin_char_set;
 }

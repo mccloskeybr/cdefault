@@ -14,7 +14,7 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "third_party/stb_truetype.h"
 
-#define BMP_FONT_HEIGHT  300.0f
+#define BMP_FONT_HEIGHT  100.0f
 #define SDF_FONT_HEIGHT  32.0f
 
 void DrawString(String8 str, FontAtlas* atlas, U32 atlas_handle, U32 atlas_width, U32 atlas_height, F32 x, F32 y) {
@@ -47,12 +47,15 @@ int main(void) {
   Arena* temp_arena = ArenaAllocate();
 
   String8 file_data;
-  DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("../data/firacode.ttf"), &file_data.str, &file_data.size));
+  // DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("../data/firacode.ttf"), &file_data.str, &file_data.size));
   // DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/times.ttf"), &file_data.str, &file_data.size));
+  // DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/consola.ttf"), &file_data.str, &file_data.size));
+  DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/verdana.ttf"), &file_data.str, &file_data.size));
 
   Font font;
   DEBUG_ASSERT(FontInit(&font, file_data.str, file_data.size));
 
+  /*
   FontAtlas bmp_atlas;
   U8* bmp_atlas_bitmap;
   U32 bmp_atlas_width, bmp_atlas_height;
@@ -69,6 +72,7 @@ int main(void) {
   font_bitmap_image.height = bmp_atlas_height;
   font_bitmap_image.data   = bmp_atlas_bitmap;
   DEBUG_ASSERT(ImageDumpBmp(&font_bitmap_image, Str8Lit("../data/TEST_BMP.bmp")));
+  */
 
   FontAtlas sdf_atlas;
   U8* sdf_atlas_bitmap;
@@ -76,7 +80,7 @@ int main(void) {
   DEBUG_ASSERT(FontAtlasBakeSdf(
         font_arena, &font,
         &sdf_atlas, &sdf_atlas_bitmap, &sdf_atlas_width, &sdf_atlas_height,
-        BMP_FONT_HEIGHT, SDF_FONT_HEIGHT, FontCharSetLatin()));
+        BMP_FONT_HEIGHT, SDF_FONT_HEIGHT, 8.0f, FontCharSetLatin()));
 
   U32 sdf_atlas_handle;
   RendererRegisterImageR(&sdf_atlas_handle, sdf_atlas_bitmap, sdf_atlas_width, sdf_atlas_height);

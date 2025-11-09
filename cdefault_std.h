@@ -508,7 +508,8 @@ void Log(char* level, char* filename, U32 loc, char* fmt, ...);
 ///////////////////////////////////////////////////////////////////////////////
 
 #define PAGE_SIZE KB(4)
-#define CDEFAULT_ARENA_RESERVE_SIZE ALIGN_POW_2(MB(64), PAGE_SIZE)
+// #define CDEFAULT_ARENA_RESERVE_SIZE ALIGN_POW_2(MB(64), PAGE_SIZE)
+#define CDEFAULT_ARENA_RESERVE_SIZE ALIGN_POW_2(GB(10), PAGE_SIZE)
 #define CDEFAULT_ARENA_COMMIT_SIZE  ALIGN_POW_2(PAGE_SIZE, PAGE_SIZE)
 
 typedef struct Arena Arena;
