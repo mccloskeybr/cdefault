@@ -3,6 +3,9 @@
 
 #include "cdefault_std.h"
 
+// TODO: truncate string when logging / better error messages?
+// TODO: metaprogramming for struct -> json serialization / deserialization?
+
 // NOTE: this is a simple json serialization / deserialization library, specifically for self-described schemas (rather than parsing arbitrary json blobs).
 // it encourages reading and writing json values in a straightforward, procedural way.
 //
@@ -46,8 +49,6 @@
 //
 // To read:  DEBUG_ASSERT(JsonValueGetMyStruct(JsonObjectGet(json_object, Str8Lit("my_key")), &my_struct));
 // To write: JsonObjectPushValue(arena, &json_object, Str8Lit("my_key"), JsonValueMyStruct(arena, my_struct));
-//
-// TODO: consider adding some metaprogramming utility for autogenerating these funcs for some given struct?
 
 typedef enum JsonValueKind JsonValueKind;
 enum JsonValueKind {
@@ -177,8 +178,6 @@ void JsonArrayPushV4(Arena* arena, JsonArray* array, F32 v[4]);
 
 #ifdef CDEFAULT_JSON_IMPLEMENTATION
 #undef CDEFAULT_JSON_IMPLEMENTATION
-
-// TODO: truncate string when logging?
 
 static B32  JsonValueParse(Arena* arena, JsonValue* value, String8* orig_str, String8* json_str);
 static B32  JsonObjectParse(Arena* arena, JsonObject* object, String8* orig_str, String8* json_str);

@@ -106,8 +106,8 @@ void DrawSubImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F3
 void DrawSubImageRotV(U32 image_handle, V2 center, V2 size, F32 angle_rad, V2 min_uv, V2 max_uv);
 void DrawFontCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 red, F32 green, F32 blue);
 void DrawFontCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, V3 color);
-void DrawFontSdfCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 red, F32 green, F32 blue);
-void DrawFontSdfCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, V3 color);
+void DrawFontSdfCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 threshold, F32 smoothing, F32 red, F32 green, F32 blue); // NOTE: defaults chosen for smoothing, threshold if 0.
+void DrawFontSdfCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, F32 threshold, F32 smoothing, V3 color); // NOTE: defaults chosen for smoothing, threshold if 0.
 
 // NOTE: 3D API
 void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale);
@@ -358,20 +358,22 @@ struct Renderer {
 
   GLuint image_shader;
   GLint  image_camera_uniform;
-  GLuint image_min_uv_uniform;
-  GLuint image_max_uv_uniform;
+  GLint  image_min_uv_uniform;
+  GLint  image_max_uv_uniform;
 
   GLuint font_shader;
   GLint  font_camera_uniform;
-  GLuint font_min_uv_uniform;
-  GLuint font_max_uv_uniform;
-  GLuint font_color_uniform;
+  GLint  font_min_uv_uniform;
+  GLint  font_max_uv_uniform;
+  GLint  font_color_uniform;
 
   GLuint font_sdf_shader;
   GLint  font_sdf_camera_uniform;
-  GLuint font_sdf_min_uv_uniform;
-  GLuint font_sdf_max_uv_uniform;
-  GLuint font_sdf_color_uniform;
+  GLint  font_sdf_threshold_uniform;
+  GLint  font_sdf_smoothing_uniform;
+  GLint  font_sdf_min_uv_uniform;
+  GLint  font_sdf_max_uv_uniform;
+  GLint  font_sdf_color_uniform;
 
   GLuint mesh_shader;
   GLint  mesh_camera_uniform;
@@ -618,17 +620,19 @@ static B32 RendererInit(void) {
     "#version 330 core\n"
     "uniform sampler2D texture_image;\n"
     "uniform vec3 color;\n"
+    "uniform float threshold;\n"
+    "uniform float smoothing;\n"
     "in vec2 tex_coord;\n"
     "out vec4 frag_color;\n"
     "void main() { \n"
-    "  float smoothing = 0.2;\n" // TODO: configurable?
-    "  float threshold = 0.5;\n" // TODO: configurable?
-    "  float distance  = texture(texture_image, tex_coord).r;\n"
-    "  float alpha     = smoothstep(threshold - smoothing, threshold + smoothing, distance);\n"
-    "  frag_color      = vec4(color, alpha);\n"
+    "  float distance = texture(texture_image, tex_coord).r;\n"
+    "  float alpha    = smoothstep(threshold - smoothing, threshold + smoothing, distance);\n"
+    "  frag_color     = vec4(color, alpha);\n"
     "}\0";
   DEBUG_ASSERT(RendererCompileShader(&r->font_sdf_shader, font_sdf_vertex_shader_source, font_sdf_fragment_shader_source));
   r->font_sdf_camera_uniform = g->glGetUniformLocation(r->font_sdf_shader, "to_camera_transform");
+  r->font_sdf_threshold_uniform = g->glGetUniformLocation(r->font_sdf_shader, "threshold");
+  r->font_sdf_smoothing_uniform = g->glGetUniformLocation(r->font_sdf_shader, "smoothing");
   r->font_sdf_min_uv_uniform = g->glGetUniformLocation(r->font_sdf_shader, "min_uv");
   r->font_sdf_max_uv_uniform = g->glGetUniformLocation(r->font_sdf_shader, "max_uv");
   r->font_sdf_color_uniform  = g->glGetUniformLocation(r->font_sdf_shader, "color");
@@ -1203,9 +1207,14 @@ void DrawFontCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_
   DrawFontCharacter(image_handle, center.x, center.y, size.x, size.y, min_uv.x, min_uv.y, max_uv.x, max_uv.y, color.r, color.g, color.b);
 }
 
-void DrawFontSdfCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 red, F32 green, F32 blue) {
+void DrawFontSdfCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 threshold, F32 smoothing, F32 red, F32 green, F32 blue) {
   Renderer* r = &_renderer;
   OpenGLAPI* g = &_ogl;
+
+  threshold = CLAMP(0.0f, threshold, 1.0f);
+  smoothing = CLAMP(0.0f, threshold, 1.0f);
+  if (threshold == 0) { threshold = 0.5f; }
+  if (smoothing == 0) { smoothing = 0.2f; }
 
   V3 color  = { red, green, blue };
   V2 min_uv = { min_uv_x, min_uv_y };
@@ -1221,6 +1230,8 @@ void DrawFontSdfCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 widt
 
   g->glUseProgram(r->font_sdf_shader);
   g->glUniformMatrix4fv(r->font_sdf_camera_uniform, 1, GL_FALSE, (GLfloat*) &image_to_camera_t);
+  g->glUniform1f(r->font_sdf_threshold_uniform, threshold);
+  g->glUniform1f(r->font_sdf_smoothing_uniform, smoothing);
   g->glUniform2fv(r->font_sdf_min_uv_uniform, 1, (GLfloat*) &min_uv);
   g->glUniform2fv(r->font_sdf_max_uv_uniform, 1, (GLfloat*) &max_uv);
   g->glUniform3fv(r->font_sdf_color_uniform, 1, (GLfloat*) &color);
@@ -1234,8 +1245,8 @@ void DrawFontSdfCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 widt
   g->glUseProgram(0);
 }
 
-void DrawFontSdfCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, V3 color) {
-  DrawFontSdfCharacter(image_handle, center.x, center.y, size.x, size.y, min_uv.x, min_uv.y, max_uv.x, max_uv.y, color.r, color.g, color.b);
+void DrawFontSdfCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, F32 threshold, F32 smoothing, V3 color) {
+  DrawFontSdfCharacter(image_handle, center.x, center.y, size.x, size.y, min_uv.x, min_uv.y, max_uv.x, max_uv.y, threshold, smoothing, color.r, color.g, color.b);
 }
 
 void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale) {

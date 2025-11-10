@@ -2,6 +2,7 @@
 #define CDEFAULT_STD_H_
 
 // TODO: wide strings (String16)
+// TODO: str8 base64 conversion funcs, useful for encoding bin blobs in json
 // TODO: assert --> message box w/ error?
 
 #if defined(_WIN32)
