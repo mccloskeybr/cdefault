@@ -1,7 +1,5 @@
 #define CDEFAULT_IMPLEMENTATION
 #include "../cdefault.h"
-#define STB_TRUETYPE_IMPLEMENTATION
-#include "third_party/stb_truetype.h"
 
 #define BMP_FONT_HEIGHT    100.0f
 #define SDF_FONT_HEIGHT    64.0f
@@ -42,9 +40,9 @@ int main(void) {
   StopwatchInit(&frame_stopwatch);
 
   String8 file_data;
-  // DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("../data/firacode.ttf"), &file_data.str, &file_data.size));
+  DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("../data/firacode.ttf"), &file_data.str, &file_data.size));
   // DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/times.ttf"), &file_data.str, &file_data.size));
-  DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/consola.ttf"), &file_data.str, &file_data.size));
+  // DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/consola.ttf"), &file_data.str, &file_data.size));
   // DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/verdana.ttf"), &file_data.str, &file_data.size));
 
   Font font; DEBUG_ASSERT(FontInit(&font, file_data.str, file_data.size));

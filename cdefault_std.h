@@ -839,7 +839,7 @@ U32 BinRead32BE(U8* bytes);
 U64 BinRead64LE(U8* bytes);
 U64 BinRead64BE(U8* bytes);
 
-// NOTE: Safe wrapper around the above. Throws debug (!!) assertions when exceeding bounds.
+// NOTE: Safe wrapper around the above. Returns false when exceeding bounds.
 // Orients around a pos cursor, which is convenient for reading / writing file bin blobs.
 
 typedef struct BinStream BinStream;
@@ -849,19 +849,28 @@ struct BinStream {
   U64 pos;
 };
 
+// TODO: just make this an assign fn instead of init
 void BinStreamInit(BinStream* stream, U8* bytes, U32 bytes_size);
-void BinStreamSeek(BinStream* stream, U32 pos);
-void BinStreamSkip(BinStream* stream, U32 num, S32 size);
+B32  BinStreamSeek(BinStream* stream, U32 pos);
+B32  BinStreamSkip(BinStream* stream, U32 num, S32 size);
 U8*  BinStreamDecay(BinStream* stream);
 
-U8   BinStreamPull8(BinStream* stream);
-U16  BinStreamPull16LE(BinStream* stream);
-U16  BinStreamPull16BE(BinStream* stream);
-U32  BinStreamPull32LE(BinStream* stream);
-U32  BinStreamPull32BE(BinStream* stream);
-U64  BinStreamPull64LE(BinStream* stream);
-U64  BinStreamPull64BE(BinStream* stream);
+B32  BinStreamPullU8(BinStream* stream, U8* result);
+B32  BinStreamPullU16LE(BinStream* stream, U16* result);
+B32  BinStreamPullU16BE(BinStream* stream, U16* result);
+B32  BinStreamPullU32LE(BinStream* stream, U32* result);
+B32  BinStreamPullU32BE(BinStream* stream, U32* result);
+B32  BinStreamPullU64LE(BinStream* stream, U64* result);
+B32  BinStreamPullU64BE(BinStream* stream, U64* result);
+B32  BinStreamPullS8(BinStream* stream, S8* result);
+B32  BinStreamPullS16LE(BinStream* stream, S16* result);
+B32  BinStreamPullS16BE(BinStream* stream, S16* result);
+B32  BinStreamPullS32LE(BinStream* stream, S32* result);
+B32  BinStreamPullS32BE(BinStream* stream, S32* result);
+B32  BinStreamPullS64LE(BinStream* stream, S64* result);
+B32  BinStreamPullS64BE(BinStream* stream, S64* result);
 
+// TODO: harden these VV
 void BinStreamPush8(BinStream* stream, U8 x);
 void BinStreamPush16LE(BinStream* stream, U16 x);
 void BinStreamPush16BE(BinStream* stream, U16 x);
@@ -2251,66 +2260,97 @@ void BinStreamInit(BinStream* stream, U8* bytes, U32 bytes_size) {
   stream->pos = 0;
 }
 
-void BinStreamSeek(BinStream* stream, U32 pos) {
-  DEBUG_ASSERT(pos <= stream->bytes_size);
+B32 BinStreamSeek(BinStream* stream, U32 pos) {
+  if (pos > stream->bytes_size) { return false; }
   stream->pos = pos;
+  return true;
 }
 
-void BinStreamSkip(BinStream* stream, U32 num, S32 size) {
+B32 BinStreamSkip(BinStream* stream, U32 num, S32 size) {
+  if (stream->pos + (num * size) > stream->bytes_size) { return false; }
   stream->pos += num * size;
+  return true;
 }
 
 U8* BinStreamDecay(BinStream* stream) {
   return &stream->bytes[stream->pos];
 }
 
-U8 BinStreamPull8(BinStream* stream) {
-  DEBUG_ASSERT(stream->pos + 1 <= stream->bytes_size);
-  U8 result = BinRead8(stream->bytes + stream->pos);
+B32 BinStreamPullU8(BinStream* stream, U8* result) {
+  if(stream->pos + 1 > stream->bytes_size) { return false; }
+  *result = BinRead8(stream->bytes + stream->pos);
   stream->pos += 1;
-  return result;
+  return true;
 }
 
-U16 BinStreamPull16LE(BinStream* stream) {
-  DEBUG_ASSERT(stream->pos + 2 <= stream->bytes_size);
-  U16 result = BinRead16LE(stream->bytes + stream->pos);
+B32 BinStreamPullU16LE(BinStream* stream, U16* result) {
+  if (stream->pos + 2 > stream->bytes_size) { return false; }
+  *result = BinRead16LE(stream->bytes + stream->pos);
   stream->pos += 2;
-  return result;
+  return true;
 }
 
-U16 BinStreamPull16BE(BinStream* stream) {
-  DEBUG_ASSERT(stream->pos + 2 <= stream->bytes_size);
-  U16 result = BinRead16BE(stream->bytes + stream->pos);
+B32 BinStreamPullU16BE(BinStream* stream, U16* result) {
+  if (stream->pos + 2 > stream->bytes_size) { return false; }
+  *result = BinRead16BE(stream->bytes + stream->pos);
   stream->pos += 2;
-  return result;
+  return true;
 }
 
-U32 BinStreamPull32LE(BinStream* stream) {
-  DEBUG_ASSERT(stream->pos + 4 <= stream->bytes_size);
-  U32 result = BinRead32LE(stream->bytes + stream->pos);
+B32 BinStreamPullU32LE(BinStream* stream, U32* result) {
+  if (stream->pos + 4 > stream->bytes_size) { return false; }
+  *result = BinRead32LE(stream->bytes + stream->pos);
   stream->pos += 4;
-  return result;
+  return true;
 }
 
-U32 BinStreamPull32BE(BinStream* stream) {
-  DEBUG_ASSERT(stream->pos + 4 <= stream->bytes_size);
-  U32 result = BinRead32BE(stream->bytes + stream->pos);
+B32 BinStreamPullU32BE(BinStream* stream, U32* result) {
+  if (stream->pos + 4 > stream->bytes_size) { return false; }
+  *result = BinRead32BE(stream->bytes + stream->pos);
   stream->pos += 4;
-  return result;
+  return true;
 }
 
-U64 BinStreamPull64LE(BinStream* stream) {
-  DEBUG_ASSERT(stream->pos + 8 <= stream->bytes_size);
-  U64 result = BinRead64LE(stream->bytes + stream->pos);
+B32 BinStreamPullU64LE(BinStream* stream, U64* result) {
+  if (stream->pos + 8 > stream->bytes_size) { return false; }
+  *result = BinRead64LE(stream->bytes + stream->pos);
   stream->pos += 8;
-  return result;
+  return true;
 }
 
-U64 BinStreamPull64BE(BinStream* stream) {
-  DEBUG_ASSERT(stream->pos + 8 <= stream->bytes_size);
-  U64 result = BinRead64BE(stream->bytes + stream->pos);
+B32 BinStreamPullU64BE(BinStream* stream, U64* result) {
+  if (stream->pos + 8 > stream->bytes_size) { return false; }
+  *result = BinRead64BE(stream->bytes + stream->pos);
   stream->pos += 8;
-  return result;
+  return true;
+}
+
+B32 BinStreamPullS8(BinStream* stream, S8* result) {
+  return BinStreamPullU8(stream, (U8*) result);
+}
+
+B32 BinStreamPullS16LE(BinStream* stream, S16* result) {
+  return BinStreamPullU16LE(stream, (U16*) result);
+}
+
+B32 BinStreamPullS16BE(BinStream* stream, S16* result) {
+  return BinStreamPullU16BE(stream, (U16*) result);
+}
+
+B32 BinStreamPullS32LE(BinStream* stream, S32* result) {
+  return BinStreamPullU32LE(stream, (U32*) result);
+}
+
+B32 BinStreamPullS32BE(BinStream* stream, S32* result) {
+  return BinStreamPullU32BE(stream, (U32*) result);
+}
+
+B32 BinStreamPullS64LE(BinStream* stream, S64* result) {
+  return BinStreamPullU64LE(stream, (U64*) result);
+}
+
+B32 BinStreamPullS64BE(BinStream* stream, S64* result) {
+  return BinStreamPullU64BE(stream, (U64*) result);
 }
 
 void BinStreamPush8(BinStream* stream, U8 x) {

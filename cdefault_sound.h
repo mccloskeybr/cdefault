@@ -86,8 +86,13 @@ B32 SoundGetSamplesInterleavedWav(Sound* sound, U8* sample_bytes, S32 sample_byt
 #ifdef CDEFAULT_SOUND_IMPLEMENTATION
 #undef CDEFAULT_SOUND_IMPLEMENTATION
 
+#define SOUND_LOG_OUT_OF_CHARS() LOG_ERROR("[FONT] Ran out of characters in image file.")
+
 // https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
+#define SOUND_TRY_PARSE(eval) if (!eval) { SOUND_LOG_OUT_OF_CHARS(); return false; }
 B32 SoundOpenWav(Sound* sound, FileHandle* file) {
+  MEMORY_ZERO_STRUCT(sound);
+
   sound->file = file;
   sound->type = SoundFileType_WAV;
   if (!FileHandleSeek(sound->file, 0, FileSeekPos_Begin)) {
@@ -103,22 +108,47 @@ B32 SoundOpenWav(Sound* sound, FileHandle* file) {
 
   BinStream s;
   BinStreamInit(&s, bytes, bytes_read);
-  if (!(BinStreamPull8(&s) == 'R' && BinStreamPull8(&s) == 'I' &&
-        BinStreamPull8(&s) == 'F' && BinStreamPull8(&s) == 'F')) { return false; }
-  BinStreamSkip(&s, 4, sizeof(U8));
-  if (!(BinStreamPull8(&s) == 'W' && BinStreamPull8(&s) == 'A' &&
-        BinStreamPull8(&s) == 'V' && BinStreamPull8(&s) == 'E')) { return false; }
-  if (!(BinStreamPull8(&s) == 'f' && BinStreamPull8(&s) == 'm' &&
-        BinStreamPull8(&s) == 't' && BinStreamPull8(&s) == ' ')) { return false; }
+
+  U8 curr_char;
+  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
+  if (curr_char != 'R') { return false; }
+  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
+  if (curr_char != 'I') { return false; }
+  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
+  if (curr_char != 'F') { return false; }
+  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
+  if (curr_char != 'F') { return false; }
+
+  SOUND_TRY_PARSE(BinStreamSkip(&s, 4, sizeof(U8)));
+
+  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
+  if (curr_char != 'W') { return false; }
+  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
+  if (curr_char != 'A') { return false; }
+  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
+  if (curr_char != 'V') { return false; }
+  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
+  if (curr_char != 'E') { return false; }
+
+  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
+  if (curr_char != 'f') { return false; }
+  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
+  if (curr_char != 'm') { return false; }
+  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
+  if (curr_char != 't') { return false; }
+  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
+  if (curr_char != ' ') { return false; }
 
   // NOTE: chunk_size can be variable depending on the WAV version.
-  U32 chunk_size      = BinStreamPull32LE(&s);
-  U16 bin_fmt         = BinStreamPull16LE(&s);
-  sound->channels     = BinStreamPull16LE(&s);
-  sound->frequency    = BinStreamPull32LE(&s);
-  BinStreamPull32LE(&s); // avg_byte_per_sec
-  BinStreamPull16LE(&s); // block_align
-  U16 bits_per_sample = BinStreamPull16LE(&s);
+  U32 chunk_size;
+  U16 bin_fmt, bits_per_sample;
+  SOUND_TRY_PARSE(BinStreamPullU32LE(&s, &chunk_size));
+  SOUND_TRY_PARSE(BinStreamPullU16LE(&s, &bin_fmt));
+  SOUND_TRY_PARSE(BinStreamPullU16LE(&s, (U16*) &sound->channels));
+  SOUND_TRY_PARSE(BinStreamPullU32LE(&s, &sound->frequency));
+  SOUND_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U32)));
+  SOUND_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U16)));
+  SOUND_TRY_PARSE(BinStreamPullU16LE(&s, &bits_per_sample));
 
   // TODO: handle WAVE_FORMAT_EXTENSIBLE
   switch (bin_fmt) {
@@ -140,16 +170,24 @@ B32 SoundOpenWav(Sound* sound, FileHandle* file) {
     } break;
   }
 
-  BinStreamSeek(&s, 20 + chunk_size);
+  SOUND_TRY_PARSE(BinStreamSeek(&s, 20 + chunk_size));
+
   // NOTE: extra chunk may be here for non-PCM formats.
-  U8 c0 = BinStreamPull8(&s), c1 = BinStreamPull8(&s), c2 = BinStreamPull8(&s), c3 = BinStreamPull8(&s);
+  U8 c0, c1, c2, c3;
+  SOUND_TRY_PARSE(BinStreamPullU8(&s, &c0));
+  SOUND_TRY_PARSE(BinStreamPullU8(&s, &c1));
+  SOUND_TRY_PARSE(BinStreamPullU8(&s, &c2));
+  SOUND_TRY_PARSE(BinStreamPullU8(&s, &c3));
   if (c0 == 'f' && c1 == 'a' && c2 == 'c' && c3 == 't') {
-    BinStreamSkip(&s, 8, sizeof(U8));
-    c0 = BinStreamPull8(&s); c1 = BinStreamPull8(&s); c2 = BinStreamPull8(&s); c3 = BinStreamPull8(&s);
+    SOUND_TRY_PARSE(BinStreamSkip(&s, 8, sizeof(U8)));
+    SOUND_TRY_PARSE(BinStreamPullU8(&s, &c0));
+    SOUND_TRY_PARSE(BinStreamPullU8(&s, &c1));
+    SOUND_TRY_PARSE(BinStreamPullU8(&s, &c2));
+    SOUND_TRY_PARSE(BinStreamPullU8(&s, &c3));
   }
 
   if (!(c0 == 'd' && c1 == 'a' && c2 == 't' && c3 == 'a')) { return false; }
-  sound->samples_byte_size = BinStreamPull32LE(&s);
+  SOUND_TRY_PARSE(BinStreamPullU32LE(&s, &sound->samples_byte_size));
   sound->sound_offset = s.pos;
   sound->samples_pos = 0;
   if (!FileHandleSeek(sound->file, sound->sound_offset, FileSeekPos_Begin)) {
@@ -200,5 +238,7 @@ B32 SoundRestart(Sound* sound) {
 B32 SoundClose(Sound* sound) {
   return FileHandleClose(sound->file);
 }
+
+#undef SOUND_LOG_OUT_OF_CHARS
 
 #endif // CDEFAULT_SOUND_IMPLEMENTATION
