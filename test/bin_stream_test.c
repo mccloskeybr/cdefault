@@ -64,10 +64,18 @@ void PeekBETest(void) {
   };
   BinStream s;
   BinStreamInit(&s, buffer, STATIC_ARRAY_SIZE(buffer));
-  EXPECT_U8_EQ(BinStreamPeek8(&s, 0, sizeof(U8)),     0x11);
-  EXPECT_U16_EQ(BinStreamPeek16BE(&s, 1, sizeof(U8)), 0x2233);
-  EXPECT_U32_EQ(BinStreamPeek32BE(&s, 3, sizeof(U8)), 0x44556677);
-  EXPECT_U64_EQ(BinStreamPeek64BE(&s, 7, sizeof(U8)), 0x8899AABBCCDDEEFF);
+
+  EXPECT_TRUE(BinStreamPeekU8(&s, 0, sizeof(U8), &u8));
+  EXPECT_U8_EQ(u8, 0x11);
+
+  EXPECT_TRUE(BinStreamPeekU16BE(&s, 1, sizeof(U8), &u16));
+  EXPECT_U16_EQ(u16, 0x2233);
+
+  EXPECT_TRUE(BinStreamPeekU32BE(&s, 3, sizeof(U8), &u32));
+  EXPECT_U32_EQ(u32, 0x44556677);
+
+  EXPECT_TRUE(BinStreamPeekU64BE(&s, 7, sizeof(U8), &u64));
+  EXPECT_U64_EQ(u64, 0x8899AABBCCDDEEFF);
 }
 
 void PeekLETest(void) {
@@ -79,20 +87,28 @@ void PeekLETest(void) {
   };
   BinStream s;
   BinStreamInit(&s, buffer, STATIC_ARRAY_SIZE(buffer));
-  EXPECT_U8_EQ(BinStreamPeek8(&s, 0, sizeof(U8)),    0x11);
-  EXPECT_U8_EQ(BinStreamPeek16LE(&s, 1, sizeof(U8)), 0x3322);
-  EXPECT_U8_EQ(BinStreamPeek32LE(&s, 3, sizeof(U8)), 0x77665544);
-  EXPECT_U8_EQ(BinStreamPeek64LE(&s, 7, sizeof(U8)), 0xFFEEDDCCBBAA9988);
+
+  EXPECT_TRUE(BinStreamPeekU8(&s, 0, sizeof(U8), &u8));
+  EXPECT_U8_EQ(u8, 0x11);
+
+  EXPECT_TRUE(BinStreamPeekU16LE(&s, 1, sizeof(U8), &u16));
+  EXPECT_U16_EQ(u16, 0x3322);
+
+  EXPECT_TRUE(BinStreamPeekU32LE(&s, 3, sizeof(U8), &u32));
+  EXPECT_U32_EQ(u32, 0x77665544);
+
+  EXPECT_TRUE(BinStreamPeekU64LE(&s, 7, sizeof(U8), &u64));
+  EXPECT_U64_EQ(u64, 0xFFEEDDCCBBAA9988);
 }
 
 void PushBETest(void) {
   U8 buffer[15];
   BinStream s;
   BinStreamInit(&s, buffer, STATIC_ARRAY_SIZE(buffer));
-  BinStreamPush8(&s, 0x11);
-  BinStreamPush16BE(&s, 0x2233);
-  BinStreamPush32BE(&s, 0x44556677);
-  BinStreamPush64BE(&s, 0x8899AABBCCDDEEFF);
+  EXPECT_TRUE(BinStreamPush8(&s, 0x11));
+  EXPECT_TRUE(BinStreamPush16BE(&s, 0x2233));
+  EXPECT_TRUE(BinStreamPush32BE(&s, 0x44556677));
+  EXPECT_TRUE(BinStreamPush64BE(&s, 0x8899AABBCCDDEEFF));
   U8 expected_buffer[15] = {
     0x11,
     0x22, 0x33,
@@ -106,10 +122,10 @@ void PushLETest(void) {
   U8 buffer[15];
   BinStream s;
   BinStreamInit(&s, buffer, STATIC_ARRAY_SIZE(buffer));
-  BinStreamPush8(&s, 0x11);
-  BinStreamPush16LE(&s, 0x3322);
-  BinStreamPush32LE(&s, 0x77665544);
-  BinStreamPush64LE(&s, 0xFFEEDDCCBBAA9988);
+  EXPECT_TRUE(BinStreamPush8(&s, 0x11));
+  EXPECT_TRUE(BinStreamPush16LE(&s, 0x3322));
+  EXPECT_TRUE(BinStreamPush32LE(&s, 0x77665544));
+  EXPECT_TRUE(BinStreamPush64LE(&s, 0xFFEEDDCCBBAA9988));
   U8 expected_buffer[15] = {
     0x11,
     0x22, 0x33,

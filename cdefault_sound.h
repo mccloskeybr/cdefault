@@ -101,7 +101,6 @@ B32 SoundOpenWav(Sound* sound, FileHandle* file) {
   }
 
   // NOTE: 128 is just an arbitrarily large amount that should contain all header versions.
-  // TODO: debug assertions may be thrown if the file is malformed, do we care?
   U8 bytes[128];
   S32 bytes_read;
   if (!FileHandleRead(sound->file, bytes, STATIC_ARRAY_SIZE(bytes), &bytes_read)) { return false; }
@@ -109,35 +108,16 @@ B32 SoundOpenWav(Sound* sound, FileHandle* file) {
   BinStream s;
   BinStreamInit(&s, bytes, bytes_read);
 
-  U8 curr_char;
-  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
-  if (curr_char != 'R') { return false; }
-  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
-  if (curr_char != 'I') { return false; }
-  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
-  if (curr_char != 'F') { return false; }
-  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
-  if (curr_char != 'F') { return false; }
+  String8 tag;
+  SOUND_TRY_PARSE(BinStreamPullStr8(&s, 4, &tag));
+  if (!Str8Eq(tag, Str8Lit("RIFF"))) { return false; }
 
   SOUND_TRY_PARSE(BinStreamSkip(&s, 4, sizeof(U8)));
 
-  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
-  if (curr_char != 'W') { return false; }
-  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
-  if (curr_char != 'A') { return false; }
-  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
-  if (curr_char != 'V') { return false; }
-  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
-  if (curr_char != 'E') { return false; }
-
-  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
-  if (curr_char != 'f') { return false; }
-  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
-  if (curr_char != 'm') { return false; }
-  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
-  if (curr_char != 't') { return false; }
-  SOUND_TRY_PARSE(BinStreamPullU8(&s, &curr_char));
-  if (curr_char != ' ') { return false; }
+  SOUND_TRY_PARSE(BinStreamPullStr8(&s, 4, &tag));
+  if (!Str8Eq(tag, Str8Lit("WAVE"))) { return false; }
+  SOUND_TRY_PARSE(BinStreamPullStr8(&s, 4, &tag));
+  if (!Str8Eq(tag, Str8Lit("fmt "))) { return false; }
 
   // NOTE: chunk_size can be variable depending on the WAV version.
   U32 chunk_size;
@@ -173,20 +153,13 @@ B32 SoundOpenWav(Sound* sound, FileHandle* file) {
   SOUND_TRY_PARSE(BinStreamSeek(&s, 20 + chunk_size));
 
   // NOTE: extra chunk may be here for non-PCM formats.
-  U8 c0, c1, c2, c3;
-  SOUND_TRY_PARSE(BinStreamPullU8(&s, &c0));
-  SOUND_TRY_PARSE(BinStreamPullU8(&s, &c1));
-  SOUND_TRY_PARSE(BinStreamPullU8(&s, &c2));
-  SOUND_TRY_PARSE(BinStreamPullU8(&s, &c3));
-  if (c0 == 'f' && c1 == 'a' && c2 == 'c' && c3 == 't') {
+  SOUND_TRY_PARSE(BinStreamPullStr8(&s, 4, &tag));
+  if (Str8Eq(tag, Str8Lit("fact"))) {
     SOUND_TRY_PARSE(BinStreamSkip(&s, 8, sizeof(U8)));
-    SOUND_TRY_PARSE(BinStreamPullU8(&s, &c0));
-    SOUND_TRY_PARSE(BinStreamPullU8(&s, &c1));
-    SOUND_TRY_PARSE(BinStreamPullU8(&s, &c2));
-    SOUND_TRY_PARSE(BinStreamPullU8(&s, &c3));
+    SOUND_TRY_PARSE(BinStreamPullStr8(&s, 4, &tag));
   }
+  if (!Str8Eq(tag, Str8Lit("data"))) { return false; }
 
-  if (!(c0 == 'd' && c1 == 'a' && c2 == 't' && c3 == 'a')) { return false; }
   SOUND_TRY_PARSE(BinStreamPullU32LE(&s, &sound->samples_byte_size));
   sound->sound_offset = s.pos;
   sound->samples_pos = 0;

@@ -855,37 +855,46 @@ B32  BinStreamSeek(BinStream* stream, U32 pos);
 B32  BinStreamSkip(BinStream* stream, U32 num, S32 size);
 U8*  BinStreamDecay(BinStream* stream);
 
-B32  BinStreamPullU8(BinStream* stream, U8* result);
-B32  BinStreamPullU16LE(BinStream* stream, U16* result);
-B32  BinStreamPullU16BE(BinStream* stream, U16* result);
-B32  BinStreamPullU32LE(BinStream* stream, U32* result);
-B32  BinStreamPullU32BE(BinStream* stream, U32* result);
-B32  BinStreamPullU64LE(BinStream* stream, U64* result);
-B32  BinStreamPullU64BE(BinStream* stream, U64* result);
-B32  BinStreamPullS8(BinStream* stream, S8* result);
-B32  BinStreamPullS16LE(BinStream* stream, S16* result);
-B32  BinStreamPullS16BE(BinStream* stream, S16* result);
-B32  BinStreamPullS32LE(BinStream* stream, S32* result);
-B32  BinStreamPullS32BE(BinStream* stream, S32* result);
-B32  BinStreamPullS64LE(BinStream* stream, S64* result);
-B32  BinStreamPullS64BE(BinStream* stream, S64* result);
+B32 BinStreamPullU8(BinStream* stream, U8* result);
+B32 BinStreamPullU16LE(BinStream* stream, U16* result);
+B32 BinStreamPullU16BE(BinStream* stream, U16* result);
+B32 BinStreamPullU32LE(BinStream* stream, U32* result);
+B32 BinStreamPullU32BE(BinStream* stream, U32* result);
+B32 BinStreamPullU64LE(BinStream* stream, U64* result);
+B32 BinStreamPullU64BE(BinStream* stream, U64* result);
+B32 BinStreamPullS8(BinStream* stream, S8* result);
+B32 BinStreamPullS16LE(BinStream* stream, S16* result);
+B32 BinStreamPullS16BE(BinStream* stream, S16* result);
+B32 BinStreamPullS32LE(BinStream* stream, S32* result);
+B32 BinStreamPullS32BE(BinStream* stream, S32* result);
+B32 BinStreamPullS64LE(BinStream* stream, S64* result);
+B32 BinStreamPullS64BE(BinStream* stream, S64* result);
+B32 BinStreamPullStr8(BinStream* stream, U32 size, String8* result);
 
-// TODO: harden these VV
-void BinStreamPush8(BinStream* stream, U8 x);
-void BinStreamPush16LE(BinStream* stream, U16 x);
-void BinStreamPush16BE(BinStream* stream, U16 x);
-void BinStreamPush32LE(BinStream* stream, U32 x);
-void BinStreamPush32BE(BinStream* stream, U32 x);
-void BinStreamPush64LE(BinStream* stream, U64 x);
-void BinStreamPush64BE(BinStream* stream, U64 x);
+B32 BinStreamPeekU8(BinStream* stream, S32 offset, U32 size, U8* result);
+B32 BinStreamPeekU16LE(BinStream* stream, S32 offset, U32 size, U16* result);
+B32 BinStreamPeekU16BE(BinStream* stream, S32 offset, U32 size, U16* result);
+B32 BinStreamPeekU32LE(BinStream* stream, S32 offset, U32 size, U32* result);
+B32 BinStreamPeekU32BE(BinStream* stream, S32 offset, U32 size, U32* result);
+B32 BinStreamPeekU64LE(BinStream* stream, S32 offset, U32 size, U64* result);
+B32 BinStreamPeekU64BE(BinStream* stream, S32 offset, U32 size, U64* result);
+B32 BinStreamPeekS8(BinStream* stream, S32 offset, U32 size, S8* result);
+B32 BinStreamPeekS16LE(BinStream* stream, S32 offset, U32 size, S16* result);
+B32 BinStreamPeekS16BE(BinStream* stream, S32 offset, U32 size, S16* result);
+B32 BinStreamPeekS32LE(BinStream* stream, S32 offset, U32 size, S32* result);
+B32 BinStreamPeekS32BE(BinStream* stream, S32 offset, U32 size, S32* result);
+B32 BinStreamPeekS64LE(BinStream* stream, S32 offset, U32 size, S64* result);
+B32 BinStreamPeekS64BE(BinStream* stream, S32 offset, U32 size, S64* result);
+B32 BinStreamPeekStr8(BinStream* stream, S32 offset, U32 size, U32 str_size, String8* result);
 
-U8   BinStreamPeek8(BinStream* stream, S32 offset, U32 size);
-U16  BinStreamPeek16LE(BinStream* stream, S32 offset, U32 size);
-U16  BinStreamPeek16BE(BinStream* stream, S32 offset, U32 size);
-U32  BinStreamPeek32LE(BinStream* stream, S32 offset, U32 size);
-U32  BinStreamPeek32BE(BinStream* stream, S32 offset, U32 size);
-U64  BinStreamPeek64LE(BinStream* stream, S32 offset, U32 size);
-U64  BinStreamPeek64BE(BinStream* stream, S32 offset, U32 size);
+B32 BinStreamPush8(BinStream* stream, U8 x);
+B32 BinStreamPush16LE(BinStream* stream, U16 x);
+B32 BinStreamPush16BE(BinStream* stream, U16 x);
+B32 BinStreamPush32LE(BinStream* stream, U32 x);
+B32 BinStreamPush32BE(BinStream* stream, U32 x);
+B32 BinStreamPush64LE(BinStream* stream, U64 x);
+B32 BinStreamPush64BE(BinStream* stream, U64 x);
+B32 BinStreamPushStr8(BinStream* stream, String8 str);
 
 #endif // CDEFAULT_H_
 
@@ -2353,100 +2362,162 @@ B32 BinStreamPullS64BE(BinStream* stream, S64* result) {
   return BinStreamPullU64BE(stream, (U64*) result);
 }
 
-void BinStreamPush8(BinStream* stream, U8 x) {
-  DEBUG_ASSERT(stream->pos < stream->bytes_size);
-  stream->bytes[stream->pos++] = x;
+B32 BinStreamPullStr8(BinStream* stream, U32 size, String8* result) {
+  if (stream->pos + size > stream->bytes_size) { return false; }
+  *result = Str8(stream->bytes + stream->pos, size);
+  stream->pos += size;
+  return true;
 }
 
-void BinStreamPush16LE(BinStream* stream, U16 x) {
+B32 BinStreamPeekU8(BinStream* stream, S32 offset, U32 size, U8* result) {
+  offset = offset * size;
+  if (offset < 0 && stream->pos < (-1 * offset))     { return false; }
+  if (stream->pos + offset + 1 > stream->bytes_size) { return false; }
+  *result = BinRead8(stream->bytes + stream->pos + offset);
+  return true;
+}
+
+B32 BinStreamPeekU16LE(BinStream* stream, S32 offset, U32 size, U16* result) {
+  offset = offset * size;
+  if (offset < 0 && stream->pos < (-1 * offset)) { return false; }
+  if (stream->pos + offset + 2 > stream->bytes_size) { return false; }
+  *result = BinRead16LE(stream->bytes + stream->pos + offset);
+  return true;
+}
+
+B32 BinStreamPeekU16BE(BinStream* stream, S32 offset, U32 size, U16* result) {
+  offset = offset * size;
+  if (offset < 0 && stream->pos < (-1 * offset)) { return false; }
+  if (stream->pos + offset + 2 > stream->bytes_size) { return false; }
+  *result = BinRead16BE(stream->bytes + stream->pos + offset);
+  return true;
+}
+
+B32 BinStreamPeekU32LE(BinStream* stream, S32 offset, U32 size, U32* result) {
+  offset = offset * size;
+  if (offset < 0 && stream->pos < (-1 * offset)) { return false; }
+  if (stream->pos + offset + 4 > stream->bytes_size) { return false; }
+  *result = BinRead32LE(stream->bytes + stream->pos + offset);
+  return true;
+}
+
+B32 BinStreamPeekU32BE(BinStream* stream, S32 offset, U32 size, U32* result) {
+  offset = offset * size;
+  if (offset < 0 && stream->pos < (-1 * offset)) { return false; }
+  if (stream->pos + offset + 4 > stream->bytes_size) { return false; }
+  *result = BinRead32BE(stream->bytes + stream->pos + offset);
+  return true;
+}
+
+B32 BinStreamPeekU64LE(BinStream* stream, S32 offset, U32 size, U64* result) {
+  offset = offset * size;
+  if (offset < 0 && stream->pos < (-1 * offset)) { return false; }
+  if (stream->pos + offset + 8 > stream->bytes_size) { return false; }
+  *result = BinRead64LE(stream->bytes + stream->pos + offset);
+  return true;
+}
+
+B32 BinStreamPeekU64BE(BinStream* stream, S32 offset, U32 size, U64* result) {
+  offset = offset * size;
+  if (offset < 0 && stream->pos < (-1 * offset)) { return false; }
+  if (stream->pos + offset + 8 > stream->bytes_size) { return false; }
+  *result = BinRead64BE(stream->bytes + stream->pos + offset);
+  return true;
+}
+
+B32 BinStreamPeekS8(BinStream* stream, S32 offset, U32 size, S8* result) {
+  return BinStreamPeekU8(stream, offset, size, (U8*) result);
+}
+
+B32 BinStreamPeekS16LE(BinStream* stream, S32 offset, U32 size, S16* result) {
+  return BinStreamPeekU16LE(stream, offset, size, (U16*) result);
+}
+
+B32 BinStreamPeekS16BE(BinStream* stream, S32 offset, U32 size, S16* result) {
+  return BinStreamPeekU16BE(stream, offset, size, (U16*) result);
+}
+
+B32 BinStreamPeekS32LE(BinStream* stream, S32 offset, U32 size, S32* result) {
+  return BinStreamPeekU32LE(stream, offset, size, (U32*) result);
+}
+
+B32 BinStreamPeekS32BE(BinStream* stream, S32 offset, U32 size, S32* result) {
+  return BinStreamPeekU32BE(stream, offset, size, (U32*) result);
+}
+
+B32 BinStreamPeekS64LE(BinStream* stream, S32 offset, U32 size, S64* result) {
+  return BinStreamPeekU64LE(stream, offset, size, (U64*) result);
+}
+
+B32 BinStreamPeekS64BE(BinStream* stream, S32 offset, U32 size, S64* result) {
+  return BinStreamPeekU64BE(stream, offset, size, (U64*) result);
+}
+
+B32 BinStreamPeekStr8(BinStream* stream, S32 offset, U32 size, U32 str_size, String8* result) {
+  offset = offset * size;
+  if (offset < 0 && stream->pos < (-1 * offset)) { return false; }
+  if (stream->pos + offset + str_size > stream->bytes_size) { return false; }
+  *result = Str8(stream->bytes + stream->pos + offset, str_size);
+  return true;
+}
+
+B32 BinStreamPush8(BinStream* stream, U8 x) {
+  if (stream->pos >= stream->bytes_size) { return false; }
+  stream->bytes[stream->pos++] = x;
+  return true;
+}
+
+B32 BinStreamPush16LE(BinStream* stream, U16 x) {
   U8 a = x & 0xff;
   U8 b = (x >> 8) & 0xff;
-  BinStreamPush8(stream, a);
-  BinStreamPush8(stream, b);
+  if (!BinStreamPush8(stream, a)) { return false; }
+  if (!BinStreamPush8(stream, b)) { return false; }
+  return true;
 }
 
-void BinStreamPush16BE(BinStream* stream, U16 x) {
+B32 BinStreamPush16BE(BinStream* stream, U16 x) {
   U8 a = (x >> 8) & 0xff;
   U8 b = x & 0xff;
-  BinStreamPush8(stream, a);
-  BinStreamPush8(stream, b);
+  if (!BinStreamPush8(stream, a)) { return false; }
+  if (!BinStreamPush8(stream, b)) { return false; }
+  return true;
 }
 
-void BinStreamPush32LE(BinStream* stream, U32 x) {
+B32 BinStreamPush32LE(BinStream* stream, U32 x) {
   U16 a = x & 0xffff;
   U16 b = (x >> 16) & 0xffff;
-  BinStreamPush16LE(stream, a);
-  BinStreamPush16LE(stream, b);
+  if (!BinStreamPush16LE(stream, a)) { return false; }
+  if (!BinStreamPush16LE(stream, b)) { return false; }
+  return true;
 }
 
-void BinStreamPush32BE(BinStream* stream, U32 x) {
+B32 BinStreamPush32BE(BinStream* stream, U32 x) {
   U16 a = (x >> 16) & 0xffff;
   U16 b = x & 0xffff;
-  BinStreamPush16BE(stream, a);
-  BinStreamPush16BE(stream, b);
+  if (!BinStreamPush16BE(stream, a)) { return false; }
+  if (!BinStreamPush16BE(stream, b)) { return false; }
+  return true;
 }
 
-void BinStreamPush64LE(BinStream* stream, U64 x) {
+B32 BinStreamPush64LE(BinStream* stream, U64 x) {
   U32 a = x & 0xffffffff;
   U32 b = (x >> 32) & 0xffffffff;
-  BinStreamPush32LE(stream, a);
-  BinStreamPush32LE(stream, b);
+  if (!BinStreamPush32LE(stream, a)) { return false; }
+  if (!BinStreamPush32LE(stream, b)) { return false; }
+  return true;
 }
 
-void BinStreamPush64BE(BinStream* stream, U64 x) {
+B32 BinStreamPush64BE(BinStream* stream, U64 x) {
   U32 a = (x >> 32) & 0xffffffff;
   U32 b = x & 0xffffffff;
-  BinStreamPush32BE(stream, a);
-  BinStreamPush32BE(stream, b);
+  if (!BinStreamPush32BE(stream, a)) { return false; }
+  if (!BinStreamPush32BE(stream, b)) { return false; }
+  return true;
 }
 
-U8 BinStreamPeek8(BinStream* stream, S32 offset, U32 size) {
-  offset = offset * size;
-  if (offset < 0) { DEBUG_ASSERT(stream->pos >= (-1 * offset)); }
-  DEBUG_ASSERT(stream->pos + offset + 1 <= stream->bytes_size);
-  return BinRead8(stream->bytes + stream->pos + offset);
-}
-
-U16 BinStreamPeek16LE(BinStream* stream, S32 offset, U32 size) {
-  offset = offset * size;
-  if (offset < 0) { DEBUG_ASSERT(stream->pos >= (-1 * offset)); }
-  DEBUG_ASSERT(stream->pos + offset + 2 <= stream->bytes_size);
-  return BinRead16LE(stream->bytes + stream->pos + offset);
-}
-
-U16 BinStreamPeek16BE(BinStream* stream, S32 offset, U32 size) {
-  offset = offset * size;
-  if (offset < 0) { DEBUG_ASSERT(stream->pos >= (-1 * offset)); }
-  DEBUG_ASSERT(stream->pos + offset + 2 <= stream->bytes_size);
-  return BinRead16BE(stream->bytes + stream->pos + offset);
-}
-
-U32 BinStreamPeek32LE(BinStream* stream, S32 offset, U32 size) {
-  offset = offset * size;
-  if (offset < 0) { DEBUG_ASSERT(stream->pos >= (-1 * offset)); }
-  DEBUG_ASSERT(stream->pos + offset + 4 <= stream->bytes_size);
-  return BinRead32LE(stream->bytes + stream->pos + offset);
-}
-
-U32 BinStreamPeek32BE(BinStream* stream, S32 offset, U32 size) {
-  offset = offset * size;
-  if (offset < 0) { DEBUG_ASSERT(stream->pos >= (-1 * offset)); }
-  DEBUG_ASSERT(stream->pos + offset + 4 <= stream->bytes_size);
-  return BinRead32BE(stream->bytes + stream->pos + offset);
-}
-
-U64 BinStreamPeek64LE(BinStream* stream, S32 offset, U32 size) {
-  offset = offset * size;
-  if (offset < 0) { DEBUG_ASSERT(stream->pos >= (-1 * offset)); }
-  DEBUG_ASSERT(stream->pos + offset + 8 <= stream->bytes_size);
-  return BinRead64LE(stream->bytes + stream->pos + offset);
-}
-
-U64 BinStreamPeek64BE(BinStream* stream, S32 offset, U32 size) {
-  offset = offset * size;
-  if (offset < 0) { DEBUG_ASSERT(stream->pos >= (-1 * offset)); }
-  DEBUG_ASSERT(stream->pos + offset + 8 <= stream->bytes_size);
-  return BinRead64BE(stream->bytes + stream->pos + offset);
+B32 BinStreamPushStr8(BinStream* stream, String8 str) {
+  for (S32 i = 0; i < str.size; i++) { if (!BinStreamPush8(stream, str.str[i])) { return false; } }
+  return true;
 }
 
 #endif // CDEFAULT_STD_IMPLEMENTATION

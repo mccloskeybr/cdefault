@@ -74,11 +74,9 @@ B32 ImageLoadBmp(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
   // NOTE: Read shared header
   BinStream h;
   BinStreamInit(&h, file_data, file_data_size);
-  U8 curr_char;
-  IMAGE_TRY_PARSE(BinStreamPullU8(&h, &curr_char));
-  if (curr_char != 'B') { goto image_load_bmp_exit; }
-  IMAGE_TRY_PARSE(BinStreamPullU8(&h, &curr_char));
-  if (curr_char != 'M') { goto image_load_bmp_exit; }
+  String8 tag;
+  IMAGE_TRY_PARSE(BinStreamPullStr8(&h, 2, &tag));
+  if (!Str8Eq(tag, Str8Lit("BM"))) { return false; }
   IMAGE_TRY_PARSE(BinStreamSkip(&h, 8, sizeof(U8)));
   U32 palette_offset = 14; // NOTE: +14 for the data we just processed above.
 
@@ -466,42 +464,41 @@ B32 ImageDumpBmp(Image* image, String8 file_path) {
   BinStreamInit(&h, bmp, bmp_file_size);
 
   // NOTE: file header
-  BinStreamPush8(&h, 'B');
-  BinStreamPush8(&h, 'M');
-  BinStreamPush32LE(&h, bmp_file_size); // file size
-  BinStreamPush32LE(&h, 0); // reserved 1 & 2
-  BinStreamPush32LE(&h, bmp_offset);
+  DEBUG_ASSERT(BinStreamPushStr8(&h, Str8Lit("BM")));
+  DEBUG_ASSERT(BinStreamPush32LE(&h, bmp_file_size)); // file size
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // reserved 1 & 2
+  DEBUG_ASSERT(BinStreamPush32LE(&h, bmp_offset));
 
   // NOTE: winv4 header
-  BinStreamPush32LE(&h, header_size);
-  BinStreamPush32LE(&h, temp_image.width);
+  DEBUG_ASSERT(BinStreamPush32LE(&h, header_size));
+  DEBUG_ASSERT(BinStreamPush32LE(&h, temp_image.width));
   // NOTE: internal raw format matches BMP bottom->up, so don't flip.
-  BinStreamPush32LE(&h, (S32) temp_image.height);
-  BinStreamPush16LE(&h, 1);  // color planes
-  BinStreamPush16LE(&h, 32); // bits per pixel
-  BinStreamPush32LE(&h, 3);  // bitfield compression
-  BinStreamPush32LE(&h, bmp_size); // size of bitmap
-  BinStreamPush32LE(&h, 0); // horizontal resolution
-  BinStreamPush32LE(&h, 0); // vertical resolution
-  BinStreamPush32LE(&h, 0); // colors used
-  BinStreamPush32LE(&h, 0); // colors important
-  BinStreamPush32LE(&h, 0x00ff0000); // red mask
-  BinStreamPush32LE(&h, 0x0000ff00); // green mask
-  BinStreamPush32LE(&h, 0x000000ff); // blue mask
-  BinStreamPush32LE(&h, 0xff000000); // alpha mask
-  BinStreamPush32LE(&h, 0); // cs type
-  BinStreamPush32LE(&h, 0); // redx
-  BinStreamPush32LE(&h, 0); // redy
-  BinStreamPush32LE(&h, 0); // redz
-  BinStreamPush32LE(&h, 0); // greenx
-  BinStreamPush32LE(&h, 0); // greeny
-  BinStreamPush32LE(&h, 0); // greenz
-  BinStreamPush32LE(&h, 0); // bluex
-  BinStreamPush32LE(&h, 0); // bluey
-  BinStreamPush32LE(&h, 0); // bluez
-  BinStreamPush32LE(&h, 0); // gamma red
-  BinStreamPush32LE(&h, 0); // gamma green
-  BinStreamPush32LE(&h, 0); // gamma blue
+  DEBUG_ASSERT(BinStreamPush32LE(&h, (S32) temp_image.height));
+  DEBUG_ASSERT(BinStreamPush16LE(&h, 1));  // color planes
+  DEBUG_ASSERT(BinStreamPush16LE(&h, 32)); // bits per pixel
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 3));  // bitfield compression
+  DEBUG_ASSERT(BinStreamPush32LE(&h, bmp_size)); // size of bitmap
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // horizontal resolution
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // vertical resolution
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // colors used
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // colors important
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0x00ff0000)); // red mask
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0x0000ff00)); // green mask
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0x000000ff)); // blue mask
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0xff000000)); // alpha mask
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // cs type
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // redx
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // redy
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // redz
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // greenx
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // greeny
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // greenz
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // bluex
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // bluey
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // bluez
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // gamma red
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // gamma green
+  DEBUG_ASSERT(BinStreamPush32LE(&h, 0)); // gamma blue
   for (U32 i = 0; i < temp_image.height; i++) {
     for (U32 j = 0; j < temp_image.width; j++) {
       U32 r = temp_image.data[(((i * temp_image.width) + j) * 4) + 0];
@@ -513,7 +510,7 @@ B32 ImageDumpBmp(Image* image, String8 file_path) {
       color |= r << 16;
       color |= g << 8;
       color |= b << 0;
-      BinStreamPush32LE(&h, color);
+      DEBUG_ASSERT(BinStreamPush32LE(&h, color));
     }
   }
 
