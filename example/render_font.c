@@ -1,31 +1,8 @@
 #define CDEFAULT_IMPLEMENTATION
 #include "../cdefault.h"
 
-#define BMP_FONT_HEIGHT    100.0f
-#define SDF_FONT_HEIGHT    64.0f
-#define RENDER_FONT_HEIGHT 20.0f
-
-void DrawString(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 x, F32 y) {
-  V2 cursor = { x, y };
-  for (S32 i = 0; i < str.size; i++) {
-    U8 curr = str.str[i];
-    U8 next = i < str.size - 1 ? str.str[i + 1] : 0;
-    V2 center, size, min_uv, max_uv;
-    DEBUG_ASSERT(FontAtlasPlace(atlas, curr, next, RENDER_FONT_HEIGHT, &cursor, &center, &size, &min_uv, &max_uv));
-    DrawFontCharacterV(atlas_handle, center, size, min_uv, max_uv, V3_BLACK);
-  }
-}
-
-void DrawStringSdf(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 x, F32 y) {
-  V2 cursor = { x, y };
-  for (S32 i = 0; i < str.size; i++) {
-    U8 curr = str.str[i];
-    U8 next = i < str.size - 1 ? str.str[i + 1] : 0;
-    V2 center, size, min_uv, max_uv;
-    DEBUG_ASSERT(FontAtlasPlace(atlas, curr, next, RENDER_FONT_HEIGHT, &cursor, &center, &size, &min_uv, &max_uv));
-    DrawFontSdfCharacterV(atlas_handle, center, size, min_uv, max_uv, 0, 0, V3_BLACK);
-  }
-}
+#define BMP_FONT_HEIGHT 100.0f
+#define SDF_FONT_HEIGHT 32.0f
 
 int main(void) {
   TimeInit();
@@ -35,66 +12,46 @@ int main(void) {
   Arena* font_arena = ArenaAllocate();
   Arena* temp_arena = ArenaAllocate();
 
-  F32 dt_s = 0.0f;
-  Stopwatch frame_stopwatch;
-  StopwatchInit(&frame_stopwatch);
-
   String8 file_data;
-  DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("../data/firacode.ttf"), &file_data.str, &file_data.size));
+  // DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("../data/firacode.ttf"), &file_data.str, &file_data.size));
   // DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/times.ttf"), &file_data.str, &file_data.size));
   // DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/consola.ttf"), &file_data.str, &file_data.size));
-  // DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/verdana.ttf"), &file_data.str, &file_data.size));
-
+  DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/verdana.ttf"), &file_data.str, &file_data.size));
   Font font; DEBUG_ASSERT(FontInit(&font, file_data.str, file_data.size));
 
   FontAtlas bmp_atlas;
-  U8* bmp_atlas_bitmap;
-  U32 bmp_atlas_width, bmp_atlas_height;
-  DEBUG_ASSERT(FontAtlasBakeBitmap(font_arena, &font, &bmp_atlas,
-                                   &bmp_atlas_bitmap, &bmp_atlas_width, &bmp_atlas_height,
-                                   BMP_FONT_HEIGHT, FontCharSetLatin()));
-  Image font_bitmap_image;
-  font_bitmap_image.format = ImageFormat_R;
-  font_bitmap_image.width  = bmp_atlas_width;
-  font_bitmap_image.height = bmp_atlas_height;
-  font_bitmap_image.data   = bmp_atlas_bitmap;
-  DEBUG_ASSERT(ImageDumpBmp(&font_bitmap_image, Str8Lit("../data/TEST_BMP.bmp")));
+  Image     bmp_atlas_image;
+  U32       bmp_atlas_handle;
+  DEBUG_ASSERT(FontAtlasBakeBitmap(font_arena, &font, &bmp_atlas, &bmp_atlas_image, BMP_FONT_HEIGHT, FontCharSetLatin()));
+  DEBUG_ASSERT(ImageDumpBmp(&bmp_atlas_image, Str8Lit("../data/TEST_BMP.bmp")));
+  RendererRegisterImage(&bmp_atlas_handle, &bmp_atlas_image);
 
   FontAtlas sdf_atlas;
-  U8* sdf_atlas_bitmap;
-  U32 sdf_atlas_width, sdf_atlas_height;
-  DEBUG_ASSERT(FontAtlasBakeSdf(font_arena, &font, &sdf_atlas,
-                                &sdf_atlas_bitmap, &sdf_atlas_width, &sdf_atlas_height,
-                                BMP_FONT_HEIGHT, SDF_FONT_HEIGHT, 16.0f, FontCharSetLatin()));
-  Image font_sdf_image;
-  font_sdf_image.format = ImageFormat_R;
-  font_sdf_image.width  = sdf_atlas_width;
-  font_sdf_image.height = sdf_atlas_height;
-  font_sdf_image.data   = sdf_atlas_bitmap;
-  DEBUG_ASSERT(ImageDumpBmp(&font_sdf_image, Str8Lit("../data/TEST_SDF.bmp")));
+  Image     sdf_atlas_image;
+  U32       sdf_atlas_handle;
+  DEBUG_ASSERT(FontAtlasBakeSdf(font_arena, &font, &sdf_atlas, &sdf_atlas_image, BMP_FONT_HEIGHT, SDF_FONT_HEIGHT, 4.0f, FontCharSetLatin()));
+  DEBUG_ASSERT(ImageDumpBmp(&sdf_atlas_image, Str8Lit("../data/TEST_SDF.bmp")));
+  RendererRegisterImage(&sdf_atlas_handle, &sdf_atlas_image);
 
-  U32 sdf_atlas_handle, bmp_atlas_handle;
-  RendererRegisterImageR(&bmp_atlas_handle, bmp_atlas_bitmap, bmp_atlas_width, bmp_atlas_height);
-  RendererRegisterImageR(&sdf_atlas_handle, sdf_atlas_bitmap, sdf_atlas_width, sdf_atlas_height);
-
+  String8 alphabet = Str8Lit("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
   while (!WindowShouldClose()) {
     if (WindowIsKeyPressed(Key_Control) && WindowIsKeyJustPressed(Key_C)) {
       LOG_INFO("SIGINT received");
       exit(0);
     }
-    String8 fps = Str8Format(temp_arena, "%0.2f FPS", 1.0f / dt_s);
 
-    DrawStringSdf(Str8Lit("Hello, world!"), &sdf_atlas, sdf_atlas_handle, 128, 256);
-    DrawStringSdf(Str8Lit("Text rendering is hard!"), &sdf_atlas, sdf_atlas_handle, 512, 512);
-    DrawStringSdf(fps, &sdf_atlas, sdf_atlas_handle, 128, 512);
-    DrawStringSdf(Str8Lit("ABCQRTabpqg"), &sdf_atlas, sdf_atlas_handle, 700, 240);
+    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 64, 0, 0, 8, 264);
+    DrawStringBmp(alphabet, &bmp_atlas, bmp_atlas_handle, 64, 8, 200);
 
-    // DrawString(Str8Lit("Hello, world!"), &bmp_atlas, bmp_atlas_handle, 128, 256);
-    // DrawString(Str8Lit("Text rendering is hard!"), &bmp_atlas, bmp_atlas_handle, 512, 512);
-    // DrawString(fps, &bmp_atlas, bmp_atlas_handle, 128, 512);
+    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 32, 0, 0, 8, 150);
+    DrawStringBmp(alphabet, &bmp_atlas, bmp_atlas_handle, 32, 8, 118);
 
-    dt_s = StopwatchReadSeconds(&frame_stopwatch);
-    StopwatchReset(&frame_stopwatch);
+    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 20, 0, 0, 8, 85);
+    DrawStringBmp(alphabet, &bmp_atlas, bmp_atlas_handle, 20, 8, 65);
+
+    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 16, 0, 0, 8, 40);
+    DrawStringBmp(alphabet, &bmp_atlas, bmp_atlas_handle, 16, 8, 24);
+
     ArenaClear(temp_arena);
     WindowSwapBuffers();
     WindowFlushEvents();

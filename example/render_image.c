@@ -13,7 +13,7 @@ int main(void) {
   DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, Str8Lit("../data/16bpp.bmp")));
   DEBUG_ASSERT(ImageDumpBmp(&image, Str8Lit("../data/TEST_2.bmp")));
   U32 image_handle;
-  RendererRegisterImageRGBA(&image_handle, image.data, image.width, image.height);
+  RendererRegisterImage(&image_handle, &image);
 
   ArenaRelease(arena);
 

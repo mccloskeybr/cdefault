@@ -3,6 +3,8 @@
 
 #include "cdefault_std.h"
 #include "cdefault_math.h"
+#include "cdefault_image.h"
+#include "cdefault_font.h"
 
 // TODO:
 // move 2d camera
@@ -52,8 +54,7 @@ void WindowGetMouseDeltaPositionV(V2* pos);
 void RendererSetProjection2D(M4 projection);
 void RendererSetProjection3D(M4 projection);
 Camera* RendererCamera3D();
-void RendererRegisterImageRGBA(U32* image_handle, U8* image_bytes, U32 width, U32 height); // NOTE: Expects RGBA byte values (0 -> 255)
-void RendererRegisterImageR(U32* image_handle, U8* image_bytes, U32 width, U32 height); // NOTE: Expects R byte values (0 -> 255)
+void RendererRegisterImage(U32* image_handle, Image* image);
 void RendererRegisterMesh(U32* mesh_handle, U32 image_handle, V3* points, V3* normals, V2* uvs, U32 vertices_size, U32* indices, U32 indices_size);
 void RendererReleaseImage(U32 image_handle);
 void RendererReleaseMesh(U32 mesh_handle);
@@ -104,10 +105,14 @@ void DrawSubImage(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 h
 void DrawSubImageV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv);
 void DrawSubImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 angle_rad, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y);
 void DrawSubImageRotV(U32 image_handle, V2 center, V2 size, F32 angle_rad, V2 min_uv, V2 max_uv);
-void DrawFontCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 red, F32 green, F32 blue);
-void DrawFontCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, V3 color);
+void DrawFontBmpCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 red, F32 green, F32 blue);
+void DrawFontBmpCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, V3 color);
+void DrawStringBmp(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 x, F32 y);
+void DrawStringBmpV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, V2 pos);
 void DrawFontSdfCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 threshold, F32 smoothing, F32 red, F32 green, F32 blue); // NOTE: defaults chosen for smoothing, threshold if 0.
 void DrawFontSdfCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, F32 threshold, F32 smoothing, V3 color); // NOTE: defaults chosen for smoothing, threshold if 0.
+void DrawStringSdf(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 threshold, F32 smoothing, F32 x, F32 y);
+void DrawStringSdfV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 threshold, F32 smoothing, V2 pos);
 
 // NOTE: 3D API
 void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale);
@@ -727,21 +732,27 @@ Camera* RendererCamera3D() {
   return &r->camera_3d;
 }
 
-void RendererRegisterImageRGBA(U32* image_handle, U8* image_bytes, U32 width, U32 height) {
+void RendererRegisterImage(U32* image_handle, Image* image) {
   OpenGLAPI* g = &_ogl;
   g->glGenTextures(1, image_handle);
   g->glBindTexture(GL_TEXTURE_2D, *image_handle);
-  g->glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-  g->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_bytes);
-  g->glBindTexture(GL_TEXTURE_2D, 0);
-}
-
-void RendererRegisterImageR(U32* image_handle, U8* image_bytes, U32 width, U32 height) {
-  OpenGLAPI* g = &_ogl;
-  g->glGenTextures(1, image_handle);
-  g->glBindTexture(GL_TEXTURE_2D, *image_handle);
-  g->glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-  g->glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, image_bytes);
+  switch (image->format) {
+    case ImageFormat_RGBA: {
+      g->glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+      g->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image->width, image->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image->data);
+    } break;
+    case ImageFormat_RGB: {
+      g->glPixelStorei(GL_UNPACK_ALIGNMENT, 3);
+      g->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image->width, image->height, 0, GL_RGB, GL_UNSIGNED_BYTE, image->data);
+    } break;
+    case ImageFormat_R: {
+      g->glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+      g->glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, image->width, image->height, 0, GL_RED, GL_UNSIGNED_BYTE, image->data);
+    } break;
+    default: {
+      UNIMPLEMENTED();
+    } break;
+  }
   g->glBindTexture(GL_TEXTURE_2D, 0);
 }
 
@@ -1172,7 +1183,7 @@ void DrawSubImageRotV(U32 image_handle, V2 center, V2 size, F32 angle_rad, V2 mi
   DrawSubImageRot(image_handle, center.x, center.y, size.x, size.y, angle_rad, min_uv.x, min_uv.y, max_uv.x, max_uv.y);
 }
 
-void DrawFontCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 red, F32 green, F32 blue) {
+void DrawFontBmpCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 red, F32 green, F32 blue) {
   Renderer* r = &_renderer;
   OpenGLAPI* g = &_ogl;
 
@@ -1203,8 +1214,8 @@ void DrawFontCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, 
   g->glUseProgram(0);
 }
 
-void DrawFontCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, V3 color) {
-  DrawFontCharacter(image_handle, center.x, center.y, size.x, size.y, min_uv.x, min_uv.y, max_uv.x, max_uv.y, color.r, color.g, color.b);
+void DrawFontBmpCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, V3 color) {
+  DrawFontBmpCharacter(image_handle, center.x, center.y, size.x, size.y, min_uv.x, min_uv.y, max_uv.x, max_uv.y, color.r, color.g, color.b);
 }
 
 void DrawFontSdfCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 threshold, F32 smoothing, F32 red, F32 green, F32 blue) {
@@ -1212,9 +1223,9 @@ void DrawFontSdfCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 widt
   OpenGLAPI* g = &_ogl;
 
   threshold = CLAMP(0.0f, threshold, 1.0f);
-  smoothing = CLAMP(0.0f, threshold, 1.0f);
+  smoothing = CLAMP(0.0f, smoothing, 1.0f);
   if (threshold == 0) { threshold = 0.5f; }
-  if (smoothing == 0) { smoothing = 0.2f; }
+  if (smoothing == 0) { smoothing = 0.15f; }
 
   V3 color  = { red, green, blue };
   V2 min_uv = { min_uv_x, min_uv_y };
@@ -1247,6 +1258,36 @@ void DrawFontSdfCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 widt
 
 void DrawFontSdfCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, F32 threshold, F32 smoothing, V3 color) {
   DrawFontSdfCharacter(image_handle, center.x, center.y, size.x, size.y, min_uv.x, min_uv.y, max_uv.x, max_uv.y, threshold, smoothing, color.r, color.g, color.b);
+}
+
+void DrawStringBmp(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 x, F32 y) {
+  V2 pos = V2Assign(x, y);
+  DrawStringBmpV(str, atlas, atlas_handle, font_height, pos);
+}
+
+void DrawStringBmpV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, V2 pos) {
+  for (S32 i = 0; i < str.size; i++) {
+    U8 curr = str.str[i];
+    U8 next = i < str.size - 1 ? str.str[i + 1] : 0;
+    V2 center, size, min_uv, max_uv;
+    DEBUG_ASSERT(FontAtlasPlace(atlas, curr, next, font_height, &pos, &center, &size, &min_uv, &max_uv));
+    DrawFontBmpCharacterV(atlas_handle, center, size, min_uv, max_uv, V3_BLACK);
+  }
+}
+
+void DrawStringSdf(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 threshold, F32 smoothing, F32 x, F32 y) {
+  V2 pos = V2Assign(x, y);
+  DrawStringSdfV(str, atlas, atlas_handle, font_height, threshold, smoothing, pos);
+}
+
+void DrawStringSdfV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 threshold, F32 smoothing, V2 pos) {
+  for (S32 i = 0; i < str.size; i++) {
+    U8 curr = str.str[i];
+    U8 next = i < str.size - 1 ? str.str[i + 1] : 0;
+    V2 center, size, min_uv, max_uv;
+    DEBUG_ASSERT(FontAtlasPlace(atlas, curr, next, font_height, &pos, &center, &size, &min_uv, &max_uv));
+    DrawFontSdfCharacterV(atlas_handle, center, size, min_uv, max_uv, threshold, smoothing, V3_BLACK);
+  }
 }
 
 void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale) {

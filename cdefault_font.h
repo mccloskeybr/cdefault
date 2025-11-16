@@ -3,14 +3,13 @@
 
 #include "cdefault_std.h"
 #include "cdefault_math.h"
+#include "cdefault_image.h"
 
-// TODO: some sdf characters look thicker than they maybe should be?
 // TODO: better atlas fitting / packing
 // TODO: in relevant places, fall back on "no glyph present" glyph instead of erroring up.
 
 // NOTE: this is a font atlas generation library, which can be used for rendering TTF fonts. it is a relatively simple implementation and does no e.g. gridfitting.
-// it primarily supports SDF bitmap generation, which produces acceptable results at high scales and ok results at low scales.
-// raw bitmap rasterization is also supported, but no antialiasing is applied, so results look bad at low resolutions.
+// it primarily supports SDF bitmap generation. raw bitmap rasterization is also supported, but no antialiasing is applied, so results look bad at low resolutions.
 //
 // stb_truetype was used as a reference when creating this library.
 //
@@ -25,19 +24,16 @@
 // F32 sdf_height    = 32.0f;
 //
 // FontAtlas sdf_atlas;
-// U8* sdf_atlas_bitmap;
-// U32 sdf_atlas_bitmap_width, sdf_atlas_bitmap_height;
-// DEBUG_ASSERT(FontAtlasBakeSdf(arena, &font, &sdf_atlas, &sdf_atlas_bitmap, &sdf_atlas_bitmap_width, &sdf_atlas_bitmap_height, raster_height, sdf_height, FontCharSetLatin()));
+// Image     sdf_atlas_image;
+// DEBUG_ASSERT(FontAtlasBakeSdf(arena, &font, &sdf_atlas, &sdf_atlas_image, raster_height, sdf_height, FontCharSetLatin()));
 //
 // ... now go off to write the bitmap to disk, or render using it, whatever, man.
 
 // NOTE: point is the start point of the curve. The end point is the sequential curve in the list's start point.
 typedef struct GlyphCurve GlyphCurve;
 struct GlyphCurve {
-  S16 point_x;
-  S16 point_y;
-  S16 control_x;
-  S16 control_y;
+  V2 point;
+  V2 control;
 };
 
 // NOTE: A GlyphContour is a series of quadratic bezier curves describing a single line of the glyph.
@@ -53,22 +49,18 @@ typedef struct GlyphShape GlyphShape;
 struct GlyphShape {
   GlyphContour* contours;
   U32 contours_size;
-  S16 min_x;
-  S16 min_y;
-  S16 max_x;
-  S16 max_y;
+  V2  min;
+  V2  max;
 };
 
 typedef struct AtlasChar AtlasChar;
 struct AtlasChar {
-  U16 min_x;
-  U16 min_y;
-  U16 max_x;
-  U16 max_y;
-  F32 advance;
-  F32 offset_x;
-  F32 offset_y;
   U32 codepoint;
+  F32 advance;
+  V2  offset;
+  V2  size;
+  V2  uv_min;
+  V2  uv_max;
 
   AtlasChar* next;
 };
@@ -86,8 +78,6 @@ typedef struct FontAtlas FontAtlas;
 struct FontAtlas {
   // NOTE: Multiply scale_coeff by the desired render pixel height to get the relevant glyph scale factor.
   F32            scale_coeff;
-  U32            bitmap_width;
-  U32            bitmap_height;
   // TODO: dynamic sizing? just use a list?
   AtlasChar*     char_map[256];
   GlyphKernInfo* kern_map[256];
@@ -129,27 +119,22 @@ B32 FontInit(Font* font, U8* data, U32 data_size);
 // NOTE: bakes a regular raster of each glyph to an atlas. does *not* perform any anti-aliasing on the edges.
 // should only be used for sufficiently large fonts. using an sdf atlas will almost always be better than using this.
 // pixel_height dictates the height (and, consequently, resolution) of each glyph in the bitmap.
-B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas,
-                        U8** bitmap, U32* bitmap_width, U32* bitmap_height,
-                        F32 pixel_height, FontCharSet* char_set);
+B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, Image* bitmap, F32 pixel_height, FontCharSet* char_set);
 
 // NOTE: bakes an SDF atlas bitmap, which can be used with a shader to do a decent job of rendering glyphs at arbitrary resolutions.
 // this is done by rasterizing each glyph to a bitmap first, then, for each pixel in the sdf bitmap, compute & save the distance to the nearest edge.
 // bmp_pixel_height dictates the resolution of the intermediary glyph bitmap raster -- a higher value will be more expensive to compute, but will result in more accurate distance calculations for each sdf texel. 100 is a reasonable default.
 // sdf_pixel_height dictates the resolution of the final sdf bitmap. a higher value leads to more accurate glyph renders, especially at higher resolutions. 32 is a reasonable default.
 // spread_factor dictates the look-around radius when finding the closest edge for each sdf pixel. higher values will lead to a more accurate distance gradient, but is more expensive to compute and may look bad (blurry) for small sdf characters. 8, 16 are reasonable defaults.
-B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas,
-                     U8** bitmap, U32* bitmap_width, U32* bitmap_height,
-                     F32 bmp_pixel_height, F32 sdf_pixel_height, F32 spread_factor,
-                     FontCharSet* char_set);
+B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, Image* bitmap, F32 bmp_pixel_height, F32 sdf_pixel_height, F32 spread_factor, FontCharSet* char_set);
 
 // NOTE: Function to retrieve data from the atlas when placing characters. Advances the provided cursor and returns relevant information for rendering.
 // NOTE: codepoint_next is used for kerning; pass 0 if you don't care.
 B32 FontAtlasPlace(FontAtlas* atlas, U32 codepoint, U32 codepoint_next, F32 pixel_height,
-                   V2* cursor, V2* center, V2* size, V2* min_uv, V2* max_uv);
+                   V2* cursor, V2* center, V2* size, V2* uv_min, V2* uv_max);
 
-FontCharSet* FontCharSetConcat(FontCharSet* set, FontCharSet* to_concat);
 FontCharSet* FontCharSetLatin();
+FontCharSet* FontCharSetConcat(FontCharSet* set, FontCharSet* to_concat);
 
 // NOTE: determines the index of the glyph into the various font tables.
 B32 FontGetGlyphIndex(Font* font, U32 codepoint, U32* glyph_index);
@@ -221,13 +206,11 @@ static F32 FontCurveEvaluateBezierDerivative(F32 start, F32 end, F32 control, F3
   return 2.0f * ((1.0f - t) * (control - start) + (t * (end - control)));
 }
 
-static void FontGlyphShapeScale(GlyphShape* shape, F32 scale, S16* min_x, S16* min_y, S16* max_x, S16* max_y, U16* width, U16* height, F32 x_pad, F32 y_pad) {
-  *min_x  = F32Floor((F32) shape->min_x * scale) - x_pad;
-  *min_y  = F32Floor((F32) shape->min_y * scale) - y_pad;
-  *max_x  = F32Ceil((F32)  shape->max_x * scale) + x_pad;
-  *max_y  = F32Ceil((F32)  shape->max_y * scale) + y_pad;
-  *width  = *max_x - *min_x + 1;
-  *height = *max_y - *min_y + 1;
+static void FontBboxScale(V2* min, V2* max, V2* scaled_min, V2* scaled_max, F32 scale, V2 pad) {
+  scaled_min->x = (min->x * scale) - pad.x;
+  scaled_min->y = (min->y * scale) - pad.y;
+  scaled_max->x = (max->x * scale)  + pad.x;
+  scaled_max->y = (max->y * scale)  + pad.y;
 }
 
 // NOTE: this very simply determines the maximum glyph bbox and generates a width / height that fits all characters assuming that bbox.
@@ -235,8 +218,8 @@ static void FontGlyphShapeScale(GlyphShape* shape, F32 scale, S16* min_x, S16* m
 #define FONT_TRY_PARSE(eval) if (!eval) { FONT_LOG_OUT_OF_CHARS(); return false; }
 static B32 FontSuggestAtlasSize(Font* font, FontCharSet* char_set, F32 scale, U32* width, U32* height, F32 pad_x, F32 pad_y) {
   F32 num_glyphs = 0;
-  U32 max_glyph_width = 0;
-  U32 max_glyph_height = 0;
+  F32 max_glyph_width = 0;
+  F32 max_glyph_height = 0;
 
   BinStream s;
   BinStreamInit(&s, font->data, font->data_size);
@@ -266,12 +249,12 @@ static B32 FontSuggestAtlasSize(Font* font, FontCharSet* char_set, F32 scale, U3
       FONT_TRY_PARSE(BinStreamPullS16BE(&s, &max_x));
       FONT_TRY_PARSE(BinStreamPullS16BE(&s, &max_y));
 
-      S16 scaled_min_x  = F32Floor(min_x * scale);
-      S16 scaled_min_y  = F32Floor(min_y * scale);
-      S16 scaled_max_x  = F32Ceil(max_x * scale);
-      S16 scaled_max_y  = F32Ceil(max_y * scale);
-      U16 scaled_width  = scaled_max_x - scaled_min_x + 1;
-      U16 scaled_height = scaled_max_y - scaled_min_y + 1;
+      F32 scaled_min_x  = min_x * scale;
+      F32 scaled_min_y  = min_y * scale;
+      F32 scaled_max_x  = max_x * scale;
+      F32 scaled_max_y  = max_y * scale;
+      F32 scaled_width  = scaled_max_x - scaled_min_x;
+      F32 scaled_height = scaled_max_y - scaled_min_y;
       max_glyph_width   = MAX(scaled_width, max_glyph_width);
       max_glyph_height  = MAX(scaled_height, max_glyph_height);
       num_glyphs++;
@@ -451,7 +434,7 @@ B32 FontInit(Font* font, U8* data, U32 data_size) {
   FONT_TRY_PARSE(BinStreamPullU16BE(&s, &index_to_loc_format));
   switch (index_to_loc_format) {
     case 0: { font->loc_format = LocFormat_U16; } break;
-    case 1: { font->loc_format = LocFormat_U32;  } break;
+    case 1: { font->loc_format = LocFormat_U32; } break;
     default: {
       LOG_ERROR("[FONT] Invalid or unsupported indexToLocFormat provided: %d", index_to_loc_format);
       return false;
@@ -686,12 +669,16 @@ B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShap
   BinStreamInit(&s, font->data, font->data_size);
   FONT_TRY_PARSE(BinStreamSeek(&s, glyph_glyf_offset));
 
-  S16 contours_size;
+  S16 contours_size, min_x, min_y, max_x, max_y;
   FONT_TRY_PARSE(BinStreamPullS16BE(&s, &contours_size));
-  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &shape->min_x));
-  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &shape->min_y));
-  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &shape->max_x));
-  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &shape->max_y));
+  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &min_x));
+  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &min_y));
+  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &max_x));
+  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &max_y));
+  shape->min.x = min_x;
+  shape->min.y = min_y;
+  shape->max.x = max_x;
+  shape->max.y = max_y;
 
   if (contours_size > 0) {
     // NOTE: parse simple shape
@@ -799,40 +786,40 @@ B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShap
           if (p1_on_contour) {
             // on on n/a
             // NOTE: insert a fake control point in the middle so we don't need to differentiate between curves and lines.
-            curve.point_x = p0_x;
-            curve.point_y = p0_y;
-            curve.control_x = (p0_x + p1_x) / 2;
-            curve.control_y = (p0_y + p1_y) / 2;
+            curve.point.x   = p0_x;
+            curve.point.y   = p0_y;
+            curve.control.x = ((F32) (p0_x + p1_x)) / 2.0f;
+            curve.control.y = ((F32) (p0_y + p1_y)) / 2.0f;
           } else if (p2_on_contour) {
             // on off on
-            curve.point_x   = p0_x;
-            curve.point_y   = p0_y;
-            curve.control_x = p1_x;
-            curve.control_y = p1_y;
+            curve.point.x   = p0_x;
+            curve.point.y   = p0_y;
+            curve.control.x = p1_x;
+            curve.control.y = p1_y;
             i++;
           } else {
             // on off off
-            curve.point_x   = p0_x;
-            curve.point_y   = p0_y;
-            curve.control_x = p1_x;
-            curve.control_y = p1_y;
+            curve.point.x   = p0_x;
+            curve.point.y   = p0_y;
+            curve.control.x = p1_x;
+            curve.control.y = p1_y;
           }
         } else {
           // TODO: could this maybe happen for the first point? if it does happen, maybe just ignore / passively increment in this case. should be handled at the end of the loop.
           DEBUG_ASSERT(!p1_on_contour);
           if (p2_on_contour) {
             // off off on
-            curve.point_x   = (p0_x + p1_x) / 2;
-            curve.point_y   = (p0_y + p1_y) / 2;
-            curve.control_x = p1_x;
-            curve.control_y = p1_y;
+            curve.point.x   = ((F32) (p0_x + p1_x)) / 2.0f;
+            curve.point.y   = ((F32) (p0_y + p1_y)) / 2.0f;
+            curve.control.x = p1_x;
+            curve.control.y = p1_y;
             i++;
           } else {
             // off off off
-            curve.point_x   = (p0_x + p1_x) / 2;
-            curve.point_y   = (p0_y + p1_y) / 2;
-            curve.control_x = p1_x;
-            curve.control_y = p1_y;
+            curve.point.x   = ((F32) (p0_x + p1_x)) / 2.0f;
+            curve.point.y   = ((F32) (p0_y + p1_y)) / 2.0f;
+            curve.control.x = p1_x;
+            curve.control.y = p1_y;
           }
         }
         // NOTE: contour.curves has exclusive arena access here, so we don't need to have a separate dedicated arena for these dynamic arrays.
@@ -961,10 +948,10 @@ B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShap
           GlyphContour* component_contour = &component_shape.contours[i];
           for (U32 j = 0; j < component_contour->curves_size; j++) {
             GlyphCurve* curve = &component_contour->curves[j];
-            curve->point_x   = m * ((matrix[0] * curve->point_x) + (matrix[2] * curve->point_y) + matrix[4]);
-            curve->point_y   = n * ((matrix[1] * curve->point_x) + (matrix[3] * curve->point_y) + matrix[5]);
-            curve->control_x = m * ((matrix[0] * curve->control_x) + (matrix[2] * curve->control_y) + matrix[4]);
-            curve->control_y = n * ((matrix[1] * curve->control_x) + (matrix[3] * curve->control_y) + matrix[5]);
+            curve->point.x   = m * ((matrix[0] * curve->point.x) + (matrix[2] * curve->point.y) + matrix[4]);
+            curve->point.y   = n * ((matrix[1] * curve->point.x) + (matrix[3] * curve->point.y) + matrix[5]);
+            curve->control.x = m * ((matrix[0] * curve->control.x) + (matrix[2] * curve->control.y) + matrix[4]);
+            curve->control.y = n * ((matrix[1] * curve->control.x) + (matrix[3] * curve->control.y) + matrix[5]);
             DA_PUSH_BACK_EX(arena, contour.curves, contour.curves_size, curves_capacity, *curve);
           }
           ARENA_POP_ARRAY(arena, GlyphCurve, curves_capacity - contour.curves_size);
@@ -1004,7 +991,7 @@ B32 FontGlyphShapeRasterize(GlyphShape* glyph_shape, U8** bmp, U32 bmp_width, U3
 
   S16 pen_y = bmp_glyph_min_y;
   while (pen_y <= bmp_glyph_max_y) {
-    F32 scanline_y = F32MapRange(pen_y + 0.5f, bmp_glyph_min_y, bmp_glyph_max_y, glyph_shape->min_y, glyph_shape->max_y);
+    F32 scanline_y = F32MapRange(pen_y + 0.5f, bmp_glyph_min_y, bmp_glyph_max_y, glyph_shape->min.y, glyph_shape->max.y);
 
     // NOTE: find all points that intersect with the current scanline.
     intersect_x_vals_size = 0;
@@ -1014,16 +1001,16 @@ B32 FontGlyphShapeRasterize(GlyphShape* glyph_shape, U8** bmp, U32 bmp_width, U3
         GlyphCurve* curr = &contour->curves[j];
         GlyphCurve* next = &contour->curves[(j + 1) % contour->curves_size];
 
-        F32 a = curr->point_y - (2 * curr->control_y) + next->point_y;
-        F32 b = 2 * (curr->control_y - curr->point_y);
-        F32 c = curr->point_y - scanline_y;
+        F32 a = curr->point.y - (2 * curr->control.y) + next->point.y;
+        F32 b = 2 * (curr->control.y - curr->point.y);
+        F32 c = curr->point.y - scanline_y;
 
         // NOTE: get y-extremes for the given curve, determine that the current scanline intersects based on the extents.
-        F32 curve_min_y = MIN(curr->point_y, next->point_y);
-        F32 curve_max_y = MAX(curr->point_y, next->point_y);
-        F32 t_y_extreme = (curr->point_y - curr->control_y) / a;
+        F32 curve_min_y = MIN(curr->point.y, next->point.y);
+        F32 curve_max_y = MAX(curr->point.y, next->point.y);
+        F32 t_y_extreme = (curr->point.y - curr->control.y) / a;
         if (0 <= t_y_extreme && t_y_extreme <= 1) {
-          F32 y_extreme = FontCurveEvaluateBezier(curr->point_y, next->point_y, curr->control_y, t_y_extreme);
+          F32 y_extreme = FontCurveEvaluateBezier(curr->point.y, next->point.y, curr->control.y, t_y_extreme);
           curve_min_y = MIN(curve_min_y, y_extreme);
           curve_max_y = MAX(curve_max_y, y_extreme);
         }
@@ -1056,14 +1043,14 @@ B32 FontGlyphShapeRasterize(GlyphShape* glyph_shape, U8** bmp, U32 bmp_width, U3
         for (U32 k = 0; k < t_size; k++) {
           // NOTE: [0, 1), not [0, 1] because the 1 will be double counted at the next curve's t = 0.
           if (!(0 <= t[k] && t[k] < 1)) { continue; }
-          F32 intersect_x = FontCurveEvaluateBezier(curr->point_x, next->point_x, curr->control_x, t[k]);
-          if (intersect_x < glyph_shape->min_x || intersect_x > glyph_shape->max_x) {
+          F32 intersect_x = FontCurveEvaluateBezier(curr->point.x, next->point.x, curr->control.x, t[k]);
+          if (intersect_x < glyph_shape->min.x || intersect_x > glyph_shape->max.x) {
             LOG_WARN("[FONT] Font defined glyph shape exceeds defined bounds! Attempting to recover, but there may be visual artifacts.");
-            intersect_x = MAX(glyph_shape->min_x, intersect_x);
-            intersect_x = MIN(glyph_shape->max_x, intersect_x);
+            intersect_x = MAX(glyph_shape->min.x, intersect_x);
+            intersect_x = MIN(glyph_shape->max.x, intersect_x);
           }
-          F32 intersect_deriv = FontCurveEvaluateBezierDerivative(curr->point_y, next->point_y, curr->control_y, t[k]);
-          if (intersect_deriv == 0) { intersect_deriv = FontCurveEvaluateBezierDerivative(curr->point_x, next->point_x, curr->control_x, t[k]); }
+          F32 intersect_deriv = FontCurveEvaluateBezierDerivative(curr->point.y, next->point.y, curr->control.y, t[k]);
+          if (intersect_deriv == 0) { intersect_deriv = FontCurveEvaluateBezierDerivative(curr->point.x, next->point.x, curr->control.x, t[k]); }
 
           FontIntersectPoint intersect_point;
           intersect_point.x = intersect_x;
@@ -1091,8 +1078,8 @@ B32 FontGlyphShapeRasterize(GlyphShape* glyph_shape, U8** bmp, U32 bmp_width, U3
       } else if (!winding_was_0 && winding_became_0) {
         // NOTE: exiting a shape
         // TODO: this doesn't sample from the bmp's center point.
-        U16 bmp_pen_start = F32MapRange(pen_start,    glyph_shape->min_x, glyph_shape->max_x, bmp_glyph_min_x, bmp_glyph_max_x);
-        U16 bmp_pen_stop  = F32MapRange(intersect->x, glyph_shape->min_x, glyph_shape->max_x, bmp_glyph_min_x, bmp_glyph_max_x);
+        U16 bmp_pen_start = F32MapRange(pen_start,    glyph_shape->min.x, glyph_shape->max.x, bmp_glyph_min_x, bmp_glyph_max_x);
+        U16 bmp_pen_stop  = F32MapRange(intersect->x, glyph_shape->min.x, glyph_shape->max.x, bmp_glyph_min_x, bmp_glyph_max_x);
         for (U16 j = bmp_pen_start; j <= bmp_pen_stop; j++) { (*bmp)[(pen_y * bmp_width) + j] = 255; }
       }
     }
@@ -1103,11 +1090,14 @@ B32 FontGlyphShapeRasterize(GlyphShape* glyph_shape, U8** bmp, U32 bmp_width, U3
   return true;
 }
 
-B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap, U32* bitmap_width, U32* bitmap_height, F32 pixel_height, FontCharSet* char_set) {
+B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, Image* bitmap, F32 pixel_height, FontCharSet* char_set) {
   B32 success  = false;
   U64 base_pos = ArenaPos(arena);
   Arena* temp_arena = ArenaAllocate();
+
   MEMORY_ZERO_STRUCT(atlas);
+  MEMORY_ZERO_STRUCT(bitmap);
+  bitmap->format = ImageFormat_R;
 
   F32 scale = pixel_height / font->char_height;
   if (scale <= 0) {
@@ -1116,13 +1106,11 @@ B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap,
   }
 
   U16 pad = 2;
-  if (!FontSuggestAtlasSize(font, char_set, scale, bitmap_width, bitmap_height, pad * 2, pad * 2)) {
+  if (!FontSuggestAtlasSize(font, char_set, scale, &bitmap->width, &bitmap->height, pad * 2, pad * 2)) {
     goto font_atlas_bake_bitmap_end;
   }
-  atlas->bitmap_width  = *bitmap_width;
-  atlas->bitmap_height = *bitmap_height;
-  *bitmap = ARENA_PUSH_ARRAY(arena, U8, *bitmap_width * *bitmap_height);
-  MEMORY_ZERO(*bitmap, sizeof(U8) * (*bitmap_width * *bitmap_height));
+  bitmap->data = ARENA_PUSH_ARRAY(arena, U8, bitmap->width * bitmap->height);
+  MEMORY_ZERO(bitmap->data, sizeof(U8) * bitmap->width * bitmap->height);
 
   // NOTE: bake glyph bitmap
   U32 bitmap_x = pad;
@@ -1159,18 +1147,16 @@ B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap,
       }
 
       // NOTE: determine bitmap box
-      S16 scaled_glyph_min_x, scaled_glyph_min_y, scaled_glyph_max_x, scaled_glyph_max_y;
-      U16 scaled_glyph_width, scaled_glyph_height;
-      FontGlyphShapeScale(
-          &glyph_shape, scale,
-          &scaled_glyph_min_x, &scaled_glyph_min_y, &scaled_glyph_max_x, &scaled_glyph_max_y,
-          &scaled_glyph_width, &scaled_glyph_height, 0, 0);
-      if (bitmap_x + scaled_glyph_width >= *bitmap_width) {
+      V2 scaled_glyph_min, scaled_glyph_max;
+      FontBboxScale(&glyph_shape.min, &glyph_shape.max, &scaled_glyph_min, &scaled_glyph_max, scale, V2Assign(0, 0));
+      F32 scaled_glyph_width  = scaled_glyph_max.x - scaled_glyph_min.x;
+      F32 scaled_glyph_height = scaled_glyph_max.y - scaled_glyph_min.y;
+      if (bitmap_x + scaled_glyph_width >= bitmap->width) {
         bitmap_x = pad;
         bitmap_y += max_glyph_height_for_row;
         max_glyph_height_for_row = pad;
       }
-      if (bitmap_y + scaled_glyph_height >= *bitmap_height) {
+      if (bitmap_y + scaled_glyph_height >= bitmap->height) {
         LOG_ERROR("[FONT] Provided font SDF bitmap does not fit all glyphs.");
         goto font_atlas_bake_bitmap_end;
       }
@@ -1180,16 +1166,17 @@ B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap,
       U16 bitmap_min_y = bitmap_y;
       U16 bitmap_max_x = bitmap_x + scaled_glyph_width;
       U16 bitmap_max_y = bitmap_y + scaled_glyph_height;
-      DEBUG_ASSERT(FontGlyphShapeRasterize(&glyph_shape, bitmap, *bitmap_width, *bitmap_height, bitmap_min_x, bitmap_min_y, bitmap_max_x, bitmap_max_y));
+      DEBUG_ASSERT(FontGlyphShapeRasterize(&glyph_shape, &bitmap->data, bitmap->width, bitmap->height, bitmap_min_x, bitmap_min_y, bitmap_max_x, bitmap_max_y));
 
       AtlasChar* atlas_char = ARENA_PUSH_STRUCT(arena, AtlasChar);
-      atlas_char->min_x = bitmap_min_x;
-      atlas_char->min_y = bitmap_min_y;
-      atlas_char->max_x = bitmap_max_x;
-      atlas_char->max_y = bitmap_max_y;
-      atlas_char->advance = ((F32) advance) * scale;
-      atlas_char->offset_x = F32Floor(((F32) glyph_shape.min_x) * scale);
-      atlas_char->offset_y = F32Floor(((F32) glyph_shape.min_y) * scale);
+      atlas_char->advance   = ((F32) advance) * scale;
+      V2MultF32(&atlas_char->offset, &glyph_shape.min, scale);
+      atlas_char->size.x    = bitmap_max_x - bitmap_min_x;
+      atlas_char->size.y    = bitmap_max_y - bitmap_min_y;
+      atlas_char->uv_min.x  = ((F32) bitmap_min_x) / bitmap->width;
+      atlas_char->uv_min.y  = ((F32) bitmap_min_y) / bitmap->height;
+      atlas_char->uv_max.x  = ((F32) bitmap_max_x) / bitmap->width;
+      atlas_char->uv_max.y  = ((F32) bitmap_max_y) / bitmap->height;
       atlas_char->codepoint = codepoint;
       DEBUG_ASSERT(FontAtlasInsertChar(atlas, codepoint, atlas_char));
 
@@ -1208,11 +1195,17 @@ font_atlas_bake_bitmap_end:
 }
 
 // https://steamcdn-a.akamaihd.net/apps/valve/2007/SIGGRAPH2007_AlphaTestedMagnification.pdf
-B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap, U32* bitmap_width, U32* bitmap_height, F32 bmp_pixel_height, F32 sdf_pixel_height, F32 spread_factor, FontCharSet* char_set) {
+B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, Image* bitmap, F32 bmp_pixel_height, F32 sdf_pixel_height, F32 spread_factor, FontCharSet* char_set) {
   B32 success = false;
   Arena* temp_arena = ArenaAllocate();
   U64 base_pos = ArenaPos(arena);
+
   MEMORY_ZERO_STRUCT(atlas);
+  MEMORY_ZERO_STRUCT(bitmap);
+  bitmap->format = ImageFormat_R;
+
+  DEBUG_ASSERT(spread_factor >= 0);
+  if (spread_factor == 0) { spread_factor = 4.0f; }
 
   F32 bmp_scale = bmp_pixel_height / font->char_height;
   if (bmp_scale <= 0) {
@@ -1225,22 +1218,19 @@ B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap, U3
     goto font_atlas_bake_sdf_end;
   }
 
-  S32 h_sdf_kernel_width    = (U32) (spread_factor / 2.0f);
-  S32 h_sdf_kernel_height   = (U32) (spread_factor / 2.0f);
-  F32 sdf_pad_x             = (sdf_scale / bmp_scale) * h_sdf_kernel_width;
-  F32 sdf_pad_y             = (sdf_scale / bmp_scale) * h_sdf_kernel_height;
-  F32 max_possible_distance = F32Sqrt((h_sdf_kernel_width + h_sdf_kernel_width) + (h_sdf_kernel_height * h_sdf_kernel_height));
+  V2 sdf_pad;
+  V2 sdf_kernel = V2Assign(spread_factor, spread_factor);
+  V2MultF32(&sdf_pad, &sdf_kernel, sdf_scale / bmp_scale);
+  F32 max_possible_distance = F32Sqrt((sdf_kernel.x * sdf_kernel.x) + (sdf_kernel.y * sdf_kernel.y));
 
-  if (!FontSuggestAtlasSize(font, char_set, sdf_scale, bitmap_width, bitmap_height, 4.0f * sdf_pad_x, 2.0f * sdf_pad_y)) {
+  if (!FontSuggestAtlasSize(font, char_set, sdf_scale, &bitmap->width, &bitmap->height, 2.0f * sdf_pad.x, 2.0f * sdf_pad.y)) {
     goto font_atlas_bake_sdf_end;
   }
-  atlas->bitmap_width  = *bitmap_width;
-  atlas->bitmap_height = *bitmap_height;
-  *bitmap = ARENA_PUSH_ARRAY(arena, U8, *bitmap_width * *bitmap_height);
-  MEMORY_ZERO(*bitmap, sizeof(U8) * (*bitmap_width * *bitmap_height));
+  bitmap->data = ARENA_PUSH_ARRAY(arena, U8, bitmap->width * bitmap->height);
+  MEMORY_ZERO(bitmap->data, sizeof(U8) * bitmap->width * bitmap->height);
 
-  U32 sdf_y = sdf_pad_y;
-  U32 sdf_x = sdf_pad_x;
+  U32 sdf_y = sdf_pad.y;
+  U32 sdf_x = sdf_pad.x;
   S16 max_glyph_height_for_row = 0;
   for (FontCharSet* curr_char_set = char_set; curr_char_set != NULL; curr_char_set = curr_char_set->next) {
     for (U32 i = 0; i < curr_char_set->codepoints_size; i++) {
@@ -1274,52 +1264,53 @@ B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap, U3
 
       // NOTE: we generate an SDF by first rasterizing a bitmap, then for each pixel in the SDF bitmap, determine its
       // comparative distance to a pixel of the opposite state in the rasterized bitmap.
-      S16 rasterized_glyph_min_x, rasterized_glyph_min_y, rasterized_glyph_max_x, rasterized_glyph_max_y;
-      U16 rasterized_glyph_width, rasterized_glyph_height;
-      FontGlyphShapeScale(
-          &glyph_shape, bmp_scale,
-          &rasterized_glyph_min_x, &rasterized_glyph_min_y, &rasterized_glyph_max_x, &rasterized_glyph_max_y,
-          &rasterized_glyph_width, &rasterized_glyph_height, h_sdf_kernel_width, h_sdf_kernel_height);
-      U8* rasterized_glyph = ARENA_PUSH_ARRAY(temp_arena, U8, rasterized_glyph_width * rasterized_glyph_height);
-      MEMORY_ZERO(rasterized_glyph, sizeof(U8) * (rasterized_glyph_width * rasterized_glyph_height));
+      V2 bmp_glyph_min, bmp_glyph_max;
+      FontBboxScale(&glyph_shape.min, &glyph_shape.max, &bmp_glyph_min, &bmp_glyph_max, bmp_scale, sdf_kernel);
+      U16 bmp_glyph_width  = bmp_glyph_max.x - bmp_glyph_min.x;
+      U16 bmp_glyph_height = bmp_glyph_max.y - bmp_glyph_min.y;
+      U8* bmp_glyph_bytes  = ARENA_PUSH_ARRAY(temp_arena, U8, bmp_glyph_width * bmp_glyph_height);
+      MEMORY_ZERO(bmp_glyph_bytes, sizeof(U8) * (bmp_glyph_width * bmp_glyph_height));
       DEBUG_ASSERT(FontGlyphShapeRasterize(
-            &glyph_shape, &rasterized_glyph, rasterized_glyph_width, rasterized_glyph_height,
-            h_sdf_kernel_width, h_sdf_kernel_height, rasterized_glyph_width - h_sdf_kernel_width, rasterized_glyph_height - h_sdf_kernel_height));
+            &glyph_shape, &bmp_glyph_bytes, bmp_glyph_width, bmp_glyph_height,
+            sdf_kernel.x, sdf_kernel.y, bmp_glyph_width - sdf_kernel.x, bmp_glyph_height - sdf_kernel.y));
 
-      S16 sdf_glyph_min_x, sdf_glyph_min_y, sdf_glyph_max_x, sdf_glyph_max_y;
-      U16 sdf_glyph_width, sdf_glyph_height;
-      FontGlyphShapeScale(
-          &glyph_shape, sdf_scale,
-          &sdf_glyph_min_x, &sdf_glyph_min_y, &sdf_glyph_max_x, &sdf_glyph_max_y,
-          &sdf_glyph_width, &sdf_glyph_height, sdf_pad_x, sdf_pad_y);
-      if (sdf_x + sdf_glyph_width >= *bitmap_width) {
-        sdf_x = sdf_pad_x;
+      V2 sdf_glyph_min, sdf_glyph_max;
+      FontBboxScale(&glyph_shape.min, &glyph_shape.max, &sdf_glyph_min, &sdf_glyph_max, sdf_scale, sdf_pad);
+      U16 sdf_glyph_width  = sdf_glyph_max.x - sdf_glyph_min.x;
+      U16 sdf_glyph_height = sdf_glyph_max.y - sdf_glyph_min.y;
+      if (sdf_x + sdf_glyph_width >= bitmap->width) {
+        sdf_x = sdf_pad.x;
         sdf_y += max_glyph_height_for_row;
       }
-      if (sdf_y + sdf_glyph_height >= *bitmap_height) {
+      if (sdf_y + sdf_glyph_height >= bitmap->height) {
         LOG_ERROR("[FONT] Provided font SDF bitmap does not fit all glyphs.");
         goto font_atlas_bake_sdf_end;
       }
-      max_glyph_height_for_row = MAX(sdf_glyph_height + sdf_pad_y, max_glyph_height_for_row);
+      max_glyph_height_for_row = MAX(sdf_glyph_height + sdf_pad.y, max_glyph_height_for_row);
+
+      U16 sdf_bitmap_min_x = sdf_x;
+      U16 sdf_bitmap_min_y = sdf_y;
+      U16 sdf_bitmap_max_x = sdf_x + sdf_glyph_width;
+      U16 sdf_bitmap_max_y = sdf_y + sdf_glyph_height;
 
       for (S16 sdf_glyph_y = 0; sdf_glyph_y < sdf_glyph_height; sdf_glyph_y++) {
-        S16 rasterized_glyph_y = F32MapRange(sdf_glyph_y + 0.5f, 0, sdf_glyph_height, 0, rasterized_glyph_height);
+        S16 bmp_glyph_y = F32MapRange(sdf_glyph_y + 0.5f, 0, sdf_glyph_height, 0, bmp_glyph_height);
         for (S16 sdf_glyph_x = 0; sdf_glyph_x < sdf_glyph_width; sdf_glyph_x++) {
-          S16 rasterized_glyph_x = F32MapRange(sdf_glyph_x + 0.5f, 0, sdf_glyph_width, 0, rasterized_glyph_width);
-          U8 value = rasterized_glyph[(rasterized_glyph_y * rasterized_glyph_width) + rasterized_glyph_x];
+          S16 bmp_glyph_x = F32MapRange(sdf_glyph_x + 0.5f, 0, sdf_glyph_width, 0, bmp_glyph_width);
+          U8 value = bmp_glyph_bytes[(bmp_glyph_y * bmp_glyph_width) + bmp_glyph_x];
 
           // NOTE: determine distance to closest edge by looking for the closest pixel of opposite state in a neighborhood of texels.
           F32 min_distance_sq = max_possible_distance * max_possible_distance;
-          S16 kernel_min_y = MAX(0, rasterized_glyph_y - h_sdf_kernel_height);
-          S16 kernel_max_y = MIN(rasterized_glyph_height, rasterized_glyph_y + h_sdf_kernel_height);
+          S16 kernel_min_y = MAX(0, bmp_glyph_y - sdf_kernel.y);
+          S16 kernel_max_y = MIN(bmp_glyph_height, bmp_glyph_y + sdf_kernel.y);
           for (S16 kernel_y = kernel_min_y; kernel_y < kernel_max_y; kernel_y++) {
-            S16 kernel_min_x = MAX(0, rasterized_glyph_x - h_sdf_kernel_width);
-            S16 kernel_max_x = MIN(rasterized_glyph_width, rasterized_glyph_x + h_sdf_kernel_width);
+            S16 kernel_min_x = MAX(0, bmp_glyph_x - sdf_kernel.x);
+            S16 kernel_max_x = MIN(bmp_glyph_width, bmp_glyph_x + sdf_kernel.x);
             for (S16 kernel_x = kernel_min_x; kernel_x < kernel_max_x; kernel_x++) {
-              U8 test_value = rasterized_glyph[(kernel_y * rasterized_glyph_width) + kernel_x];
+              U8 test_value = bmp_glyph_bytes[(kernel_y * bmp_glyph_width) + kernel_x];
               if (test_value == value) { continue; }
-              F32 test_x_distance  = kernel_x - rasterized_glyph_x;
-              F32 test_y_distance  = kernel_y - rasterized_glyph_y;
+              F32 test_x_distance  = kernel_x - bmp_glyph_x;
+              F32 test_y_distance  = kernel_y - bmp_glyph_y;
               F32 test_distance_sq = (test_x_distance * test_x_distance) + (test_y_distance * test_y_distance);
               if (test_distance_sq < min_distance_sq) { min_distance_sq = test_distance_sq; }
             }
@@ -1333,18 +1324,21 @@ B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, U8** bitmap, U3
           // this is so the outside of the shape is the same color as the atlas bitmap (black), which could otherwise confuse
           // linear interpolation when sampling from the sdf atlas (mostly due to uv float precision lost when picking atlas chars).
           sdf_value = 255 - sdf_value;
-          (*bitmap)[((sdf_y + sdf_glyph_y) * *bitmap_width) + (sdf_x + sdf_glyph_x)] = (U8) sdf_value;
+          bitmap->data[((sdf_y + sdf_glyph_y) * bitmap->width) + (sdf_x + sdf_glyph_x)] = (U8) sdf_value;
         }
       }
 
       AtlasChar* atlas_char = ARENA_PUSH_STRUCT(arena, AtlasChar);
-      atlas_char->min_x = sdf_x;
-      atlas_char->min_y = sdf_y;
-      atlas_char->max_x = sdf_x + sdf_glyph_width;
-      atlas_char->max_y = sdf_y + sdf_glyph_height;
-      atlas_char->advance = ((F32) advance) * sdf_scale;
-      atlas_char->offset_x = F32Floor(((F32) glyph_shape.min_x) * sdf_scale);
-      atlas_char->offset_y = F32Floor(((F32) glyph_shape.min_y) * sdf_scale);
+      atlas_char->advance  = ((F32) advance) * sdf_scale;
+      V2MultF32(&atlas_char->offset, &glyph_shape.min, sdf_scale);
+      V2SubV2(&atlas_char->offset, &atlas_char->offset, &sdf_pad);
+      atlas_char->size.x   = sdf_bitmap_max_x - sdf_bitmap_min_x;
+      atlas_char->size.y   = sdf_bitmap_max_y - sdf_bitmap_min_y;
+      atlas_char->uv_min.x = ((F32) sdf_bitmap_min_x) / bitmap->width;
+      atlas_char->uv_min.y = ((F32) sdf_bitmap_min_y) / bitmap->height;
+      atlas_char->uv_max.x = ((F32) sdf_bitmap_max_x) / bitmap->width;
+      atlas_char->uv_max.y = ((F32) sdf_bitmap_max_y) / bitmap->height;
+
       atlas_char->codepoint = codepoint;
       DEBUG_ASSERT(FontAtlasInsertChar(atlas, atlas_char->codepoint, atlas_char));
 
@@ -1411,18 +1405,15 @@ GlyphKernInfo* FontAtlasGetKern(FontAtlas* atlas, U32 codepoint_left, U32 codepo
   return NULL;
 }
 
-B32 FontAtlasPlace(FontAtlas* atlas, U32 codepoint, U32 codepoint_next, F32 pixel_height, V2* cursor, V2* center, V2* size, V2* min_uv, V2* max_uv) {
+B32 FontAtlasPlace(FontAtlas* atlas, U32 codepoint, U32 codepoint_next, F32 pixel_height, V2* cursor, V2* center, V2* size, V2* uv_min, V2* uv_max) {
   AtlasChar* atlas_char = FontAtlasGetChar(atlas, codepoint);
   if (atlas_char == NULL) { return false; }
   F32 scale = pixel_height * atlas->scale_coeff;
-  size->x   = (atlas_char->max_x - atlas_char->min_x) * scale;
-  size->y   = (atlas_char->max_y - atlas_char->min_y) * scale;
-  center->x = F32Floor(cursor->x + (atlas_char->offset_x * scale) + (size->x / 2.0f));
-  center->y = F32Floor(cursor->y + (atlas_char->offset_y * scale) + (size->y / 2.0f));
-  min_uv->x = ((F32) atlas_char->min_x) / atlas->bitmap_width;
-  min_uv->y = ((F32) atlas_char->min_y) / atlas->bitmap_height;
-  max_uv->x = ((F32) atlas_char->max_x) / atlas->bitmap_width;
-  max_uv->y = ((F32) atlas_char->max_y) / atlas->bitmap_height;
+  V2MultF32(size, &atlas_char->size, scale);
+  center->x = cursor->x + (atlas_char->offset.x * scale) + (size->x / 2.0f);
+  center->y = cursor->y + (atlas_char->offset.y * scale) + (size->y / 2.0f);
+  *uv_min   = atlas_char->uv_min;
+  *uv_max   = atlas_char->uv_max;
 
   F32 advance = atlas_char->advance;
   GlyphKernInfo* kern = FontAtlasGetKern(atlas, codepoint, codepoint_next);

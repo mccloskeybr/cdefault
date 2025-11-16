@@ -15,7 +15,7 @@ int main(void) {
   U32 image_handle, mesh_handle;
   Image image;
   DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, Str8Lit("../data/16bpp.bmp")));
-  RendererRegisterImageRGBA(&image_handle, image.data, image.width, image.height);
+  RendererRegisterImage(&image_handle, &image);
   Mesh obj;
   DEBUG_ASSERT(MeshLoadFile(arena, &obj, Str8Lit("../data/teapot.obj")));
   RendererRegisterMesh(&mesh_handle, image_handle, obj.points, obj.normals, obj.uvs, obj.vertices_size, obj.indices, obj.indices_size);
