@@ -209,8 +209,8 @@ static F32 FontCurveEvaluateBezierDerivative(F32 start, F32 end, F32 control, F3
 static void FontBboxScale(V2* min, V2* max, V2* scaled_min, V2* scaled_max, F32 scale, V2 pad) {
   scaled_min->x = (min->x * scale) - pad.x;
   scaled_min->y = (min->y * scale) - pad.y;
-  scaled_max->x = (max->x * scale)  + pad.x;
-  scaled_max->y = (max->y * scale)  + pad.y;
+  scaled_max->x = (max->x * scale) + pad.x;
+  scaled_max->y = (max->y * scale) + pad.y;
 }
 
 // NOTE: this very simply determines the maximum glyph bbox and generates a width / height that fits all characters assuming that bbox.

@@ -155,7 +155,18 @@ struct Sphere3 { V3 center_point; F32 radius; };
 typedef struct IntersectManifold3 IntersectManifold3;
 struct IntersectManifold3 { V3 normal; F32 penetration; };
 
+B32  Line3Eq(V3* a_start, V3* a_end, V3* b_start, V3* b_end);
+B32  Line3ApproxEq(V3* a_start, V3* a_end, V3* b_start, V3* b_end);
+void Line3Offset(V3* start, V3* end, V3* offset);
+F32  Line3GetLength(V3* start, V3* end);
+F32  Line3GetLengthSq(V3* start, V3* end);
+void Line3GetMidpoint(V3* line_start, V3* line_end, V3* midpoint);
+void Line3GetClosestPoint(V3* start, V3* end, V3* point, V3* closest);
+B32  Line3IntersectLine3(V3* a_start, V3* a_end, V3* b_start, V3* b_end, V3* intersect_point);
+B32  Line3IntersectRay3(V3* line_start, V3* line_end, V3* ray_start, V3* ray_dir, V3* intersect_point);
+
 void Ray3DirInv(Ray3* r, V3* dir_inv);
+B32  Ray3IntersectRay3(V3* a_start, V3* a_dir, V3* b_start, V3* b_dir, V3* intersect_point);
 B32  Ray3IntersectPlane3(Ray3* ray, Plane3* plane, V3* intersect_point);
 B32  Ray3IntersectAabb3(Ray3* ray, Aabb3* aabb, V3* enter_point, V3* exit_point);
 B32  Ray3IntersectTri3(Ray3* ray, Tri3* tri, V3* intersect_point);
@@ -266,12 +277,8 @@ void Line2GetNormalOut(V2* start, V2* end, V2* normal) {
   V2Normalize(normal, normal);
 }
 
-// SPEEDUP: for all line intersections, we just convert to ray and then determine if the
-// intersection point is beyond the segment's end. there's probably a more elegant way to do
-// this that e.g. doesn't force collection of the ray intersection point unless asked for?
 B32 Line2IntersectLine2(V2* a_start, V2* a_end, V2* b_start, V2* b_end, V2* intersect_point) {
-  if (UNLIKELY(Line2GetLengthSq(a_start, a_end) == 0)) { return false; }
-
+  if (UNLIKELY(Line2GetLengthSq(b_start, b_end) == 0)) { return false; }
   V2 b_dir;
   V2SubV2(&b_dir, b_end, b_start);
   V2Normalize(&b_dir, &b_dir);
@@ -286,7 +293,6 @@ B32 Line2IntersectLine2(V2* a_start, V2* a_end, V2* b_start, V2* b_end, V2* inte
 
 B32 Line2IntersectRay2(V2* line_start, V2* line_end, V2* ray_start, V2* ray_dir, V2* intersect_point) {
   if (UNLIKELY(Line2GetLengthSq(line_start, line_end) == 0)) { return false; }
-
   V2 line_dir;
   V2SubV2(&line_dir, line_end, line_start);
   V2Normalize(&line_dir, &line_dir);
@@ -1191,6 +1197,120 @@ B32 ConvexHull2IntersectConvexHull2(V2* a_points, U32 a_points_size, V2* b_point
     }
   }
   return true;
+}
+
+B32 Line3Eq(V3* a_start, V3* a_end, V3* b_start, V3* b_end) {
+  return V3Eq(a_start, b_start) && V3Eq(a_end, b_end);
+}
+
+B32 Line3ApproxEq(V3* a_start, V3* a_end, V3* b_start, V3* b_end) {
+  return V3ApproxEq(a_start, b_start) && V3ApproxEq(a_end, b_end);
+}
+
+void Line3Offset(V3* start, V3* end, V3* offset) {
+  V3AddV3(start, start, offset);
+  V3AddV3(end, end, offset);
+}
+
+F32 Line3GetLength(V3* start, V3* end) {
+  return F32Sqrt(Line3GetLengthSq(start, end));
+}
+
+F32 Line3GetLengthSq(V3* start, V3* end) {
+  V3 v;
+  V3SubV3(&v, end, start);
+  return V3LengthSq(&v);
+}
+
+void Line3GetMidpoint(V3* line_start, V3* line_end, V3* midpoint) {
+  V3AddV3(midpoint, line_start, line_end);
+  V3MultF32(midpoint, midpoint, 0.5f);
+}
+
+void Line3GetClosestPoint(V3* start, V3* end, V3* point, V3* closest) {
+  V3* a = start;
+  V3* b = end;
+  V3 ab, ap;
+  V3SubV3(&ab, b, a);
+  V3SubV3(&ap, point, a);
+  F32 t = V3DotV3(&ap, &ab) / V3LengthSq(&ab);
+  if (t < 0) {
+    *closest = *a;
+  } else if (t > 1) {
+    *closest = *b;
+  } else {
+    V3MultF32(&ab, &ab, t);
+    V3AddV3(closest, a, &ab);
+  }
+}
+
+B32 Line3IntersectLine3(V3* a_start, V3* a_end, V3* b_start, V3* b_end, V3* intersect_point) {
+  if (UNLIKELY(Line3GetLengthSq(b_start, b_end) == 0)) { return false; }
+  V3 b_dir;
+  V3SubV3(&b_dir, b_end, b_start);
+  V3Normalize(&b_dir, &b_dir);
+
+  V3 i;
+  if (!Line3IntersectRay3(a_start, a_end, b_start, &b_dir, &i)) { return false; }
+  if (Line3GetLengthSq(b_start, b_end) < Line3GetLengthSq(b_start, &i)) { return false; }
+
+  if (intersect_point != NULL) { *intersect_point = i; }
+  return true;
+}
+
+B32 Line3IntersectRay3(V3* line_start, V3* line_end, V3* ray_start, V3* ray_dir, V3* intersect_point) {
+  if (UNLIKELY(Line3GetLengthSq(line_start, line_end) == 0)) { return false; }
+  V3 line_dir;
+  V3SubV3(&line_dir, line_end, line_start);
+  V3Normalize(&line_dir, &line_dir);
+
+  V3 i;
+  if (!Ray3IntersectRay3(line_start, &line_dir, ray_start, ray_dir, &i)) { return false; }
+  if (Line3GetLengthSq(line_start, line_end) < Line3GetLengthSq(line_start, &i)) { return false; }
+
+  if (intersect_point != NULL) { *intersect_point = i; }
+  return true;
+}
+
+B32 Ray3IntersectRay3(V3* a_start, V3* a_dir, V3* b_start, V3* b_dir, V3* intersect_point) {
+  DEBUG_ASSERT(F32ApproxEq(V3LengthSq(a_dir), 1));
+  DEBUG_ASSERT(F32ApproxEq(V3LengthSq(b_dir), 1));
+
+  V3 d_start;
+  V3SubV3(&d_start, b_start, a_start);
+  F32 dir_dot = V3DotV3(a_dir, b_dir);
+  F32 denom   = 1.0f - (dir_dot * dir_dot);
+  if (F32ApproxEq(denom, 0)) { // NOTE: parallel or collinear
+    // NOTE: must be collinear to intersect
+    V3 start_cross, dir_cross;
+    V3CrossV3(&start_cross, &d_start, a_dir);
+    if (!F32ApproxEq(V3LengthSq(&start_cross), 0)) { return false; }
+    V3CrossV3(&dir_cross, a_dir, b_dir);
+    if (!F32ApproxEq(V3LengthSq(&dir_cross), 0)) { return false; }
+    F32 t = V3DotV3(a_dir, &d_start);
+    F32 u = -V3DotV3(b_dir, &d_start);
+    if (t < 0 && u < 0) { return false; }
+    if (intersect_point != NULL) {
+      V3MultF32(intersect_point, a_dir, t);
+      V3AddV3(intersect_point, a_start, intersect_point);
+    }
+    return true;
+  } else {
+    F32 a = V3DotV3(a_dir, &d_start);
+    F32 b = V3DotV3(b_dir, &d_start);
+    F32 t = (a - (dir_dot * b)) / denom;
+    F32 u = ((dir_dot * a) - b) / denom;
+
+    V3 a_closest, b_closest;
+    V3MultF32(&a_closest, a_dir, t);
+    V3MultF32(&b_closest, b_dir, u);
+    V3AddV3(&a_closest, &a_closest, a_start);
+    V3AddV3(&b_closest, &b_closest, b_start);
+    if (!V3ApproxEq(&a_closest, &b_closest)) { return false; }
+
+    if (intersect_point != NULL) { *intersect_point = a_closest; }
+    return true;
+  }
 }
 
 void Ray3DirInv(Ray3* r, V3* dir_inv) {

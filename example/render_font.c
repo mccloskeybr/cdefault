@@ -10,7 +10,6 @@ int main(void) {
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
   DirSetCurrentToExeDir();
   Arena* font_arena = ArenaAllocate();
-  Arena* temp_arena = ArenaAllocate();
 
   String8 file_data;
   // DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("../data/firacode.ttf"), &file_data.str, &file_data.size));
@@ -40,19 +39,18 @@ int main(void) {
       exit(0);
     }
 
-    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 64, 0, 0, 8, 264);
+    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 64, 8, 264);
     DrawStringBmp(alphabet, &bmp_atlas, bmp_atlas_handle, 64, 8, 200);
 
-    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 32, 0, 0, 8, 150);
+    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 32, 8, 150);
     DrawStringBmp(alphabet, &bmp_atlas, bmp_atlas_handle, 32, 8, 118);
 
-    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 20, 0, 0, 8, 85);
+    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 20, 8, 85);
     DrawStringBmp(alphabet, &bmp_atlas, bmp_atlas_handle, 20, 8, 65);
 
-    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 16, 0, 0, 8, 40);
+    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 16, 8, 40);
     DrawStringBmp(alphabet, &bmp_atlas, bmp_atlas_handle, 16, 8, 24);
 
-    ArenaClear(temp_arena);
     WindowSwapBuffers();
     WindowFlushEvents();
   }
