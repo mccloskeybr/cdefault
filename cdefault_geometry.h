@@ -166,6 +166,7 @@ B32  Line3IntersectLine3(V3* a_start, V3* a_end, V3* b_start, V3* b_end, V3* int
 B32  Line3IntersectRay3(V3* line_start, V3* line_end, V3* ray_start, V3* ray_dir, V3* intersect_point);
 
 void Ray3DirInv(Ray3* r, V3* dir_inv);
+B32  Ray3IntersectLine3(V3* ray_start, V3* ray_dir, V3* line_start, V3* line_end, V3* intersect_point);
 B32  Ray3IntersectRay3(V3* a_start, V3* a_dir, V3* b_start, V3* b_dir, V3* intersect_point);
 B32  Ray3IntersectPlane3(Ray3* ray, Plane3* plane, V3* intersect_point);
 B32  Ray3IntersectAabb3(Ray3* ray, Aabb3* aabb, V3* enter_point, V3* exit_point);
@@ -1272,6 +1273,20 @@ B32 Line3IntersectRay3(V3* line_start, V3* line_end, V3* ray_start, V3* ray_dir,
   return true;
 }
 
+B32 Ray3IntersectLine3(V3* ray_start, V3* ray_dir, V3* line_start, V3* line_end, V3* intersect_point) {
+  if (UNLIKELY(Line3GetLengthSq(line_start, line_end) == 0)) { return false; }
+  V3 line_dir;
+  V3SubV3(&line_dir, line_end, line_start);
+  V3Normalize(&line_dir, &line_dir);
+
+  V3 i;
+  if (!Ray3IntersectRay3(ray_start, ray_dir, line_start, &line_dir, &i)) { return false; }
+  if (Line3GetLengthSq(line_start, line_end) < Line3GetLengthSq(line_start, &i)) { return false; }
+
+  if (intersect_point != NULL) { *intersect_point = i; }
+  return true;
+}
+
 B32 Ray3IntersectRay3(V3* a_start, V3* a_dir, V3* b_start, V3* b_dir, V3* intersect_point) {
   DEBUG_ASSERT(F32ApproxEq(V3LengthSq(a_dir), 1));
   DEBUG_ASSERT(F32ApproxEq(V3LengthSq(b_dir), 1));
@@ -1280,31 +1295,37 @@ B32 Ray3IntersectRay3(V3* a_start, V3* a_dir, V3* b_start, V3* b_dir, V3* inters
   V3SubV3(&d_start, b_start, a_start);
   F32 dir_dot = V3DotV3(a_dir, b_dir);
   F32 denom   = 1.0f - (dir_dot * dir_dot);
-  if (F32ApproxEq(denom, 0)) { // NOTE: parallel or collinear
-    // NOTE: must be collinear to intersect
+  if (F32ApproxEq(denom, 0)) {
+    // NOTE: parallel or collinear case
+    // NOTE: is parallel non-intersecting
     V3 start_cross, dir_cross;
     V3CrossV3(&start_cross, &d_start, a_dir);
     if (!F32ApproxEq(V3LengthSq(&start_cross), 0)) { return false; }
     V3CrossV3(&dir_cross, a_dir, b_dir);
     if (!F32ApproxEq(V3LengthSq(&dir_cross), 0)) { return false; }
+
+    // NOTE: is collinear, determine if there's overlap
     F32 t = V3DotV3(a_dir, &d_start);
     F32 u = -V3DotV3(b_dir, &d_start);
     if (t < 0 && u < 0) { return false; }
+
     if (intersect_point != NULL) {
-      V3MultF32(intersect_point, a_dir, t);
-      V3AddV3(intersect_point, a_start, intersect_point);
+      // NOTE: favor intersection from A's perspective, u > 0 --> B pointing at A.
+      if (u > 0) { *intersect_point = *a_start; }
+      else       { *intersect_point = *b_start; }
     }
     return true;
   } else {
+    // NOTE: skew case, find closest point on each ray to other ray
     F32 a = V3DotV3(a_dir, &d_start);
     F32 b = V3DotV3(b_dir, &d_start);
     F32 t = (a - (dir_dot * b)) / denom;
     F32 u = ((dir_dot * a) - b) / denom;
-
+    if (t < 0 || u < 0) { return false; }
     V3 a_closest, b_closest;
     V3MultF32(&a_closest, a_dir, t);
-    V3MultF32(&b_closest, b_dir, u);
     V3AddV3(&a_closest, &a_closest, a_start);
+    V3MultF32(&b_closest, b_dir, u);
     V3AddV3(&b_closest, &b_closest, b_start);
     if (!V3ApproxEq(&a_closest, &b_closest)) { return false; }
 

@@ -17,7 +17,7 @@ REM cl %FLAGS% sort_test.c /Fobuild/sort_test.obj /Febin/sort_test.exe /link %LI
 REM cl %FLAGS% bin_stream_test.c /Fobuild/bin_stream_test.obj /Febin/bin_stream_test.exe /link %LIBS% && bin\bin_stream_test.exe
 REM cl %FLAGS% dynamic_array_test.c /Fobuild/dynamic_array_test.obj /Febin/dynamic_array_test.exe /link %LIBS% && bin\dynamic_array_test.exe
 REM cl %FLAGS% json_test.c /Fobuild/json_test.obj /Febin/json_test.exe /link %LIBS% && bin\json_test.exe
-cl %FLAGS% geometry_test.c /Fobuild/geometry_test.obj /Febin/geometry_test.exe /link %LIBS% && bin\geometry_test.exe
+cl %FLAGS% geometry_intersect_test.c /Fobuild/geometry_intersect_test.obj /Febin/geometry_intersect_test.exe /link %LIBS% && bin\geometry_intersect_test.exe
 
 REM cl %FLAGS% collision_ray_test.c /Fobuild/collision_line_test.obj /Febin/collision_ray_test.exe /link %LIBS%
 REM cl %FLAGS% collision_line_test.c /Fobuild/collision_line_test.obj /Febin/collision_line_test.exe /link %LIBS%
