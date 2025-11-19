@@ -5,7 +5,6 @@
 #include "cdefault_std.h"
 
 // TODO: finish rounding out 3d
-// TODO: unit tests for 2d and 3d
 // TODO: debug assertions for e.g. dirs, etc are normal
 
 // TODO: support face intersections for flat shapes in 3d?
@@ -51,7 +50,7 @@ B32  Line2IntersectConvexHull2(V2* line_start, V2* line_end, V2* hull_points, U3
 B32  Ray2Eq(V2* a_start, V2* a_dir, V2* b_start, V2* b_dir);
 B32  Ray2ApproxEq(V2* a_start, V2* a_dir, V2* b_start, V2* b_dir);
 void Ray2RotateAboutPoint(V2* ray_start, V2* ray_dir, V2* point, F32 angle_rad);
-void Ray2GetDirInv(V2* ray_dir, V2* dir_inv);
+void Ray2GetDirInv(V2* ray_dir, V2* dir_inv); // NOTE: careful about axis aligned dirs.
 B32  Ray2IntersectLine2(V2* ray_start, V2* ray_dir, V2* line_start, V2* line_end, V2* intersect_point);
 B32  Ray2IntersectRay2(V2* a_start, V2* a_dir, V2* b_start, V2* b_dir, V2* intersect_point);
 B32  Ray2IntersectTri2(V2* ray_start, V2* ray_dir, V2 tri_points[3], V2* enter_point, V2* exit_point);
@@ -482,18 +481,35 @@ B32 Ray2IntersectLine2(V2* ray_start, V2* ray_dir, V2* line_start, V2* line_end,
 B32 Ray2IntersectRay2(V2* a_start, V2* a_dir, V2* b_start, V2* b_dir, V2* intersect_point) {
   DEBUG_ASSERT(F32ApproxEq(V2LengthSq(a_dir), 1));
   DEBUG_ASSERT(F32ApproxEq(V2LengthSq(b_dir), 1));
-  F32 cross = V2CrossV2(b_dir, a_dir);
-  if (cross == 0) { return false; }
-  F32 d_x = b_start->x - a_start->x;
-  F32 d_y = b_start->y - a_start->y;
-  F32 u = ((d_y * b_dir->x) - (d_x * b_dir->y)) / cross;
-  F32 v = ((d_y * a_dir->x) - (d_x * a_dir->y)) / cross;
-  if (u < 0 || v < 0) { return false; }
-  if (intersect_point != NULL) {
-    V2MultF32(intersect_point, a_dir, u);
-    V2AddV2(intersect_point, a_start, intersect_point);
+  F32 dir_cross = V2CrossV2(b_dir, a_dir);
+  if (F32ApproxEq(dir_cross, 0)) {
+    // NOTE: parallel or collinear
+    V2 d_start;
+    V2SubV2(&d_start, b_start, a_start);
+    F32 start_cross = V2CrossV2(&d_start, a_dir);
+    if (!F32ApproxEq(start_cross, 0)) { return false; }
+
+    // NOTE: determine if there's overlap on collinear intersection
+    F32 t = V2DotV2(a_dir, &d_start);
+    F32 u = -V2DotV2(b_dir, &d_start);
+    if (t < 0 && u < 0) { return false; }
+    if (intersect_point != NULL) {
+      if (u > 0) { *intersect_point = *a_start; }
+      else       { *intersect_point = *b_start; }
+    }
+    return true;
+  } else {
+    F32 d_x = b_start->x - a_start->x;
+    F32 d_y = b_start->y - a_start->y;
+    F32 u = ((d_y * b_dir->x) - (d_x * b_dir->y)) / dir_cross;
+    F32 v = ((d_y * a_dir->x) - (d_x * a_dir->y)) / dir_cross;
+    if (u < 0 || v < 0) { return false; }
+    if (intersect_point != NULL) {
+      V2MultF32(intersect_point, a_dir, u);
+      V2AddV2(intersect_point, a_start, intersect_point);
+    }
+    return true;
   }
-  return true;
 }
 
 B32 Ray2IntersectTri2(V2* ray_start, V2* ray_dir, V2 tri_points[3], V2* enter_point, V2* exit_point) {
@@ -501,18 +517,25 @@ B32 Ray2IntersectTri2(V2* ray_start, V2* ray_dir, V2 tri_points[3], V2* enter_po
 }
 
 B32 Ray2IntersectAabb2(V2* ray_start, V2* ray_dir, V2* aabb_center, V2* aabb_size, V2* enter_point, V2* exit_point) {
-  V2 aabb_min, aabb_max, ray_dir_inv;
+  V2 aabb_min, aabb_max;
   Aabb2GetMinMax(aabb_center, aabb_size, &aabb_min, &aabb_max);
-  Ray2GetDirInv(ray_dir, &ray_dir_inv);
 
-  V2 t_1, t_2;
-  V2SubV2(&t_1, &aabb_min, ray_start);
-  V2HadamardV2(&t_1, &t_1, &ray_dir_inv);
-  V2SubV2(&t_2, &aabb_max, ray_start);
-  V2HadamardV2(&t_2, &t_2, &ray_dir_inv);
-
-  F32 t_min = MAX(MIN(t_1.x, t_2.x), MIN(t_1.y, t_2.y));
-  F32 t_max = MIN(MAX(t_1.x, t_2.x), MAX(t_1.y, t_2.y));
+  F32 t_min = F32_MIN;
+  F32 t_max = F32_MAX;
+  for (U32 i = 0; i < 2; i++) {
+    if (ray_dir->e[i] == 0) {
+      // NOTE: parallel
+      if (ray_start->e[i] < aabb_min.e[i] || ray_start->e[i] > aabb_max.e[i]) {
+        return false;
+      }
+    } else {
+      F32 t_0 = (aabb_min.e[i] - ray_start->e[i]) / ray_dir->e[i];
+      F32 t_1 = (aabb_max.e[i] - ray_start->e[i]) / ray_dir->e[i];
+      if (t_0 > t_1) { SWAP(F32, t_0, t_1); }
+      t_min = MAX(t_min, t_0);
+      t_max = MIN(t_max, t_1);
+    }
+  }
   if (t_max < t_min) { return false; }
 
   if (t_min < 0) {
@@ -521,10 +544,9 @@ B32 Ray2IntersectAabb2(V2* ray_start, V2* ray_dir, V2* aabb_center, V2* aabb_siz
   }
 
   if (enter_point != NULL) {
+    DEBUG_ASSERT(exit_point != NULL);
     V2MultF32(enter_point, ray_dir, t_min);
     V2AddV2(enter_point, ray_start, enter_point);
-  }
-  if (exit_point != NULL) {
     V2MultF32(exit_point, ray_dir, t_max);
     V2AddV2(exit_point, ray_start, exit_point);
   }
@@ -571,13 +593,14 @@ B32 Ray2IntersectConvexHull2(V2* ray_start, V2* ray_dir, V2* hull_points, U32 hu
       continue;
     }
     result = true;
-    if (enter_point == NULL && exit_point == NULL) { continue; }
+    if (enter_point == NULL) { continue; }
+    DEBUG_ASSERT(enter_point != NULL && exit_point != NULL);
     F32 length_sq = Line2GetLengthSq(ray_start, &intersect);
-    if (enter_point != NULL && length_sq < min_sq) {
+    if (length_sq < min_sq) {
       min_sq = length_sq;
       *enter_point = intersect;
     }
-    if (exit_point != NULL && length_sq > max_sq) {
+    if (length_sq > max_sq) {
       max_sq = length_sq;
       *exit_point = intersect;
     }

@@ -1,9 +1,333 @@
 #define CDEFAULT_IMPLEMENTATION
 #include "../cdefault.h"
 
-// TODO: 2d unit tests
+// TODO: finish 2d unit tests
 // TODO: ray3 attribute tests
 // TODO: line3 attribute tests
+
+void Line2EqTest() {
+  V2 a0, a1, b0, b1;
+
+  a0 = V2Assign(0, 0); a1 = V2Assign(1, 1);
+  b0 = V2Assign(0, 0); b1 = V2Assign(1, 1);
+  EXPECT_TRUE(Line2Eq(&a0, &a1, &b0, &b1));
+  EXPECT_TRUE(Line2ApproxEq(&a0, &a1, &b0, &b1));
+
+  a0 = V2Assign(0, 0); a1 = V2Assign(1, 1);
+  b0 = V2Assign(0, 0); b1 = V2Assign(1, 2);
+  EXPECT_FALSE(Line2Eq(&a0, &a1, &b0, &b1));
+  EXPECT_FALSE(Line2ApproxEq(&a0, &a1, &b0, &b1));
+}
+
+void Line2MutateTest() {
+  V2 a, b;
+
+  // NOTE: offset
+  a = V2Assign(1, 2); b = V2Assign(4, 6);
+  V2 offset = V2Assign(2, -1);
+  Line2Offset(&a, &b, &offset);
+  EXPECT_V2_APPROX_EQ(a, V2Assign(3, 1));
+  EXPECT_V2_APPROX_EQ(b, V2Assign(6, 5));
+
+  // NOTE: rot about a
+  a = V2Assign(0, 0); b = V2Assign(1, 0);
+  V2 rotate_point = V2Assign(0, 0);
+  Line2RotateAboutPoint(&a, &b, &rotate_point, F32_PI / 2.0f);
+  EXPECT_V2_APPROX_EQ(a, V2Assign(0, 0));
+  EXPECT_V2_APPROX_EQ(b, V2Assign(0, 1));
+
+  // NOTE: rot about midpoint
+  a = V2Assign(2, 2); b = V2Assign(4, 2);
+  rotate_point = V2Assign(3, 2);
+  Line2RotateAboutPoint(&a, &b, &rotate_point, F32_PI / 2.0f);
+  EXPECT_V2_APPROX_EQ(a, V2Assign(3, 1));
+  EXPECT_V2_APPROX_EQ(b, V2Assign(3, 3));
+}
+
+void Line2QueryTest() {
+  V2 a = V2Assign(0, 0), b = V2Assign(4, 6);
+
+  V2 midpoint;
+  Line2GetMidpoint(&a, &b, &midpoint);
+  EXPECT_V2_APPROX_EQ(midpoint, V2Assign(2, 3));
+
+  V2 closest;
+  a = V2Assign(0, 0); b = V2Assign(10, 0);
+  // NOTE: above middle
+  V2 point = V2Assign(5, 4);
+  Line2GetClosestPoint(&a, &b, &point, &closest);
+  EXPECT_V2_APPROX_EQ(closest, V2Assign(5, 0));
+
+  // NOTE: after end
+  point = V2Assign(20, 3);
+  Line2GetClosestPoint(&a, &b, &point, &closest);
+  EXPECT_V2_APPROX_EQ(closest, V2Assign(10, 0));
+
+  // NOTE: before start
+  point = V2Assign(-5, -2);
+  Line2GetClosestPoint(&a, &b, &point, &closest);
+  EXPECT_V2_APPROX_EQ(closest, V2Assign(0, 0));
+
+  V2 normal;
+  a = V2Assign(0, 0); b = V2Assign(1, 0);
+  Line2GetNormalIn(&a, &b, &normal);
+  EXPECT_V2_APPROX_EQ(normal, V2Assign(0, 1));
+  Line2GetNormalOut(&a, &b, &normal);
+  EXPECT_V2_APPROX_EQ(normal, V2Assign(0, -1));
+
+  a = V2Assign(0, 0); b = V2Assign(0, 1);
+  Line2GetNormalIn(&a, &b, &normal);
+  EXPECT_V2_APPROX_EQ(normal, V2Assign(-1, 0));
+  Line2GetNormalOut(&a, &b, &normal);
+  EXPECT_V2_APPROX_EQ(normal, V2Assign(1, 0));
+}
+
+void Line2IntersectLine2Test() {
+  V2 a0, a1, b0, b1, ip;
+
+  // NOTE: simple perpendicular intersection
+  a0 = V2Assign(0, 0);  a1 = V2Assign(10, 0);
+  b0 = V2Assign(5, -5); b1 = V2Assign(5, 5);
+  EXPECT_TRUE(Line2IntersectLine2(&a0, &a1, &b0, &b1, &ip));
+  EXPECT_V2_APPROX_EQ(ip, V2Assign(5, 0));
+
+  // NOTE: skew intersection (not axis-aligned)
+  a0 = V2Assign(0, 0);   a1 = V2Assign(3, 3);
+  b0 = V2Assign(0, 3);   b1 = V2Assign(3, 0);
+  EXPECT_TRUE(Line2IntersectLine2(&a0, &a1, &b0, &b1, &ip));
+  EXPECT_V2_APPROX_EQ(ip, V2Assign(1.5f, 1.5f));
+
+  // NOTE: parallel but non-collinear — no intersection
+  a0 = V2Assign(0, 0);   a1 = V2Assign(5, 0);
+  b0 = V2Assign(0, 1);   b1 = V2Assign(5, 1);
+  EXPECT_FALSE(Line2IntersectLine2(&a0, &a1, &b0, &b1, &ip));
+
+  // NOTE: collinear but non-overlapping — no intersection
+  a0 = V2Assign(0, 0);   a1 = V2Assign(2, 0);
+  b0 = V2Assign(3, 0);   b1 = V2Assign(5, 0);
+  EXPECT_FALSE(Line2IntersectLine2(&a0, &a1, &b0, &b1, &ip));
+
+  // NOTE: collinear and overlapping
+  a0 = V2Assign(0, 0);   a1 = V2Assign(5, 0);
+  b0 = V2Assign(3, 0);   b1 = V2Assign(8, 0);
+  EXPECT_TRUE(Line2IntersectLine2(&a0, &a1, &b0, &b1, &ip));
+  EXPECT_V2_APPROX_EQ(ip, V2Assign(3, 0));
+
+  // NOTE: lines would intersect if extended, but segments do not
+  a0 = V2Assign(0, 0);   a1 = V2Assign(1, 1);
+  b0 = V2Assign(2, 0);   b1 = V2Assign(3, 1);
+  EXPECT_FALSE(Line2IntersectLine2(&a0, &a1, &b0, &b1, &ip));
+}
+
+void Line2IntersectRay2Test() {
+  V2 line0, line1, ray_start, ray_dir, ip;
+
+  // NOTE: simple perpendicular intersection
+  line0 = V2Assign(0, 0); line1 = V2Assign(10, 0);
+  ray_start = V2Assign(5, -5);
+  ray_dir   = V2Assign(0, 1);
+  EXPECT_TRUE(Line2IntersectRay2(&line0, &line1, &ray_start, &ray_dir, &ip));
+  EXPECT_V2_APPROX_EQ(ip, V2Assign(5, 0));
+
+  // NOTE: ray pointing away — no intersection
+  line0 = V2Assign(0, 0); line1 = V2Assign(10, 0);
+  ray_start = V2Assign(5, -5);
+  ray_dir   = V2Assign(0, -1);
+  EXPECT_FALSE(Line2IntersectRay2(&line0, &line1, &ray_start, &ray_dir, &ip));
+
+  // NOTE: ray intersects line extension but not the segment
+  line0 = V2Assign(0, 0); line1 = V2Assign(2, 0);
+  ray_start = V2Assign(5, 5);
+  ray_dir   = V2Assign(-1, -1); V2Normalize(&ray_dir, &ray_dir);
+  EXPECT_TRUE(Line2IntersectRay2(&line0, &line1, &ray_start, &ray_dir, &ip));
+  EXPECT_V2_APPROX_EQ(ip, V2Assign(0, 0));
+
+  // NOTE: ray is collinear with line but starting outside the segment
+  line0 = V2Assign(0, 0); line1 = V2Assign(5, 0);
+  ray_start = V2Assign(-2, 0);
+  ray_dir   = V2Assign(1, 0);
+  EXPECT_TRUE(Line2IntersectRay2(&line0, &line1, &ray_start, &ray_dir, &ip));
+  EXPECT_V2_APPROX_EQ(ip, V2Assign(0, 0));
+
+  // NOTE: collinear but ray points the wrong way
+  line0 = V2Assign(0, 0); line1 = V2Assign(5, 0);
+  ray_start = V2Assign(-2, 0);
+  ray_dir   = V2Assign(-1, 0);
+  EXPECT_FALSE(Line2IntersectRay2(&line0, &line1, &ray_start, &ray_dir, &ip));
+
+  // NOTE: skew intersection
+  line0 = V2Assign(0, 3); line1 = V2Assign(3, 0);
+  ray_start = V2Assign(0, 0);
+  ray_dir   = V2Assign(1, 1); V2Normalize(&ray_dir, &ray_dir);
+  EXPECT_TRUE(Line2IntersectRay2(&line0, &line1, &ray_start, &ray_dir, &ip));
+  EXPECT_V2_APPROX_EQ(ip, V2Assign(1.5f, 1.5f));
+
+  // NOTE: ray would hit the infinite line, but outside the segment
+  line0 = V2Assign(0, 0); line1 = V2Assign(1, 0);
+  ray_start = V2Assign(2, 5);
+  ray_dir   = V2Assign(0, -1);
+  EXPECT_FALSE(Line2IntersectRay2(&line0, &line1, &ray_start, &ray_dir, &ip));
+}
+
+void Line2IntersectTri2Test() {
+  V2 line0, line1, tri[3], enter, exit;
+
+  // NOTE: simple through-triangle intersection
+  line0 = V2Assign(-1, -1); line1 = V2Assign(6, 6);
+  tri[0] = V2Assign(0, 0); tri[1] = V2Assign(5, 0); tri[2] = V2Assign(0, 5);
+  EXPECT_TRUE(Line2IntersectTri2(&line0, &line1, tri, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(0, 0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(2.5f, 2.5f));
+
+  // NOTE: line segment fully misses the triangle
+  line0 = V2Assign(10, 10); line1 = V2Assign(20, 20);
+  tri[0] = V2Assign(0, 0); tri[1] = V2Assign(5, 0); tri[2] = V2Assign(0, 5);
+  EXPECT_FALSE(Line2IntersectTri2(&line0, &line1, tri, &enter, &exit));
+
+  // NOTE: line segment touches exactly one vertex
+  line0 = V2Assign(5, -5); line1 = V2Assign(5,  5);
+  tri[0] = V2Assign(0, 0); tri[1] = V2Assign(5, 0); tri[2] = V2Assign(0, 5);
+  EXPECT_TRUE(Line2IntersectTri2(&line0, &line1, tri, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(5, 0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(5, 0));
+
+  // NOTE: line segment overlaps a triangle edge
+  // TODO: in this case we should probably capture the full edge, instead of just one point.
+  line0 = V2Assign(2, 0); line1 = V2Assign(4, 0);
+  tri[0] = V2Assign(0, 0); tri[1] = V2Assign(5, 0); tri[2] = V2Assign(0, 5);
+  EXPECT_TRUE(Line2IntersectTri2(&line0, &line1, tri, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(2, 0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(2, 0));
+
+  // NOTE: line enters triangle but exits outside segment range
+  line0 = V2Assign(-1, 2); line1 = V2Assign( 1, 2);
+  tri[0] = V2Assign(0, 0); tri[1] = V2Assign(4, 0); tri[2] = V2Assign(0, 4);
+  EXPECT_TRUE(Line2IntersectTri2(&line0, &line1, tri, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(0, 2));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(0, 2));
+
+  // NOTE: segment lies completely inside the triangle
+  line0 = V2Assign(1, 1); line1 = V2Assign(4, 4);
+  tri[0] = V2Assign(0, 0); tri[1] = V2Assign(4, 0); tri[2] = V2Assign(0, 4);
+  EXPECT_TRUE(Line2IntersectTri2(&line0, &line1, tri, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(2, 2));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(2, 2));
+}
+
+void Line2IntersectAabb2Test() {
+  V2 line0, line1, center, size, enter, exit;
+
+  // NOTE: simple diagonal crossing
+  line0  = V2Assign(-1, -1); line1 = V2Assign( 6,  6);
+  center = V2Assign(2.5f, 2.5f); size = V2Assign(5, 5);
+  EXPECT_TRUE(Line2IntersectAabb2(&line0, &line1, &center, &size, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(0, 0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(5, 5));
+
+  // NOTE: no intersection (segment completely outside)
+  line0  = V2Assign(10, 10); line1  = V2Assign(20, 20);
+  center = V2Assign(2.5f, 2.5f); size   = V2Assign(5, 5);
+  EXPECT_FALSE(Line2IntersectAabb2(&line0, &line1, &center, &size, &enter, &exit));
+
+  // NOTE: segment touches exactly one corner (5,5)
+  line0  = V2Assign(5, 5); line1  = V2Assign(10, 10);
+  center = V2Assign(2.5f, 2.5f); size   = V2Assign(5, 5);
+  EXPECT_TRUE(Line2IntersectAabb2(&line0, &line1, &center, &size, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(5, 5));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(5, 5));
+
+  // NOTE: segment grazes AABB entering at (0,2), but does not exit before end
+  line0  = V2Assign(-1, 2); line1  = V2Assign( 1, 2);
+  center = V2Assign(2, 2); size   = V2Assign(4, 4);
+  EXPECT_TRUE(Line2IntersectAabb2(&line0, &line1, &center, &size, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(0, 2));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(0, 2));
+
+  // NOTE: infinite line intersects, but segment does not reach AABB
+  line0  = V2Assign(6, 2); line1  = V2Assign(7, 2);
+  center = V2Assign(2.5f, 2.5f); size   = V2Assign(5, 5);
+  EXPECT_FALSE(Line2IntersectAabb2(&line0, &line1, &center, &size, &enter, &exit));
+}
+
+void Line2IntersectCircle2Test() {
+  V2 line0, line1, center, enter, exit;
+  F32 radius;
+
+  // NOTE: simple two-point intersection
+  line0  = V2Assign(-10, 0); line1  = V2Assign( 10, 0);
+  center = V2Assign(0, 0); radius = 5.0f;
+  EXPECT_TRUE(Line2IntersectCircle2(&line0, &line1, &center, radius, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(-5, 0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign( 5, 0));
+
+  // NOTE: tangent line (touches circle at one point)
+  line0  = V2Assign(-10, 5); line1  = V2Assign( 10, 5);
+  center = V2Assign(0, 0); radius = 5.0f;
+  EXPECT_TRUE(Line2IntersectCircle2(&line0, &line1, &center, radius, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(0, 5));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(0, 5));
+
+  // NOTE: no intersection — line segment outside circle
+  line0  = V2Assign(6, 6); line1  = V2Assign(8, 8);
+  center = V2Assign(0, 0); radius = 5.0f;
+  EXPECT_FALSE(Line2IntersectCircle2(&line0, &line1, &center, radius, &enter, &exit));
+
+  // NOTE: line passes through circle, but segment does not reach it
+  line0  = V2Assign(6, 0); line1  = V2Assign(10, 0);
+  center = V2Assign(0, 0); radius = 5.0f;
+  EXPECT_FALSE(Line2IntersectCircle2(&line0, &line1, &center, radius, &enter, &exit));
+
+  // NOTE: one endpoint inside, one outside
+  line0  = V2Assign(0, 0); line1  = V2Assign(10, 0);
+  center = V2Assign(0, 0); radius = 5.0f;
+  EXPECT_TRUE(Line2IntersectCircle2(&line0, &line1, &center, radius, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(5, 0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(5, 0));
+}
+
+void Line2IntersectConvexHull2Test() {
+  V2 line0, line1;
+  V2 hull[8];
+  V2 enter, exit;
+
+  // NOTE: simple square hull crossing
+  line0 = V2Assign(-1, -1); line1 = V2Assign( 6,  6);
+  hull[0] = V2Assign(0, 0); hull[1] = V2Assign(5, 0); hull[2] = V2Assign(5, 5); hull[3] = V2Assign(0, 5);
+  EXPECT_TRUE(Line2IntersectConvexHull2(&line0, &line1, hull, 4, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(0, 0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(5, 5));
+
+  // NOTE: no intersection (segment entirely outside)
+  line0 = V2Assign(10, 10); line1 = V2Assign(12, 12);
+  hull[0] = V2Assign(0, 0); hull[1] = V2Assign(5, 0); hull[2] = V2Assign(5, 5); hull[3] = V2Assign(0, 5);
+  EXPECT_FALSE(Line2IntersectConvexHull2(&line0, &line1, hull, 4, &enter, &exit));
+
+  // NOTE: segment touches exactly one vertex
+  line0 = V2Assign(5, 5); line1 = V2Assign(10, 5);
+  hull[0] = V2Assign(0, 0); hull[1] = V2Assign(5, 0); hull[2] = V2Assign(5, 5); hull[3] = V2Assign(0, 5);
+  EXPECT_TRUE(Line2IntersectConvexHull2(&line0, &line1, hull, 4, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(5, 5));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(5, 5));
+
+  // NOTE: line segment overlaps an edge
+  line0 = V2Assign(1, 0); line1 = V2Assign(3, 0);
+  hull[0] = V2Assign(0, 0); hull[1] = V2Assign(5, 0); hull[2] = V2Assign(5, 5); hull[3] = V2Assign(0, 5);
+  EXPECT_TRUE(Line2IntersectConvexHull2(&line0, &line1, hull, 4, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(1, 0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(1, 0));
+
+  // NOTE: pentagon hull — diagonal intersection
+  line0 = V2Assign(-10, 0); line1 = V2Assign( 10, 0);
+  hull[0] = V2Assign(-3, -1); hull[1] = V2Assign( 0, -3); hull[2] = V2Assign( 3, -1); hull[3] = V2Assign( 2,  3); hull[4] = V2Assign(-2,  3);
+  EXPECT_TRUE(Line2IntersectConvexHull2(&line0, &line1, hull, 5, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(-2.75f, 0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign( 2.75f, 0));
+
+  // NOTE: infinite line intersects hull, but segment does not
+  line0 = V2Assign(6, 1); line1 = V2Assign(7, 1);
+  hull[0] = V2Assign(0, 0); hull[1] = V2Assign(5, 0); hull[2] = V2Assign(5, 5); hull[3] = V2Assign(0, 5);
+  EXPECT_FALSE(Line2IntersectConvexHull2(&line0, &line1, hull, 4, &enter, &exit));
+}
 
 void Ray3IntersectLine3Test() {
   V3 ray_start, ray_dir, line_start, line_end, intersect;
@@ -375,6 +699,15 @@ void ConvexPolygon3IntersectConvexPolygon3Test() {
 }
 
 int main(void) {
+  RUN_TEST(Line2EqTest);
+  RUN_TEST(Line2MutateTest);
+  RUN_TEST(Line2QueryTest);
+  RUN_TEST(Line2IntersectLine2Test);
+  RUN_TEST(Line2IntersectRay2Test);
+  RUN_TEST(Line2IntersectTri2Test);
+  RUN_TEST(Line2IntersectAabb2Test);
+  RUN_TEST(Line2IntersectCircle2Test);
+  RUN_TEST(Line2IntersectConvexHull2Test);
   RUN_TEST(Ray3IntersectLine3Test);
   RUN_TEST(Ray3IntersectRay3Test);
   RUN_TEST(Line3IntersectLine3Test);
