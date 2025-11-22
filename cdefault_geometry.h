@@ -864,7 +864,7 @@ void Circle2GetEnclosingAabb2(F32 circle_radius, V2* aabb_size) {
 B32 Circle2ContainsPoint(V2* circle_center, F32 circle_radius, V2* point) {
   V2 to_pt;
   V2SubV2(&to_pt, point, circle_center);
-  return V2LengthSq(&to_pt) < (circle_radius * circle_radius);
+  return V2LengthSq(&to_pt) <= (circle_radius * circle_radius);
 }
 
 B32 Circle2IntersectLine2(V2* circle_center, F32 circle_radius, V2* line_start, V2* line_end, V2* enter_point, V2* exit_point) {
@@ -1224,7 +1224,7 @@ B32 ConvexHull2IntersectConvexHull2(V2* a_points, U32 a_points_size, V2* b_point
       ConvexHull2ProjectAxis(a_points, a_points_size, &axis, &a_min, &a_max);
       ConvexHull2ProjectAxis(b_points, b_points_size, &axis, &b_min, &b_max);
       F32 overlap = MIN(a_max, b_max) - MAX(a_min, b_min);
-      if (overlap <= 0) { return false; }
+      if (overlap < 0) { return false; }
 
       if (manifold != NULL && overlap < min_penetration) {
         min_penetration = overlap;

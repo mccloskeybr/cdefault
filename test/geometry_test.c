@@ -1,7 +1,7 @@
 #define CDEFAULT_IMPLEMENTATION
 #include "../cdefault.h"
 
-// TODO: finish 2d unit tests
+// TODO: test 2d contact points from intersections
 // TODO: ray3 attribute tests
 // TODO: line3 attribute tests
 
@@ -327,6 +327,1256 @@ void Line2IntersectConvexHull2Test() {
   line0 = V2Assign(6, 1); line1 = V2Assign(7, 1);
   hull[0] = V2Assign(0, 0); hull[1] = V2Assign(5, 0); hull[2] = V2Assign(5, 5); hull[3] = V2Assign(0, 5);
   EXPECT_FALSE(Line2IntersectConvexHull2(&line0, &line1, hull, 4, &enter, &exit));
+}
+
+void Ray2EqTest() {
+  V2 a_start, a_dir, b_start, b_dir;
+
+  // NOTE: identical rays
+  a_start = V2Assign(0, 0); a_dir = V2Assign(1, 0);
+  b_start = V2Assign(0, 0); b_dir = V2Assign(1, 0);
+  EXPECT_TRUE(Ray2Eq(&a_start, &a_dir, &b_start, &b_dir));
+  EXPECT_TRUE(Ray2ApproxEq(&a_start, &a_dir, &b_start, &b_dir));
+
+  // NOTE: same direction, different start
+  a_start = V2Assign(0, 0); a_dir = V2Assign(1, 0);
+  b_start = V2Assign(1, 0); b_dir = V2Assign(1, 0);
+  EXPECT_FALSE(Ray2Eq(&a_start, &a_dir, &b_start, &b_dir));
+  EXPECT_FALSE(Ray2ApproxEq(&a_start, &a_dir, &b_start, &b_dir));
+
+  // NOTE: same start, different direction
+  a_start = V2Assign(0, 0); a_dir = V2Assign(1, 0);
+  b_start = V2Assign(0, 0); b_dir = V2Assign(0, 1);
+  EXPECT_FALSE(Ray2Eq(&a_start, &a_dir, &b_start, &b_dir));
+  EXPECT_FALSE(Ray2ApproxEq(&a_start, &a_dir, &b_start, &b_dir));
+}
+
+void Ray2RotateAboutPointTest() {
+  V2 start, dir, point;
+
+  start = V2Assign(0, 0); dir = V2Assign(1, 0);
+  point = V2Assign(0, 0);
+  Ray2RotateAboutPoint(&start, &dir, &point, F32_PI / 2.0f);
+  EXPECT_V2_APPROX_EQ(start, V2Assign(0, 0));
+  EXPECT_V2_APPROX_EQ(dir,   V2Assign(0, 1));
+}
+
+void Ray2IntersectLine2Test() {
+  V2 r0, rd, l0, l1, ip;
+
+  // NOTE: simple perpendicular
+  r0 = V2Assign(0, 0); rd = V2Assign(1, 0);
+  l0 = V2Assign(5, -5); l1 = V2Assign(5, 5);
+  EXPECT_TRUE(Ray2IntersectLine2(&r0, &rd, &l0, &l1, &ip));
+  EXPECT_V2_APPROX_EQ(ip, V2Assign(5, 0));
+
+  // NOTE: intersection behind ray start → no hit
+  r0 = V2Assign(10, 0); rd = V2Assign(1, 0);
+  l0 = V2Assign(5, -1); l1 = V2Assign(5, 1);
+  EXPECT_FALSE(Ray2IntersectLine2(&r0, &rd, &l0, &l1, &ip));
+
+  // NOTE: parallel → no intersection
+  r0 = V2Assign(0, 0); rd = V2Assign(1, 0);
+  l0 = V2Assign(0, 1); l1 = V2Assign(10, 1);
+  EXPECT_FALSE(Ray2IntersectLine2(&r0, &rd, &l0, &l1, &ip));
+}
+
+void Ray2IntersectRay2Test() {
+  V2 a0, ad, b0, bd, ip;
+
+  // NOTE: rays intersect at +5 on x-axis
+  a0 = V2Assign(0, 0); ad = V2Assign(1, 0);
+  b0 = V2Assign(10, 0); bd = V2Assign(-1, 0);
+  EXPECT_TRUE(Ray2IntersectRay2(&a0, &ad, &b0, &bd, &ip));
+  EXPECT_V2_APPROX_EQ(ip, V2Assign(0, 0));
+
+  // NOTE: intersection behind ray
+  a0 = V2Assign(5, 5); ad = V2Assign(1, 1); V2Normalize(&ad, &ad);
+  b0 = V2Assign(0, 0); bd = V2Assign(-1, -1); V2Normalize(&bd, &bd);
+  EXPECT_FALSE(Ray2IntersectRay2(&a0, &ad, &b0, &bd, &ip));
+
+  // NOTE: parallel → no intersection
+  a0 = V2Assign(0, 0); ad = V2Assign(1, 0);
+  b0 = V2Assign(0, 1); bd = V2Assign(1, 0);
+  EXPECT_FALSE(Ray2IntersectRay2(&a0, &ad, &b0, &bd, &ip));
+}
+
+void Ray2IntersectTri2Test() {
+  V2 r0, rd, enter, exit;
+  V2 tri[3];
+
+  // NOTE: hit through triangle center
+  tri[0] = V2Assign(0, 0);
+  tri[1] = V2Assign(5, 0);
+  tri[2] = V2Assign(0, 5);
+  r0 = V2Assign(-5, -5); rd = V2Assign(1, 1); V2Normalize(&rd, &rd);
+  EXPECT_TRUE(Ray2IntersectTri2(&r0, &rd, tri, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(0, 0));   // triangle centroid hit
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(2.5f, 2.5f));
+
+  // NOTE: miss triangle
+  r0 = V2Assign(10, 10); rd = V2Assign(1, 0);
+  EXPECT_FALSE(Ray2IntersectTri2(&r0, &rd, tri, &enter, &exit));
+}
+
+void Ray2IntersectAabb2Test() {
+  V2 r0, rd, c, s, enter, exit;
+
+  c = V2Assign(0, 0); s = V2Assign(1, 1);
+
+  // NOTE: straight hit
+  r0 = V2Assign(-5, 0); rd = V2Assign(1, 0);
+  EXPECT_TRUE(Ray2IntersectAabb2(&r0, &rd, &c, &s, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(-0.5f, 0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(+0.5f, 0));
+
+  // NOTE: miss
+  r0 = V2Assign(-5, 5); rd = V2Assign(1, 0);
+  EXPECT_FALSE(Ray2IntersectAabb2(&r0, &rd, &c, &s, &enter, &exit));
+}
+
+void Ray2IntersectObb2Test() {
+  V2 r0, rd, c, s, enter, exit;
+
+  c = V2Assign(0, 0); s = V2Assign(1, 1);
+
+  // NOTE: unrotated OBB (just an AABB)
+  r0 = V2Assign(-5, 0); rd = V2Assign(1, 0);
+  EXPECT_TRUE(Ray2IntersectObb2(&r0, &rd, &c, &s, 0.0f, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(-0.5f, 0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(+0.5f, 0));
+
+  // NOTE: rotated 45 degrees — still intersects
+  EXPECT_TRUE(Ray2IntersectObb2(&r0, &rd, &c, &s, F32_PI / 4.0f, &enter, &exit));
+}
+
+void Ray2IntersectCircle2Test() {
+  V2 r0, rd, c, enter, exit;
+  float radius = 2.0f;
+
+  c = V2Assign(0, 0);
+
+  // NOTE: hit through center
+  r0 = V2Assign(-5, 0); rd = V2Assign(1, 0);
+  EXPECT_TRUE(Ray2IntersectCircle2(&r0, &rd, &c, radius, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(-2, 0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(+2, 0));
+
+  // NOTE: miss
+  r0 = V2Assign(-5, 5); rd = V2Assign(1, 0);
+  EXPECT_FALSE(Ray2IntersectCircle2(&r0, &rd, &c, radius, &enter, &exit));
+}
+
+void Ray2IntersectConvexHull2Test() {
+  V2 r0, rd, enter, exit;
+  V2 hull[4];
+
+  // Square hull
+  hull[0] = V2Assign(-1, -1);
+  hull[1] = V2Assign(+1, -1);
+  hull[2] = V2Assign(+1, +1);
+  hull[3] = V2Assign(-1, +1);
+
+  // NOTE: hit square
+  r0 = V2Assign(-5, 0); rd = V2Assign(1, 0);
+  EXPECT_TRUE(Ray2IntersectConvexHull2(&r0, &rd, hull, 4, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(-1, 0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign( 1, 0));
+
+  // NOTE: miss
+  r0 = V2Assign(-5, 5); rd = V2Assign(1, 1); V2Normalize(&rd, &rd);
+  EXPECT_FALSE(Ray2IntersectConvexHull2(&r0, &rd, hull, 4, &enter, &exit));
+}
+
+void Tri2EqTest() {
+  V2 a[3], b[3];
+
+  a[0] = V2Assign(0,0); a[1] = V2Assign(1,0); a[2] = V2Assign(0,1);
+  b[0] = V2Assign(0,0); b[1] = V2Assign(1,0); b[2] = V2Assign(0,1);
+  EXPECT_TRUE(Tri2Eq(a, b));
+  EXPECT_TRUE(Tri2ApproxEq(a, b));
+
+  b[0] = V2Assign(2,2);
+  EXPECT_FALSE(Tri2Eq(a, b));
+  EXPECT_FALSE(Tri2ApproxEq(a, b));
+}
+
+void Tri2MutateTest() {
+  V2 tri[3];
+
+  // NOTE: offset
+  tri[0] = V2Assign(0,0); tri[1] = V2Assign(1,0); tri[2] = V2Assign(0,1);
+  V2 offset = V2Assign(2, -3);
+  Tri2Offset(tri, &offset);
+  EXPECT_V2_APPROX_EQ(tri[0], V2Assign(2, -3));
+  EXPECT_V2_APPROX_EQ(tri[1], V2Assign(3, -3));
+  EXPECT_V2_APPROX_EQ(tri[2], V2Assign(2, -2));
+
+  // NOTE: rotate about point
+  tri[0] = V2Assign(0,0); tri[1] = V2Assign(2,0); tri[2] = V2Assign(0,2);
+  V2 origin = V2Assign(0,0);
+  Tri2RotateAboutPoint(tri, &origin, F32_PI / 2.0f);
+  EXPECT_V2_APPROX_EQ(tri[0], V2Assign(0,0));
+  EXPECT_V2_APPROX_EQ(tri[1], V2Assign(0,2));
+  EXPECT_V2_APPROX_EQ(tri[2], V2Assign(-2,0));
+
+  // NOTE: set center
+  tri[0] = V2Assign(0,0); tri[1] = V2Assign(2,0); tri[2] = V2Assign(0,2);
+  V2 new_center = V2Assign(10, 10);
+  Tri2SetCenter(tri, &new_center);
+
+  V2 computed_center;
+  Tri2GetCenter(tri, &computed_center);
+  EXPECT_V2_APPROX_EQ(computed_center, new_center);
+}
+
+void Tri2QueryTest() {
+  V2 tri[3];
+
+  tri[0] = V2Assign(0,0);
+  tri[1] = V2Assign(4,0);
+  tri[2] = V2Assign(0,4);
+
+  V2 center; Tri2GetCenter(tri, &center);
+  EXPECT_V2_APPROX_EQ(center, V2Assign(4.0f/3.0f, 4.0f/3.0f));
+
+  V2 c; F32 r;
+  Tri2GetEnclosingCircle2(tri, &c, &r);
+  EXPECT_TRUE(r > 2.0f && r < 3.0f);
+  EXPECT_TRUE(c.x > 1 && c.x < 3);
+  EXPECT_TRUE(c.y > 1 && c.y < 3);
+
+  V2 aabb_c, aabb_s;
+  Tri2GetEnclosingAabb2(tri, &aabb_c, &aabb_s);
+  EXPECT_V2_APPROX_EQ(aabb_c, V2Assign(1.33333f, 1.33333f));
+  EXPECT_V2_APPROX_EQ(aabb_s, V2Assign(4, 4));
+
+  V2 p;
+  p = V2Assign(1,1);
+  EXPECT_TRUE(Tri2ContainsPoint(tri, &p));
+  p = V2Assign(5,5);
+  EXPECT_FALSE(Tri2ContainsPoint(tri, &p));
+  p = V2Assign(2,0);
+  EXPECT_TRUE(Tri2ContainsPoint(tri, &p));
+}
+
+void Tri2IntersectLine2Test() {
+  V2 tri[3];
+
+  tri[0] = V2Assign(0,0);
+  tri[1] = V2Assign(4,0);
+  tri[2] = V2Assign(0,4);
+
+  V2 a, b, enter, exit;
+
+  // NOTE: simple intersection - diagonal slice
+  a = V2Assign(-1,-1);
+  b = V2Assign(5, 5);
+  EXPECT_TRUE(Tri2IntersectLine2(tri, &a, &b, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(0,0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(2,2));
+
+  // NOTE: no intersection
+  a = V2Assign(10,10);
+  b = V2Assign(20,20);
+  EXPECT_FALSE(Tri2IntersectLine2(tri, &a, &b, &enter, &exit));
+}
+
+void Tri2IntersectRay2Test() {
+  V2 tri[3];
+
+  tri[0] = V2Assign(0,0);
+  tri[1] = V2Assign(4,0);
+  tri[2] = V2Assign(0,4);
+
+  V2 r0, rd, enter, exit;
+
+  // NOTE: hit from bottom-left
+  r0 = V2Assign(-5,-5);
+  V2Normalize(&rd, &(V2){1,1});
+  EXPECT_TRUE(Tri2IntersectRay2(tri, &r0, &rd, &enter, &exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(0,0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(2,2));
+
+  // NOTE: miss
+  r0 = V2Assign(-5,5);
+  V2Normalize(&rd, &(V2){1,0});
+  EXPECT_FALSE(Tri2IntersectRay2(tri, &r0, &rd, &enter, &exit));
+}
+
+void Tri2IntersectTri2Test() {
+  V2 a[3], b[3];
+  IntersectManifold2 m;
+
+  // NOTE: overlapping
+  a[0]=V2Assign(0,0); a[1]=V2Assign(4,0); a[2]=V2Assign(0,4);
+  b[0]=V2Assign(1,1); b[1]=V2Assign(5,1); b[2]=V2Assign(1,5);
+
+  EXPECT_TRUE(Tri2IntersectTri2(a,b,&m));
+  EXPECT_TRUE(m.penetration > 0.0f);
+  EXPECT_TRUE(V2Length(&m.normal) > 0.9f);
+
+  // NOTE: not intersecting
+  b[0]=V2Assign(10,10); b[1]=V2Assign(14,10); b[2]=V2Assign(10,14);
+  EXPECT_FALSE(Tri2IntersectTri2(a,b,&m));
+}
+
+void Tri2IntersectAabb2Test() {
+  V2 tri[3], c, s;
+  IntersectManifold2 m;
+
+  tri[0]=V2Assign(0,0); tri[1]=V2Assign(4,0); tri[2]=V2Assign(0,4);
+
+  // NOTE: AABB overlapping
+  c = V2Assign(1,1);
+  s = V2Assign(1,1);
+  EXPECT_TRUE(Tri2IntersectAabb2(tri, &c, &s, &m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: no overlap
+  c = V2Assign(10,10);
+  EXPECT_FALSE(Tri2IntersectAabb2(tri, &c, &s, &m));
+}
+
+void Tri2IntersectObb2Test() {
+  V2 tri[3], c, s;
+  IntersectManifold2 m;
+
+  tri[0]=V2Assign(0,0); tri[1]=V2Assign(4,0); tri[2]=V2Assign(0,4);
+
+  c = V2Assign(2,2);
+  s = V2Assign(1,1);
+
+  // NOTE: rotated OBB intersecting
+  EXPECT_TRUE(Tri2IntersectObb2(tri, &c, &s, F32_PI/4.0f, &m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: far away
+  c = V2Assign(10,10);
+  EXPECT_FALSE(Tri2IntersectObb2(tri, &c, &s, 0.0f, &m));
+}
+
+void Tri2IntersectCircle2Test() {
+  V2 tri[3], cc;
+  IntersectManifold2 m;
+
+  tri[0]=V2Assign(0,0);
+  tri[1]=V2Assign(4,0);
+  tri[2]=V2Assign(0,4);
+
+  // NOTE: circle intersecting
+  cc = V2Assign(1,1);
+  EXPECT_TRUE(Tri2IntersectCircle2(tri, &cc, 2.0f, &m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: circle far away
+  cc = V2Assign(10,10);
+  EXPECT_FALSE(Tri2IntersectCircle2(tri, &cc, 2.0f, &m));
+}
+
+void Tri2IntersectConvexHull2Test() {
+  V2 tri[3];
+  V2 hull[4];
+  IntersectManifold2 m;
+
+  tri[0]=V2Assign(0,0);
+  tri[1]=V2Assign(4,0);
+  tri[2]=V2Assign(0,4);
+
+  hull[0]=V2Assign(1,1);
+  hull[1]=V2Assign(3,1);
+  hull[2]=V2Assign(3,3);
+  hull[3]=V2Assign(1,3);
+
+  // NOTE: convex hull overlapping triangle
+  EXPECT_TRUE(Tri2IntersectConvexHull2(tri, hull, 4, &m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: hull far away
+  hull[0]=V2Assign(10,10);
+  hull[1]=V2Assign(11,10);
+  hull[2]=V2Assign(11,11);
+  hull[3]=V2Assign(10,11);
+  EXPECT_FALSE(Tri2IntersectConvexHull2(tri, hull, 4, &m));
+}
+
+void Aabb2EqTest() {
+  V2 ac, as, bc, bs;
+
+  // NOTE: identical
+  ac = V2Assign(0,0); as = V2Assign(4,4);
+  bc = V2Assign(0,0); bs = V2Assign(4,4);
+  EXPECT_TRUE(Aabb2Eq(&ac, &as, &bc, &bs));
+  EXPECT_TRUE(Aabb2ApproxEq(&ac, &as, &bc, &bs));
+
+  // NOTE: different center
+  bc = V2Assign(1,0);
+  EXPECT_FALSE(Aabb2Eq(&ac, &as, &bc, &bs));
+  EXPECT_FALSE(Aabb2ApproxEq(&ac, &as, &bc, &bs));
+
+  // NOTE: different size
+  bc = V2Assign(0,0); bs = V2Assign(3,4);
+  EXPECT_FALSE(Aabb2Eq(&ac, &as, &bc, &bs));
+  EXPECT_FALSE(Aabb2ApproxEq(&ac, &as, &bc, &bs));
+}
+
+void Aabb2ConstructionTest() {
+  V2 c, s, mn, mx;
+
+  // NOTE: FromMinMax
+  mn = V2Assign(-1,-2);
+  mx = V2Assign( 3, 2);
+  Aabb2FromMinMax(&c, &s, &mn, &mx);
+  EXPECT_V2_APPROX_EQ(c, V2Assign(1,0));   // midpoint
+  EXPECT_V2_APPROX_EQ(s, V2Assign(4,4));   // full size
+
+  // NOTE: FromTopLeft
+  V2 top_left = V2Assign(-5,5);
+  V2 size     = V2Assign(4,4); // full size
+  Aabb2FromTopLeft(&c, &top_left, &size);
+  EXPECT_V2_APPROX_EQ(c, V2Assign(-3,3));  // center = top-left + size*0.5
+  EXPECT_V2_APPROX_EQ(s, V2Assign(4,4));
+
+  // NOTE: GetMinMax
+  Aabb2GetMinMax(&c, &s, &mn, &mx);
+  EXPECT_V2_APPROX_EQ(mn, V2Assign(-5,1)); // center - size*0.5 = (-3 -2, 3 -2)
+  EXPECT_V2_APPROX_EQ(mx, V2Assign(-1,5)); // center + size*0.5 = (-3 +2, 3 +2)
+}
+
+void Aabb2QueryTest() {
+  V2 c = V2Assign(0,0);
+  V2 s = V2Assign(4,4); // full size → half-size = (2,2)
+
+  // NOTE: enclosing circle
+  F32 r;
+  Aabb2GetEnclosingCircle2(&c, &s, &r);
+  EXPECT_F32_APPROX_EQ(r, V2Length(&(V2){2,2}));
+
+  // NOTE: contains point (inside)
+  V2 p = V2Assign(1,1);
+  EXPECT_TRUE(Aabb2ContainsPoint(&c,&s,&p));
+
+  // NOTE: on edge
+  p = V2Assign(2,0);
+  EXPECT_TRUE(Aabb2ContainsPoint(&c,&s,&p));
+
+  // NOTE: outside
+  p = V2Assign(5,0);
+  EXPECT_FALSE(Aabb2ContainsPoint(&c,&s,&p));
+}
+
+void Aabb2RotateAboutPointTest() {
+  V2 c = V2Assign(2,0);
+  V2 s = V2Assign(4,4);
+  V2 pivot = V2Assign(0,0);
+
+  Aabb2RotateAboutPoint(&c, &s, &pivot, F32_PI/2.0f);
+  EXPECT_V2_APPROX_EQ(c, V2Assign(0,2));  // rotate (2,0) → (0,2)
+  EXPECT_V2_APPROX_EQ(s, V2Assign(4,4));  // unchanged
+}
+
+void Aabb2IntersectLine2Test() {
+  V2 c = V2Assign(0,0);
+  V2 s = V2Assign(4,4); // half-size = (2,2)
+  V2 a, b, enter, exit;
+
+  // NOTE: horizontal line passing through box
+  a = V2Assign(-5,0);
+  b = V2Assign(5,0);
+  EXPECT_TRUE(Aabb2IntersectLine2(&c,&s,&a,&b,&enter,&exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(-2,0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign( 2,0));
+
+  // NOTE: miss
+  a = V2Assign(-5,5);
+  b = V2Assign( 5,5);
+  EXPECT_FALSE(Aabb2IntersectLine2(&c,&s,&a,&b,&enter,&exit));
+}
+
+void Aabb2IntersectRay2Test() {
+  V2 c = V2Assign(0,0);
+  V2 s = V2Assign(4,4); // half-size = (2,2)
+  V2 r0, rd, enter, exit;
+
+  // NOTE: direct hit
+  r0 = V2Assign(-5,0);
+  V2Normalize(&rd, &(V2){1,0});
+  EXPECT_TRUE(Aabb2IntersectRay2(&c,&s,&r0,&rd,&enter,&exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(-2,0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign( 2,0));
+
+  // NOTE: miss above
+  r0 = V2Assign(-5,5);
+  V2Normalize(&rd, &(V2){1,0});
+  EXPECT_FALSE(Aabb2IntersectRay2(&c,&s,&r0,&rd,&enter,&exit));
+}
+
+void Aabb2IntersectTri2Test() {
+  V2 c = V2Assign(0,0);
+  V2 s = V2Assign(4,4); // half-size = (2,2)
+  V2 tri[3];
+  IntersectManifold2 m;
+
+  // NOTE: intersects
+  tri[0] = V2Assign(1,1);
+  tri[1] = V2Assign(5,1);
+  tri[2] = V2Assign(1,5);
+  EXPECT_TRUE(Aabb2IntersectTri2(&c,&s,tri,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: separate
+  tri[0] = V2Assign(10,10);
+  tri[1] = V2Assign(12,10);
+  tri[2] = V2Assign(10,12);
+  EXPECT_FALSE(Aabb2IntersectTri2(&c,&s,tri,&m));
+}
+
+void Aabb2IntersectAabb2Test() {
+  V2 ac = V2Assign(0,0), as = V2Assign(4,4);
+  V2 bc, bs;
+  IntersectManifold2 m;
+
+  // NOTE: overlapping
+  bc = V2Assign(3,0); bs = V2Assign(4,4);
+  EXPECT_TRUE(Aabb2IntersectAabb2(&ac,&as,&bc,&bs,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: no intersection
+  bc = V2Assign(10,0);
+  EXPECT_FALSE(Aabb2IntersectAabb2(&ac,&as,&bc,&bs,&m));
+}
+
+void Aabb2IntersectObb2Test() {
+  V2 ac = V2Assign(0,0), as = V2Assign(4,4);
+  V2 bc = V2Assign(2,0), bs = V2Assign(2,2);
+  IntersectManifold2 m;
+
+  // NOTE: rotated intersecting
+  EXPECT_TRUE(Aabb2IntersectObb2(&ac,&as,&bc,&bs,F32_PI/4.0f,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: far away
+  bc = V2Assign(10,10);
+  EXPECT_FALSE(Aabb2IntersectObb2(&ac,&as,&bc,&bs,0,&m));
+}
+
+void Aabb2IntersectCircle2Test() {
+  V2 c = V2Assign(0,0), s = V2Assign(4,4);
+  V2 cc;
+  IntersectManifold2 m;
+
+  // NOTE: intersecting
+  cc = V2Assign(1,1);
+  EXPECT_TRUE(Aabb2IntersectCircle2(&c,&s,&cc,2.0f,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: separate
+  cc = V2Assign(10,10);
+  EXPECT_FALSE(Aabb2IntersectCircle2(&c,&s,&cc,2.0f,&m));
+}
+
+void Aabb2IntersectConvexHull2Test() {
+  V2 c = V2Assign(0,0), s = V2Assign(4,4);
+  V2 hull[4];
+  IntersectManifold2 m;
+
+  // NOTE: touching/intersecting hull
+  hull[0]=V2Assign(1,1);
+  hull[1]=V2Assign(3,1);
+  hull[2]=V2Assign(3,3);
+  hull[3]=V2Assign(1,3);
+  EXPECT_TRUE(Aabb2IntersectConvexHull2(&c,&s,hull,4,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: far away
+  hull[0]=V2Assign(10,10);
+  hull[1]=V2Assign(12,10);
+  hull[2]=V2Assign(12,12);
+  hull[3]=V2Assign(10,12);
+  EXPECT_FALSE(Aabb2IntersectConvexHull2(&c,&s,hull,4,&m));
+}
+
+void Obb2EqTest() {
+  V2 ac, as, bc, bs;
+
+  // NOTE: identical
+  ac = V2Assign(0,0); as = V2Assign(4,4);
+  bc = V2Assign(0,0); bs = V2Assign(4,4);
+  EXPECT_TRUE(Obb2Eq(&ac,&as,0,&bc,&bs,0));
+  EXPECT_TRUE(Obb2ApproxEq(&ac,&as,0,&bc,&bs,0));
+
+  // NOTE: different angle
+  EXPECT_FALSE(Obb2Eq(&ac,&as,0,&bc,&bs,F32_PI/4.0f));
+  EXPECT_FALSE(Obb2ApproxEq(&ac,&as,0,&bc,&bs,F32_PI/4.0f));
+
+  // NOTE: different center
+  bc = V2Assign(1,0);
+  EXPECT_FALSE(Obb2Eq(&ac,&as,0,&bc,&bs,0));
+  EXPECT_FALSE(Obb2ApproxEq(&ac,&as,0,&bc,&bs,0));
+
+  // NOTE: different size
+  bc = V2Assign(0,0); bs = V2Assign(3,4);
+  EXPECT_FALSE(Obb2Eq(&ac,&as,0,&bc,&bs,0));
+  EXPECT_FALSE(Obb2ApproxEq(&ac,&as,0,&bc,&bs,0));
+}
+
+void Obb2RotateAboutPointTest() {
+  V2 c = V2Assign(2,0);
+  F32 ang = 0.0f;
+  V2 pivot = V2Assign(0,0);
+
+  // NOTE: rotate 90° CCW around origin
+  Obb2RotateAboutPoint(&c, &ang, &pivot, F32_PI/2.0f);
+  EXPECT_V2_APPROX_EQ(c, V2Assign(0,2));
+  EXPECT_F32_APPROX_EQ(ang, F32_PI/2.0f);
+}
+
+void Obb2GetEnclosingCircle2Test() {
+  V2 c = V2Assign(0,0);
+  V2 s = V2Assign(4,6); // full size → half-size = (2,3)
+  F32 r;
+
+  // NOTE: circle radius = length of half-diagonal
+  Obb2GetEnclosingCircle2(&c,&s,0,&r);
+  EXPECT_F32_APPROX_EQ(r, V2Length(&(V2){2,3}));
+}
+
+void Obb2GetEnclosingAabb2Test() {
+  V2 c = V2Assign(0,0);
+  V2 s = V2Assign(4,2); // half-size = (2,1)
+  V2 aabb_size;
+
+  // NOTE: rotate 90° → width/height swap
+  Obb2GetEnclosingAabb2(&c,&s,F32_PI/2.0f,&aabb_size);
+  EXPECT_V2_APPROX_EQ(aabb_size, V2Assign(2,4)); // full-size envelope
+}
+
+void Obb2ContainsPointTest() {
+  V2 c = V2Assign(0,0);
+  V2 s = V2Assign(4,4); // half-size = (2,2)
+  F32 ang = 0.0f;
+
+  // NOTE: inside
+  V2 p = V2Assign(1,1);
+  EXPECT_TRUE(Obb2ContainsPoint(&c,&s,ang,&p));
+
+  // NOTE: on edge
+  p = V2Assign(2,0);
+  EXPECT_TRUE(Obb2ContainsPoint(&c,&s,ang,&p));
+
+  // NOTE: outside
+  p = V2Assign(5,0);
+  EXPECT_FALSE(Obb2ContainsPoint(&c,&s,ang,&p));
+
+  // NOTE: rotated OBB
+  ang = F32_PI/4.0f;
+  p = V2Assign(1,1);
+  EXPECT_TRUE(Obb2ContainsPoint(&c,&s,ang,&p));
+}
+
+void Obb2IntersectLine2Test() {
+  V2 c = V2Assign(0,0);
+  V2 s = V2Assign(4,4); // half-size = (2,2)
+  F32 ang = 0;
+  V2 a, b, enter, exit;
+
+  // NOTE: simple axis-aligned intersection
+  a = V2Assign(-5,0);
+  b = V2Assign( 5,0);
+  EXPECT_TRUE(Obb2IntersectLine2(&c,&s,ang,&a,&b,&enter,&exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(-2,0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign( 2,0));
+
+  // NOTE: miss
+  a = V2Assign(-5,5);
+  b = V2Assign( 5,5);
+  EXPECT_FALSE(Obb2IntersectLine2(&c,&s,ang,&a,&b,&enter,&exit));
+}
+
+void Obb2IntersectRay2Test() {
+  V2 c = V2Assign(0,0);
+  V2 s = V2Assign(4,4); // half-size = (2,2)
+  F32 ang = 0;
+  V2 r0, rd, enter, exit;
+
+  // NOTE: hit
+  r0 = V2Assign(-5,0);
+  V2Normalize(&rd, &(V2){1,0});
+  EXPECT_TRUE(Obb2IntersectRay2(&c,&s,ang,&r0,&rd,&enter,&exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(-2,0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign( 2,0));
+
+  // NOTE: miss
+  r0 = V2Assign(-5,5);
+  V2Normalize(&rd, &(V2){1,0});
+  EXPECT_FALSE(Obb2IntersectRay2(&c,&s,ang,&r0,&rd,&enter,&exit));
+}
+
+void Obb2IntersectTri2Test() {
+  V2 c = V2Assign(0,0);
+  V2 s = V2Assign(4,4);
+  F32 ang = 0;
+  IntersectManifold2 m;
+  V2 tri[3];
+
+  // NOTE: intersecting
+  tri[0]=V2Assign(1,1);
+  tri[1]=V2Assign(5,1);
+  tri[2]=V2Assign(1,5);
+  EXPECT_TRUE(Obb2IntersectTri2(&c,&s,ang,tri,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: separated
+  tri[0]=V2Assign(10,10);
+  tri[1]=V2Assign(12,10);
+  tri[2]=V2Assign(10,12);
+  EXPECT_FALSE(Obb2IntersectTri2(&c,&s,ang,tri,&m));
+}
+
+void Obb2IntersectAabb2Test() {
+  V2 oc = V2Assign(0,0);
+  V2 os = V2Assign(4,4);
+  F32 ang = 0;
+  V2 ac, as;
+  IntersectManifold2 m;
+
+  // NOTE: overlapping
+  ac = V2Assign(3,0); as = V2Assign(4,4);
+  EXPECT_TRUE(Obb2IntersectAabb2(&oc,&os,ang,&ac,&as,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: no intersection
+  ac = V2Assign(10,0);
+  EXPECT_FALSE(Obb2IntersectAabb2(&oc,&os,ang,&ac,&as,&m));
+}
+
+void Obb2IntersectObb2Test() {
+  V2 ac = V2Assign(0,0), as = V2Assign(4,4);
+  F32 aa = 0;
+  V2 bc = V2Assign(2,0), bs = V2Assign(4,4);
+  F32 ba = F32_PI/4.0f;
+  IntersectManifold2 m;
+
+  // NOTE: rotated intersection
+  EXPECT_TRUE(Obb2IntersectObb2(&ac,&as,aa,&bc,&bs,ba,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: separated
+  bc = V2Assign(10,10);
+  EXPECT_FALSE(Obb2IntersectObb2(&ac,&as,aa,&bc,&bs,ba,&m));
+}
+
+void Obb2IntersectCircle2Test() {
+  V2 c = V2Assign(0,0);
+  V2 s = V2Assign(4,4);
+  F32 ang = 0;
+  IntersectManifold2 m;
+
+  // NOTE: intersection
+  V2 cc = V2Assign(1,1);
+  EXPECT_TRUE(Obb2IntersectCircle2(&c,&s,ang,&cc,2.0f,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: separate
+  cc = V2Assign(10,10);
+  EXPECT_FALSE(Obb2IntersectCircle2(&c,&s,ang,&cc,2.0f,&m));
+}
+
+void Obb2IntersectConvexHull2Test() {
+  V2 c = V2Assign(0,0);
+  V2 s = V2Assign(4,4);
+  F32 ang = 0;
+  IntersectManifold2 m;
+  V2 hull[4];
+
+  // NOTE: intersecting
+  hull[0]=V2Assign(1,1);
+  hull[1]=V2Assign(3,1);
+  hull[2]=V2Assign(3,3);
+  hull[3]=V2Assign(1,3);
+  EXPECT_TRUE(Obb2IntersectConvexHull2(&c,&s,ang,hull,4,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: far away
+  hull[0]=V2Assign(10,10);
+  hull[1]=V2Assign(12,10);
+  hull[2]=V2Assign(12,12);
+  hull[3]=V2Assign(10,12);
+  EXPECT_FALSE(Obb2IntersectConvexHull2(&c,&s,ang,hull,4,&m));
+}
+
+void Circle2EqTest() {
+  V2 ac, bc;
+
+  // NOTE: identical
+  ac = V2Assign(0,0);
+  bc = V2Assign(0,0);
+  EXPECT_TRUE(Circle2Eq(&ac, 5.0f, &bc, 5.0f));
+  EXPECT_TRUE(Circle2ApproxEq(&ac, 5.0f, &bc, 5.0f));
+
+  // NOTE: different radius
+  EXPECT_FALSE(Circle2Eq(&ac, 5.0f, &bc, 4.0f));
+  EXPECT_FALSE(Circle2ApproxEq(&ac, 5.0f, &bc, 4.0f));
+
+  // NOTE: different center
+  bc = V2Assign(1,0);
+  EXPECT_FALSE(Circle2Eq(&ac, 5.0f, &bc, 5.0f));
+  EXPECT_FALSE(Circle2ApproxEq(&ac, 5.0f, &bc, 5.0f));
+}
+
+void Circle2GetEnclosingAabb2Test() {
+  V2 size;
+
+  // NOTE: AABB size = diameter
+  Circle2GetEnclosingAabb2(3.0f, &size);
+  EXPECT_V2_APPROX_EQ(size, V2Assign(6.0f, 6.0f));
+}
+
+void Circle2ContainsPointTest() {
+  V2 c = V2Assign(0,0);
+  F32 r = 3.0f;
+
+  // NOTE: inside
+  V2 p = V2Assign(1,1);
+  EXPECT_TRUE(Circle2ContainsPoint(&c, r, &p));
+
+  // NOTE: on boundary
+  p = V2Assign(3,0);
+  EXPECT_TRUE(Circle2ContainsPoint(&c, r, &p));
+
+  // NOTE: outside
+  p = V2Assign(4,0);
+  EXPECT_FALSE(Circle2ContainsPoint(&c, r, &p));
+}
+
+void Circle2IntersectLine2Test() {
+  V2 c = V2Assign(0,0);
+  F32 r = 3.0f;
+  V2 a, b, enter, exit;
+
+  // NOTE: horizontal line crossing center
+  a = V2Assign(-5,0);
+  b = V2Assign( 5,0);
+  EXPECT_TRUE(Circle2IntersectLine2(&c,r,&a,&b,&enter,&exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(-3,0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign( 3,0));
+
+  // NOTE: miss
+  a = V2Assign(-5,5);
+  b = V2Assign( 5,5);
+  EXPECT_FALSE(Circle2IntersectLine2(&c,r,&a,&b,&enter,&exit));
+}
+
+void Circle2IntersectRay2Test() {
+  V2 c = V2Assign(0,0);
+  F32 r = 3.0f;
+  V2 r0, rd, enter, exit;
+
+  // NOTE: hit from left
+  r0 = V2Assign(-5,0);
+  V2Normalize(&rd, &(V2){1,0});
+  EXPECT_TRUE(Circle2IntersectRay2(&c,r,&r0,&rd,&enter,&exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(-3,0));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign( 3,0));
+
+  // NOTE: ray pointing away
+  r0 = V2Assign(-5,0);
+  V2Normalize(&rd, &(V2){-1,0});
+  EXPECT_FALSE(Circle2IntersectRay2(&c,r,&r0,&rd,&enter,&exit));
+
+  // NOTE: miss
+  r0 = V2Assign(-5,5);
+  V2Normalize(&rd, &(V2){1,0});
+  EXPECT_FALSE(Circle2IntersectRay2(&c,r,&r0,&rd,&enter,&exit));
+}
+
+void Circle2IntersectTri2Test() {
+  V2 c = V2Assign(0,0);
+  F32 r = 3.0f;
+  IntersectManifold2 m;
+  V2 tri[3];
+
+  // NOTE: triangle overlaps circle
+  tri[0] = V2Assign(1,1);
+  tri[1] = V2Assign(4,1);
+  tri[2] = V2Assign(1,4);
+  EXPECT_TRUE(Circle2IntersectTri2(&c,r,tri,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: triangle far away
+  tri[0] = V2Assign(10,10);
+  tri[1] = V2Assign(12,10);
+  tri[2] = V2Assign(10,12);
+  EXPECT_FALSE(Circle2IntersectTri2(&c,r,tri,&m));
+}
+
+void Circle2IntersectAabb2Test() {
+  V2 cc = V2Assign(0,0);
+  F32 r = 3.0f;
+  IntersectManifold2 m;
+  V2 ac, as;
+
+  // NOTE: overlapping
+  ac = V2Assign(3,0);
+  as = V2Assign(4,4);   // full size
+  EXPECT_TRUE(Circle2IntersectAabb2(&cc,r,&ac,&as,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: separated
+  ac = V2Assign(10,10);
+  EXPECT_FALSE(Circle2IntersectAabb2(&cc,r,&ac,&as,&m));
+}
+
+void Circle2IntersectObb2Test() {
+  V2 cc = V2Assign(0,0);
+  F32 r = 3.0f;
+  IntersectManifold2 m;
+
+  V2 oc = V2Assign(2,0);
+  V2 os = V2Assign(4,4); // full size
+  F32 ang = F32_PI/4.0f;
+
+  // NOTE: intersect
+  EXPECT_TRUE(Circle2IntersectObb2(&cc,r,&oc,&os,ang,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: separated
+  oc = V2Assign(10,10);
+  EXPECT_FALSE(Circle2IntersectObb2(&cc,r,&oc,&os,ang,&m));
+}
+
+void Circle2IntersectCircle2Test() {
+  V2 a = V2Assign(0,0);
+  V2 b = V2Assign(4,0);
+  IntersectManifold2 m;
+
+  // NOTE: intersect (radii sum = 6)
+  EXPECT_TRUE(Circle2IntersectCircle2(&a,3.0f,&b,3.0f,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: tangent (touching)
+  b = V2Assign(6,0);
+  EXPECT_TRUE(Circle2IntersectCircle2(&a,3.0f,&b,3.0f,&m));
+  EXPECT_TRUE(m.penetration >= 0);
+
+  // NOTE: separated
+  b = V2Assign(10,0);
+  EXPECT_FALSE(Circle2IntersectCircle2(&a,3.0f,&b,3.0f,&m));
+}
+
+void Circle2IntersectConvexHull2Test() {
+  V2 c = V2Assign(0,0);
+  F32 r = 3.0f;
+  IntersectManifold2 m;
+  V2 hull[4];
+
+  // NOTE: overlapping hull
+  hull[0] = V2Assign(1,1);
+  hull[1] = V2Assign(3,1);
+  hull[2] = V2Assign(3,3);
+  hull[3] = V2Assign(1,3);
+  EXPECT_TRUE(Circle2IntersectConvexHull2(&c,r,hull,4,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: far away
+  hull[0] = V2Assign(10,10);
+  hull[1] = V2Assign(12,10);
+  hull[2] = V2Assign(12,12);
+  hull[3] = V2Assign(10,12);
+  EXPECT_FALSE(Circle2IntersectConvexHull2(&c,r,hull,4,&m));
+}
+
+void ConvexHull2EqTest() {
+  V2 a[4], b[4];
+
+  // NOTE: identical squares
+  a[0]=V2Assign(0,0); a[1]=V2Assign(2,0); a[2]=V2Assign(2,2); a[3]=V2Assign(0,2);
+  b[0]=V2Assign(0,0); b[1]=V2Assign(2,0); b[2]=V2Assign(2,2); b[3]=V2Assign(0,2);
+  EXPECT_TRUE(ConvexHull2Eq(a,4,b,4));
+  EXPECT_TRUE(ConvexHull2ApproxEq(a,4,b,4));
+
+  // NOTE: different shape
+  b[2]=V2Assign(3,2);
+  EXPECT_FALSE(ConvexHull2Eq(a,4,b,4));
+  EXPECT_FALSE(ConvexHull2ApproxEq(a,4,b,4));
+}
+
+void ConvexHull2FromAabb2Test() {
+  V2 hc[4];
+  V2 center = V2Assign(3,3);
+  V2 size   = V2Assign(4,6);  // full size
+
+  ConvexHull2FromAabb2(hc,&center,&size);
+
+  // min/max
+  V2 min = V2Assign(1,0);
+  V2 max = V2Assign(5,6);
+
+  EXPECT_V2_APPROX_EQ(hc[0], V2Assign(min.x,min.y));
+  EXPECT_V2_APPROX_EQ(hc[1], V2Assign(max.x,min.y));
+  EXPECT_V2_APPROX_EQ(hc[2], V2Assign(max.x,max.y));
+  EXPECT_V2_APPROX_EQ(hc[3], V2Assign(min.x,max.y));
+}
+
+void ConvexHull2FromObb2Test() {
+  V2 hc[4];
+  V2 center = V2Assign(0,0);
+  V2 size   = V2Assign(4,2); // full extent 4×2
+  F32 ang   = F32_PI/2.0f;
+
+  ConvexHull2FromObb2(hc,&center,&size,ang);
+
+  // rectangle rotated 90° → width/height swap
+  EXPECT_V2_APPROX_EQ(hc[0], V2Assign( 1, -2));
+  EXPECT_V2_APPROX_EQ(hc[1], V2Assign( 1,  2));
+  EXPECT_V2_APPROX_EQ(hc[2], V2Assign(-1,  2));
+  EXPECT_V2_APPROX_EQ(hc[3], V2Assign(-1, -2));
+}
+
+void ConvexHull2OffsetTest() {
+  V2 h[3];
+  h[0]=V2Assign(0,0); h[1]=V2Assign(2,0); h[2]=V2Assign(1,2);
+
+  V2 off = V2Assign(3,-1);
+  ConvexHull2Offset(h,3,&off);
+
+  EXPECT_V2_APPROX_EQ(h[0], V2Assign(3,-1));
+  EXPECT_V2_APPROX_EQ(h[1], V2Assign(5,-1));
+  EXPECT_V2_APPROX_EQ(h[2], V2Assign(4, 1));
+}
+
+void ConvexHull2RotateAboutPointTest() {
+  V2 h[3], p;
+
+  // NOTE: rotate triangle 90° about origin
+  h[0]=V2Assign(1,0); h[1]=V2Assign(2,0); h[2]=V2Assign(1,1);
+  p   = V2Assign(0,0);
+
+  ConvexHull2RotateAboutPoint(h,3,&p,F32_PI/2.0f);
+
+  EXPECT_V2_APPROX_EQ(h[0], V2Assign(0,1));
+  EXPECT_V2_APPROX_EQ(h[1], V2Assign(0,2));
+  EXPECT_V2_APPROX_EQ(h[2], V2Assign(-1,1));
+}
+
+void ConvexHull2CenterTest() {
+  V2 h[4];
+  h[0]=V2Assign(0,0);
+  h[1]=V2Assign(4,0);
+  h[2]=V2Assign(4,2);
+  h[3]=V2Assign(0,2);
+
+  // NOTE: center should be average of vertices = (2,1)
+  V2 c;
+  ConvexHull2GetCenter(h,4,&c);
+  EXPECT_V2_APPROX_EQ(c, V2Assign(2,1));
+
+  // NOTE: move center to (10,10)
+  V2 newc = V2Assign(10,10);
+  ConvexHull2SetCenter(h,4,&newc);
+
+  EXPECT_V2_APPROX_EQ(h[0], V2Assign(8, 9));
+  EXPECT_V2_APPROX_EQ(h[1], V2Assign(12,9));
+  EXPECT_V2_APPROX_EQ(h[2], V2Assign(12,11));
+  EXPECT_V2_APPROX_EQ(h[3], V2Assign(8,11));
+}
+
+void ConvexHull2GetEnclosingCircle2Test() {
+  V2 h[4];
+  h[0]=V2Assign(1,1);
+  h[1]=V2Assign(5,1);
+  h[2]=V2Assign(5,5);
+  h[3]=V2Assign(1,5);
+
+  V2 cc; F32 cr;
+  ConvexHull2GetEnclosingCircle2(h,4,&cc,&cr);
+
+  EXPECT_V2_APPROX_EQ(cc, V2Assign(3,3));  // center
+  EXPECT_F32_APPROX_EQ(cr, 2.828427f);     // sqrt(2^2 + 2^2)
+}
+
+void ConvexHull2GetEnclosingAabb2Test() {
+  V2 h[3];
+  h[0]=V2Assign(1,2);
+  h[1]=V2Assign(4,3);
+  h[2]=V2Assign(2,6);
+
+  V2 c, s;
+  ConvexHull2GetEnclosingAabb2(h,3,&c,&s);
+
+  V2 min = V2Assign(1,2); V2 max = V2Assign(4,6);
+
+  EXPECT_V2_APPROX_EQ(c, V2Assign(2.33333f, 3.66667f));
+  EXPECT_V2_APPROX_EQ(s, V2Assign(max.x-min.x, max.y-min.y)); // full size
+}
+
+void ConvexHull2ContainsPointTest() {
+  V2 h[4];
+  h[0]=V2Assign(0,0); h[1]=V2Assign(4,0);
+  h[2]=V2Assign(4,4); h[3]=V2Assign(0,4);
+
+  // inside
+  V2 p = V2Assign(2,2);
+  EXPECT_TRUE(ConvexHull2ContainsPoint(h,4,&p));
+
+  // on boundary
+  p = V2Assign(4,2);
+  EXPECT_TRUE(ConvexHull2ContainsPoint(h,4,&p));
+
+  // outside
+  p = V2Assign(5,5);
+  EXPECT_FALSE(ConvexHull2ContainsPoint(h,4,&p));
+}
+
+void ConvexHull2IntersectLine2Test() {
+  V2 h[4];
+  h[0]=V2Assign(0,0); h[1]=V2Assign(4,0);
+  h[2]=V2Assign(4,4); h[3]=V2Assign(0,4);
+
+  V2 a,b,enter,exit;
+
+  // NOTE: horizontal line through center
+  a=V2Assign(-2,2);
+  b=V2Assign( 6,2);
+  EXPECT_TRUE(ConvexHull2IntersectLine2(h,4,&a,&b,&enter,&exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(0,2));
+  EXPECT_V2_APPROX_EQ(exit,  V2Assign(4,2));
+
+  // NOTE: miss
+  a=V2Assign(-2,6);
+  b=V2Assign(6,6);
+  EXPECT_FALSE(ConvexHull2IntersectLine2(h,4,&a,&b,&enter,&exit));
+}
+
+void ConvexHull2IntersectRay2Test() {
+  V2 h[4];
+  h[0]=V2Assign(0,0); h[1]=V2Assign(4,0);
+  h[2]=V2Assign(4,4); h[3]=V2Assign(0,4);
+
+  V2 r0, rd, enter, exit;
+
+  // NOTE: hit from left
+  r0 = V2Assign(-5,2);
+  V2Normalize(&rd, &(V2){1,0});
+  EXPECT_TRUE(ConvexHull2IntersectRay2(h,4,&r0,&rd,&enter,&exit));
+  EXPECT_V2_APPROX_EQ(enter, V2Assign(0,2));
+
+  // NOTE: miss
+  r0 = V2Assign(-5,6);
+  V2Normalize(&rd, &(V2){1,0});
+  EXPECT_FALSE(ConvexHull2IntersectRay2(h,4,&r0,&rd,&enter,&exit));
+
+  // NOTE: ray pointing away
+  r0 = V2Assign(6,2);
+  V2Normalize(&rd, &(V2){1,0});
+  EXPECT_FALSE(ConvexHull2IntersectRay2(h,4,&r0,&rd,&enter,&exit));
+}
+
+void ConvexHull2IntersectTri2Test() {
+  V2 hull[4] = {
+    V2Assign(0,0), V2Assign(4,0),
+    V2Assign(4,4), V2Assign(0,4)
+  };
+
+  V2 tri[3];
+  IntersectManifold2 m;
+
+  // NOTE: triangle inside hull
+  tri[0]=V2Assign(1,1); tri[1]=V2Assign(3,1); tri[2]=V2Assign(2,3);
+  EXPECT_TRUE(ConvexHull2IntersectTri2(hull,4,tri,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: far away
+  tri[0]=V2Assign(10,10);
+  tri[1]=V2Assign(12,10);
+  tri[2]=V2Assign(10,12);
+  EXPECT_FALSE(ConvexHull2IntersectTri2(hull,4,tri,&m));
+}
+
+void ConvexHull2IntersectAabb2Test() {
+  V2 hull[4] = {
+    V2Assign(0,0), V2Assign(4,0),
+    V2Assign(4,4), V2Assign(0,4)
+  };
+
+  V2 ac, as;
+  IntersectManifold2 m;
+
+  // NOTE: overlapping
+  ac = V2Assign(3,3);
+  as = V2Assign(4,4); // full size
+  EXPECT_TRUE(ConvexHull2IntersectAabb2(hull,4,&ac,&as,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: separated
+  ac = V2Assign(10,10);
+  EXPECT_FALSE(ConvexHull2IntersectAabb2(hull,4,&ac,&as,&m));
+}
+
+void ConvexHull2IntersectObb2Test() {
+  V2 hull[4] = {
+    V2Assign(0,0), V2Assign(4,0),
+    V2Assign(4,4), V2Assign(0,4)
+  };
+
+  V2 oc = V2Assign(3,3);
+  V2 os = V2Assign(4,2); // full size
+  F32 ang = F32_PI/4.0f;
+  IntersectManifold2 m;
+
+  EXPECT_TRUE(ConvexHull2IntersectObb2(hull,4,&oc,&os,ang,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  oc = V2Assign(10,10);
+  EXPECT_FALSE(ConvexHull2IntersectObb2(hull,4,&oc,&os,ang,&m));
+}
+
+void ConvexHull2IntersectCircle2Test() {
+  V2 hull[4] = {
+    V2Assign(0,0), V2Assign(4,0),
+    V2Assign(4,4), V2Assign(0,4)
+  };
+
+  V2 cc; F32 r;
+  IntersectManifold2 m;
+
+  // NOTE: circle overlapping
+  cc = V2Assign(3,2);
+  r  = 2.0f;
+  EXPECT_TRUE(ConvexHull2IntersectCircle2(hull,4,&cc,r,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: separate
+  cc = V2Assign(10,10);
+  EXPECT_FALSE(ConvexHull2IntersectCircle2(hull,4,&cc,r,&m));
+}
+
+void ConvexHull2IntersectConvexHull2Test() {
+  V2 a[4], b[4];
+  IntersectManifold2 m;
+
+  // NOTE: no intersection
+  a[0] = V2Assign(-1,-1); a[1] = V2Assign(1,-1); a[2] = V2Assign(1,1); a[3] = V2Assign(-1,1);
+  b[0] = V2Assign(10,-1); b[1] = V2Assign(12,-1); b[2] = V2Assign(12,1); b[3] = V2Assign(10,1);
+  EXPECT_FALSE(ConvexHull2IntersectConvexHull2(a,4,b,4,&m));
+
+  // NOTE: touching at a single vertex
+  a[0] = V2Assign(-1,-1); a[1] = V2Assign(1,-1); a[2] = V2Assign(1,1); a[3] = V2Assign(-1,1);
+  b[0] = V2Assign(1,1);   b[1] = V2Assign(3,1);  b[2] = V2Assign(3,3); b[3] = V2Assign(1,3);
+  EXPECT_TRUE(ConvexHull2IntersectConvexHull2(a,4,b,4,&m));
+  EXPECT_TRUE(m.penetration >= 0);
+
+  // NOTE: overlapping edges
+  a[0] = V2Assign(-1,-1); a[1] = V2Assign(1,-1); a[2] = V2Assign(1,1); a[3] = V2Assign(-1,1);
+  b[0] = V2Assign(0,-1); b[1] = V2Assign(2,-1); b[2] = V2Assign(2,1); b[3] = V2Assign(0,1);
+  EXPECT_TRUE(ConvexHull2IntersectConvexHull2(a,4,b,4,&m));
+  EXPECT_TRUE(m.penetration > 0);
+
+  // NOTE: one hull inside the other
+  a[0] = V2Assign(-2,-2); a[1] = V2Assign(2,-2); a[2] = V2Assign(2,2); a[3] = V2Assign(-2,2);
+  b[0] = V2Assign(-0.5,-0.5); b[1] = V2Assign(0.5,-0.5); b[2] = V2Assign(0.5,0.5); b[3] = V2Assign(-0.5,0.5);
+  EXPECT_TRUE(ConvexHull2IntersectConvexHull2(a,4,b,4,&m));
+  EXPECT_TRUE(m.penetration > 0);
 }
 
 void Ray3IntersectLine3Test() {
@@ -750,19 +2000,98 @@ int main(void) {
   RUN_TEST(Line2IntersectAabb2Test);
   RUN_TEST(Line2IntersectCircle2Test);
   RUN_TEST(Line2IntersectConvexHull2Test);
+
+  RUN_TEST(Ray2EqTest);
+  RUN_TEST(Ray2RotateAboutPointTest);
+  RUN_TEST(Ray2IntersectLine2Test);
+  RUN_TEST(Ray2IntersectRay2Test);
+  RUN_TEST(Ray2IntersectTri2Test);
+  RUN_TEST(Ray2IntersectAabb2Test);
+  RUN_TEST(Ray2IntersectObb2Test);
+  RUN_TEST(Ray2IntersectCircle2Test);
+  RUN_TEST(Ray2IntersectConvexHull2Test);
+
+  RUN_TEST(Tri2EqTest);
+  RUN_TEST(Tri2MutateTest);
+  RUN_TEST(Tri2QueryTest);
+  RUN_TEST(Tri2IntersectLine2Test);
+  RUN_TEST(Tri2IntersectRay2Test);
+  RUN_TEST(Tri2IntersectTri2Test);
+  RUN_TEST(Tri2IntersectAabb2Test);
+  RUN_TEST(Tri2IntersectObb2Test);
+  RUN_TEST(Tri2IntersectCircle2Test);
+  RUN_TEST(Tri2IntersectConvexHull2Test);
+
+  RUN_TEST(Aabb2EqTest);
+  RUN_TEST(Aabb2ConstructionTest);
+  RUN_TEST(Aabb2QueryTest);
+  RUN_TEST(Aabb2RotateAboutPointTest);
+  RUN_TEST(Aabb2IntersectLine2Test);
+  RUN_TEST(Aabb2IntersectRay2Test);
+  RUN_TEST(Aabb2IntersectTri2Test);
+  RUN_TEST(Aabb2IntersectAabb2Test);
+  RUN_TEST(Aabb2IntersectObb2Test);
+  RUN_TEST(Aabb2IntersectCircle2Test);
+  RUN_TEST(Aabb2IntersectConvexHull2Test);
+
+  RUN_TEST(Obb2EqTest);
+  RUN_TEST(Obb2RotateAboutPointTest);
+  RUN_TEST(Obb2GetEnclosingCircle2Test);
+  RUN_TEST(Obb2GetEnclosingAabb2Test);
+  RUN_TEST(Obb2ContainsPointTest);
+  RUN_TEST(Obb2IntersectLine2Test);
+  RUN_TEST(Obb2IntersectRay2Test);
+  RUN_TEST(Obb2IntersectTri2Test);
+  RUN_TEST(Obb2IntersectAabb2Test);
+  RUN_TEST(Obb2IntersectObb2Test);
+  RUN_TEST(Obb2IntersectCircle2Test);
+  RUN_TEST(Obb2IntersectConvexHull2Test);
+
+  RUN_TEST(Circle2EqTest);
+  RUN_TEST(Circle2GetEnclosingAabb2Test);
+  RUN_TEST(Circle2ContainsPointTest);
+  RUN_TEST(Circle2IntersectLine2Test);
+  RUN_TEST(Circle2IntersectRay2Test);
+  RUN_TEST(Circle2IntersectTri2Test);
+  RUN_TEST(Circle2IntersectAabb2Test);
+  RUN_TEST(Circle2IntersectObb2Test);
+  RUN_TEST(Circle2IntersectCircle2Test);
+  RUN_TEST(Circle2IntersectConvexHull2Test);
+
+  RUN_TEST(ConvexHull2EqTest);
+  RUN_TEST(ConvexHull2FromAabb2Test);
+  RUN_TEST(ConvexHull2FromObb2Test);
+  RUN_TEST(ConvexHull2OffsetTest);
+  RUN_TEST(ConvexHull2RotateAboutPointTest);
+  RUN_TEST(ConvexHull2CenterTest);
+  RUN_TEST(ConvexHull2GetEnclosingCircle2Test);
+  RUN_TEST(ConvexHull2GetEnclosingAabb2Test);
+  RUN_TEST(ConvexHull2ContainsPointTest);
+  RUN_TEST(ConvexHull2IntersectLine2Test);
+  RUN_TEST(ConvexHull2IntersectRay2Test);
+  RUN_TEST(ConvexHull2IntersectTri2Test);
+  RUN_TEST(ConvexHull2IntersectAabb2Test);
+  RUN_TEST(ConvexHull2IntersectObb2Test);
+  RUN_TEST(ConvexHull2IntersectCircle2Test);
+  RUN_TEST(ConvexHull2IntersectConvexHull2Test);
+
   RUN_TEST(Ray3IntersectLine3Test);
   RUN_TEST(Ray3IntersectRay3Test);
+
   RUN_TEST(Line3IntersectLine3Test);
   RUN_TEST(Line3IntersectRay3Test);
+
   RUN_TEST(Plane3CreateTest);
   RUN_TEST(Plane3MutateTest);
   RUN_TEST(Plane3PointTest);
   RUN_TEST(Plane3IntersectLine3Test);
   RUN_TEST(Plane3IntersectRay3Test);
   RUN_TEST(Plane3IntersectPlane3Test);
+
   RUN_TEST(ConvexPolygon3IntersectPlane3Test);
   RUN_TEST(ConvexPolygon3IntersectConvexPolygon3Test);
   RUN_TEST(ConvexHull3IntersectConvexHull3Test);
+
   LogTestReport();
   return 0;
 }
