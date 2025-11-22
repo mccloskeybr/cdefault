@@ -143,12 +143,11 @@ B32  ConvexHull2IntersectConvexHull2(V2* a_points, U32 a_points_size, V2* b_poin
 // 3D shapes
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO: include contact points
 typedef struct IntersectManifold3 IntersectManifold3;
 struct IntersectManifold3 {
   V3  normal;
   F32 penetration;
-  V3  contact_points[4];
-  U32 contact_points_size;
 };
 
 // TODO: Line3ContainsPoint
@@ -240,6 +239,10 @@ B32  Sphere3IntersectSphere3(V3* a_center, F32 a_radius, V3* b_center, F32 b_rad
 // intersect plane
 // intersect tri3
 // intersect polygon
+
+B32  ConvexHull3Eq(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size);
+B32  ConvexHull3ApproxEq(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size);
+B32  ConvexHull3IntersectConvexHull3(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size, IntersectManifold3* manifold);
 
 // TODO: convex hull 3
 // TODO: AABB3
@@ -1750,6 +1753,7 @@ B32 ConvexPolygon3IntersectConvexPolygon3(V3* a_points, U32 a_points_size, V3* b
   if (!Plane3FromConvexPolygon3(&b_normal, &b_d, b_points, b_points_size)) { return false; }
 
   // TODO: currently, this fails when the polgyons are on the same plane. it probably shouldn't, but this complicates this fn since it assumes edge intersections only.
+  // can probably extend the gjk implementation to clip the incident faces and generate contact points.
   V3 i_point, i_dir, a_clip_start, a_clip_end, b_clip_start, b_clip_end;
   if (!Plane3IntersectPlane3(&a_normal, a_d, &b_normal, b_d, &i_point, &i_dir)) { return false; }
   if (!ConvexPolygon3IntersectPlane3(a_points, a_points_size, &b_normal, b_d, &a_clip_start, &a_clip_end)) { return false; }
@@ -1813,10 +1817,177 @@ B32 Sphere3IntersectSphere3(V3* a_center, F32 a_radius, V3* b_center, F32 b_radi
     if (distance == 0) { d_center.z = 1.0f; }
     V3Normalize(&manifold->normal, &d_center);
     manifold->penetration = max_distance - distance;
-    V3MultF32(&manifold->contact_points[0], &manifold->normal, -a_radius);
-    V3AddV3(&manifold->contact_points[0], &manifold->contact_points[0], a_center);
-    manifold->contact_points_size = 1;
   }
+  return true;
+}
+
+B32 ConvexHull3Eq(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size) {
+  if (a_points_size != b_points_size) { return false; }
+  for (U32 i = 0; i < a_points_size; i++) {
+    if (!V3Eq(&a_points[i], &b_points[i])) { return false; }
+  }
+  return true;
+}
+
+B32 ConvexHull3ApproxEq(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size) {
+  if (a_points_size != b_points_size) { return false; }
+  for (U32 i = 0; i < a_points_size; i++) {
+    if (!V3ApproxEq(&a_points[i], &b_points[i])) { return false; }
+  }
+  return true;
+}
+
+static V3 GjkSupport(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size, V3 d) {
+  DEBUG_ASSERT(a_points_size >= 3);
+  DEBUG_ASSERT(b_points_size >= 3);
+
+  V3* a_max_point     = NULL;
+  F32 a_max_point_dot = F32_MIN;
+  for (U32 i = 0; i < a_points_size; i++) {
+    V3* test     = &a_points[i];
+    F32 test_dot = V3DotV3(test, &d);
+    if (test_dot > a_max_point_dot) {
+      a_max_point     = test;
+      a_max_point_dot = test_dot;
+    }
+  }
+
+  V3* b_min_point     = NULL;
+  F32 b_min_point_dot = F32_MAX;
+  for (U32 i = 0; i < b_points_size; i++) {
+    V3* test     = &b_points[i];
+    F32 test_dot = V3DotV3(test, &d);
+    if (test_dot < b_min_point_dot) {
+      b_min_point     = test;
+      b_min_point_dot = test_dot;
+    }
+  }
+
+  V3 result;
+  V3SubV3(&result, a_max_point, b_min_point);
+  return result;
+}
+
+// https://en.wikipedia.org/wiki/Gilbert%E2%80%93Johnson%E2%80%93Keerthi_distance_algorithm
+// https://blog.hamaluik.ca/posts/building-a-collision-engine-part-3-3d-gjk-collision-detection/
+// https://dyn4j.org/2010/05/epa-expanding-polytope-algorithm/
+B32 ConvexHull3IntersectConvexHull3(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size, IntersectManifold3* manifold) {
+  DEBUG_ASSERT(a_points_size >= 3);
+  DEBUG_ASSERT(b_points_size >= 3);
+
+  // NOTE: determine intersection using GJK
+  V3  simplex_points[4];
+  U32 simplex_points_size = 0;
+  MEMORY_ZERO_STATIC_ARRAY(simplex_points);
+  V3 dir = V3_X_POS;
+  simplex_points[simplex_points_size++] = GjkSupport(a_points, a_points_size, b_points, b_points_size, dir);
+  V3MultF32(&dir, &dir, -1);
+  while (true) {
+    V3 test = GjkSupport(a_points, a_points_size, b_points, b_points_size, dir);
+    if (V3DotV3(&test, &dir) < 0) { return false; }
+    simplex_points[simplex_points_size++] = test;
+
+    switch (simplex_points_size) {
+      case 2: {
+        // NOTE: next direction should be from line to origin
+        V3 ba, oa, cross;
+        V3SubV3(&ba, &simplex_points[1], &simplex_points[0]);
+        V3MultF32(&oa, &simplex_points[0], -1);
+        V3CrossV3(&cross, &ba, &oa);
+        V3CrossV3(&dir, &cross, &dir);
+      } break;
+      case 3: {
+        // NOTE: next direction should be triangle normal
+        V3 ba, ca, oa;
+        V3SubV3(&ba, &simplex_points[1], &simplex_points[0]);
+        V3SubV3(&ca, &simplex_points[2], &simplex_points[0]);
+        V3CrossV3(&dir, &ca, &ba);
+        V3MultF32(&oa, &simplex_points[0], -1);
+        if (V3DotV3(&dir, &oa) < 0) { V3MultF32(&dir, &dir, -1); }
+      } break;
+      case 4: {
+        // NOTE: determine if any polyhedra face normal excludes the origin,
+        // use it to iterate / find the next direction to travel. if all include
+        // origin, then we've found an intersection.
+        V3 da, db, dc, od;
+        V3SubV3(&da, &simplex_points[3], &simplex_points[0]);
+        V3SubV3(&db, &simplex_points[3], &simplex_points[1]);
+        V3SubV3(&dc, &simplex_points[3], &simplex_points[2]);
+        V3MultF32(&od, &simplex_points[3], -1);
+
+        V3 abd_norm, bcd_norm, cad_norm;
+        V3CrossV3(&abd_norm, &da, &db);
+        V3CrossV3(&bcd_norm, &db, &dc);
+        V3CrossV3(&cad_norm, &dc, &da);
+
+        if (V3DotV3(&abd_norm, &od) < 0) {
+          DA_SWAP_REMOVE_EX(simplex_points, simplex_points_size, 2);
+          dir = abd_norm;
+        } else if (V3DotV3(&bcd_norm, &od) < 0) {
+          DA_SWAP_REMOVE_EX(simplex_points, simplex_points_size, 0);
+          dir = bcd_norm;
+        } else if (V3DotV3(&cad_norm, &od) < 0) {
+          DA_SWAP_REMOVE_EX(simplex_points, simplex_points_size, 1);
+          dir = cad_norm;
+        } else {
+          goto gjk_found_intersection;
+        }
+      } break;
+      default: UNREACHABLE();
+    }
+  }
+gjk_found_intersection:
+  // NOTE: determine manifold penetration and normal using EPA
+  if (manifold == NULL) { return true; }
+  DEBUG_ASSERT(simplex_points_size == 4);
+  manifold->normal      = V3_Z_POS;
+  manifold->penetration = 0;
+
+  Arena* temp_arena        = ArenaAllocate();
+  V3* epa_simplex          = NULL;
+  U32 epa_simplex_size     = 0;
+  U32 epa_simplex_capacity = 0;
+  DA_COPY_EX(temp_arena, simplex_points, simplex_points_size, 4, epa_simplex, epa_simplex_size, epa_simplex_capacity);
+
+  while (true) {
+    // NOTE: find closest edge in simplex to origin
+    V3  closest_norm;
+    U32 closest_idx  = 0;
+    F32 closest_dist = F32_MAX;
+    for (U32 i = 0; i < epa_simplex_size; i++) {
+      U32 j = (i + 1) % epa_simplex_size;
+      V3* a = &epa_simplex[i];
+      V3* b = &epa_simplex[j];
+
+      V3 edge, cross, edge_origin;
+      V3SubV3(&edge, b, a);
+      V3CrossV3(&cross, &edge, a);
+      V3CrossV3(&edge_origin, &cross, &edge);
+
+      // NOTE: edge contains origin, e.g. if intersecting along face / edge / corner
+      if (V3LengthSq(&edge_origin) == 0) { goto epa_found_manifold; }
+      V3Normalize(&edge_origin, &edge_origin);
+
+      F32 dot = V3DotV3(&edge_origin, a);
+      if (dot < closest_dist) {
+        closest_dist = dot;
+        closest_norm = edge_origin;
+        closest_idx  = j;
+      }
+    }
+
+    V3  test = GjkSupport(a_points, a_points_size, b_points, b_points_size, closest_norm);
+    F32 dist = V3DotV3(&test, &closest_norm);
+    if (F32ApproxEq(dist, closest_dist)) {
+      manifold->normal      = closest_norm;
+      manifold->penetration = dist;
+      goto epa_found_manifold;
+    } else {
+      DA_INSERT_EX(temp_arena, epa_simplex, epa_simplex_size, epa_simplex_capacity, test, closest_idx);
+    }
+  }
+epa_found_manifold:
+  ArenaRelease(temp_arena);
   return true;
 }
 

@@ -127,18 +127,20 @@ V2* V2Lerp(V2* dest, V2* x, V2* y, F32 t);
 // NOTE: V3
 ///////////////////////////////////////////////////////////////////////////////
 
-#define V3_X_POS (V3) {+1,  0,  0}
-#define V3_Y_POS (V3) { 0, +1,  0}
-#define V3_Z_POS (V3) { 0,  0, +1}
-#define V3_X_NEG (V3) {-1,  0,  0}
-#define V3_Y_NEG (V3) { 0, -1,  0}
-#define V3_Z_NEG (V3) { 0,  0, -1}
+#define V3_ZEROES (V3) { 0,  0,  0}
+#define V3_ONES   (V3) { 1,  1,  1}
+#define V3_X_POS  (V3) {+1,  0,  0}
+#define V3_Y_POS  (V3) { 0, +1,  0}
+#define V3_Z_POS  (V3) { 0,  0, +1}
+#define V3_X_NEG  (V3) {-1,  0,  0}
+#define V3_Y_NEG  (V3) { 0, -1,  0}
+#define V3_Z_NEG  (V3) { 0,  0, -1}
 
-#define V3_BLACK (V3) {0, 0, 0}
-#define V3_WHITE (V3) {1, 1, 1}
-#define V3_RED   (V3) {1, 0, 0}
-#define V3_GREEN (V3) {0, 1, 0}
-#define V3_BLUE  (V3) {0, 0, 1}
+#define V3_BLACK  (V3) {0, 0, 0}
+#define V3_WHITE  (V3) {1, 1, 1}
+#define V3_RED    (V3) {1, 0, 0}
+#define V3_GREEN  (V3) {0, 1, 0}
+#define V3_BLUE   (V3) {0, 0, 1}
 
 V3  V3Assign(F32 x, F32 y, F32 z);
 V3  V3Splat(F32 c);

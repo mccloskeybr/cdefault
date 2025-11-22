@@ -188,6 +188,22 @@ void ExpandCapacityTest(void) {
   }
 }
 
+void CopyTest(void) {
+  List a, b;
+  MEMORY_ZERO_STRUCT(&a);
+  MEMORY_ZERO_STRUCT(&b);
+
+  DA_PUSH_BACK(arena, &a, 10);
+  DA_PUSH_BACK(arena, &a, 20);
+  DA_PUSH_BACK(arena, &a, 30);
+  DA_COPY(arena, &a, &b);
+  EXPECT_TRUE(b.capacity >= b.size);
+  EXPECT_U32_EQ(a.size, b.size);
+  EXPECT_U16_EQ(b.data[0], 10);
+  EXPECT_U16_EQ(b.data[1], 20);
+  EXPECT_U16_EQ(b.data[2], 30);
+}
+
 int main(void) {
   arena = ArenaAllocate();
   RUN_TEST(InsertTest);
@@ -196,6 +212,7 @@ int main(void) {
   RUN_TEST(PushBackTest);
   RUN_TEST(PopBackTest);
   RUN_TEST(ExpandCapacityTest);
+  RUN_TEST(CopyTest);
   LogTestReport();
   return 0;
 }

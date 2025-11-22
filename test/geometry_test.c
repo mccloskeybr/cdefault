@@ -698,6 +698,48 @@ void ConvexPolygon3IntersectConvexPolygon3Test() {
   EXPECT_V3_APPROX_EQ(intersect_end,   V3Assign(0.75f, 0.75f, 0));
 }
 
+static void MakeCube(V3 cube[8], V3 center, F32 half_extent) {
+  cube[0] = V3Assign(center.x - half_extent, center.y - half_extent, center.z - half_extent);
+  cube[1] = V3Assign(center.x + half_extent, center.y - half_extent, center.z - half_extent);
+  cube[2] = V3Assign(center.x + half_extent, center.y + half_extent, center.z - half_extent);
+  cube[3] = V3Assign(center.x - half_extent, center.y + half_extent, center.z - half_extent);
+  cube[4] = V3Assign(center.x - half_extent, center.y - half_extent, center.z + half_extent);
+  cube[5] = V3Assign(center.x + half_extent, center.y - half_extent, center.z + half_extent);
+  cube[6] = V3Assign(center.x + half_extent, center.y + half_extent, center.z + half_extent);
+  cube[7] = V3Assign(center.x - half_extent, center.y + half_extent, center.z + half_extent);
+}
+
+void ConvexHull3IntersectConvexHull3Test() {
+  V3 a[8], b[8];
+  IntersectManifold3 manifold;
+
+  // NOTE: not intersecting
+  MakeCube(a, V3Assign(0, 0, 0), 1);
+  MakeCube(b, V3Assign(0, 0, 4), 1);
+  EXPECT_FALSE(ConvexHull3IntersectConvexHull3(a, 8, b, 8, &manifold));
+
+  // NOTE: deep intersection
+  MakeCube(a, V3Assign(0, 0, 0), 1);
+  MakeCube(b, V3Assign(0, 0, 1), 1);
+  EXPECT_TRUE(ConvexHull3IntersectConvexHull3(a, 8, b, 8, &manifold));
+  EXPECT_F32_APPROX_EQ(manifold.penetration, 1);
+  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, 1));
+
+  // NOTE: intersecting one face
+  MakeCube(a, V3Assign(0, 0, 0), 1);
+  MakeCube(b, V3Assign(0, 0, 2), 1);
+  EXPECT_TRUE(ConvexHull3IntersectConvexHull3(a, 8, b, 8, &manifold));
+  EXPECT_F32_APPROX_EQ(manifold.penetration, 0);
+  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, 1));
+
+  // NOTE: intersecting one corner
+  MakeCube(a, V3Assign(0, 0, 0), 1);
+  MakeCube(b, V3Assign(2, 2, 2), 1);
+  EXPECT_TRUE(ConvexHull3IntersectConvexHull3(a, 8, b, 8, &manifold));
+  EXPECT_F32_APPROX_EQ(manifold.penetration, 0);
+  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, 1));
+}
+
 int main(void) {
   RUN_TEST(Line2EqTest);
   RUN_TEST(Line2MutateTest);
@@ -720,6 +762,7 @@ int main(void) {
   RUN_TEST(Plane3IntersectPlane3Test);
   RUN_TEST(ConvexPolygon3IntersectPlane3Test);
   RUN_TEST(ConvexPolygon3IntersectConvexPolygon3Test);
+  RUN_TEST(ConvexHull3IntersectConvexHull3Test);
   LogTestReport();
   return 0;
 }

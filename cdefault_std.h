@@ -457,6 +457,8 @@ void  MemoryDecommit(void* ptr, U64 size);
   DA_SWAP_REMOVE_EX((list)->data, (list)->size, idx);
 #define DA_SHIFT_REMOVE(list, idx) \
   DA_SHIFT_REMOVE_EX((list)->data, (list)->size, idx);
+#define DA_COPY(arena, src, dest) \
+  DA_COPY_EX(arena, (src)->data, (src)->size, (src)->capacity, (dest)->data, (dest)->size, (dest)->capacity)
 
 #define DA_RESERVE_EX(arena, data, capacity, expected_capacity) \
   if (capacity == 0) {                                          \
@@ -476,7 +478,7 @@ void  MemoryDecommit(void* ptr, U64 size);
 #define DA_INSERT_EX(arena, data, size, capacity, item, idx)       \
   DEBUG_ASSERT(idx <= size);                                       \
   DA_RESERVE_EX(arena, data, capacity, size + 1);                  \
-  for (S32 _i = size; _i > idx; _i--) { data[_i] = data[_i - 1]; } \
+  for (U32 _i = size; _i > idx; _i--) { data[_i] = data[_i - 1]; } \
   data[idx] = item;                                                \
   size++;
 #define DA_SWAP_REMOVE_EX(data, size, idx) \
@@ -487,6 +489,10 @@ void  MemoryDecommit(void* ptr, U64 size);
   DEBUG_ASSERT(idx < size);                                              \
   for (S32 _i = idx; _i < (S32) size; _i++) { data[_i] = data[_i + 1]; } \
   size--;
+#define DA_COPY_EX(arena, a_data, a_size, a_capacity, b_data, b_size, b_capacity) \
+  DA_RESERVE_EX(arena, b_data, b_capacity, a_size);                               \
+  b_size = a_size;                                                                \
+  MEMORY_COPY(b_data, a_data, a_size * sizeof(*a_data))
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Log
