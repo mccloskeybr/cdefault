@@ -27,11 +27,11 @@ struct IntersectManifold2 {
   U32 contact_points_size;
 };
 
-// TODO: Line2ContainsPoint
 B32  Line2Eq(V2* a_start, V2* a_end, V2* b_start, V2* b_end);
 B32  Line2ApproxEq(V2* a_start, V2* a_end, V2* b_start, V2* b_end);
 void Line2Offset(V2* start, V2* end, V2* offset);
 void Line2RotateAboutPoint(V2* start, V2* end, V2* point, F32 angle_rad);
+B32  Line2ContainsPoint(V2* start, V2* end, V2* point);
 F32  Line2GetLength(V2* start, V2* end);
 F32  Line2GetLengthSq(V2* start, V2* end);
 void Line2GetMidpoint(V2* line_start, V2* line_end, V2* midpoint);
@@ -46,10 +46,10 @@ B32  Line2IntersectObb2(V2* line_start, V2* line_end, V2* obb_center, V2* obb_si
 B32  Line2IntersectCircle2(V2* line_start, V2* line_end, V2* circle_center, F32 circle_radius, V2* enter_point, V2* exit_point);
 B32  Line2IntersectConvexHull2(V2* line_start, V2* line_end, V2* hull_points, U32 hull_points_size, V2* enter_point, V2* exit_point);
 
-// TODO: Ray2ContainsPoint
 B32  Ray2Eq(V2* a_start, V2* a_dir, V2* b_start, V2* b_dir);
 B32  Ray2ApproxEq(V2* a_start, V2* a_dir, V2* b_start, V2* b_dir);
 void Ray2RotateAboutPoint(V2* ray_start, V2* ray_dir, V2* point, F32 angle_rad);
+B32  Ray2ContainsPoint(V2* ray_start, V2* ray_dir, V2* point);
 void Ray2GetDirInv(V2* ray_dir, V2* dir_inv); // NOTE: careful about axis aligned dirs.
 B32  Ray2IntersectLine2(V2* ray_start, V2* ray_dir, V2* line_start, V2* line_end, V2* intersect_point);
 B32  Ray2IntersectRay2(V2* a_start, V2* a_dir, V2* b_start, V2* b_dir, V2* intersect_point);
@@ -150,7 +150,6 @@ struct IntersectManifold3 {
   F32 penetration;
 };
 
-// TODO: Line3ContainsPoint
 B32  Line3Eq(V3* a_start, V3* a_end, V3* b_start, V3* b_end);
 B32  Line3ApproxEq(V3* a_start, V3* a_end, V3* b_start, V3* b_end);
 void Line3Offset(V3* start, V3* end, V3* offset);
@@ -158,6 +157,7 @@ F32  Line3GetLength(V3* start, V3* end);
 F32  Line3GetLengthSq(V3* start, V3* end);
 void Line3GetMidpoint(V3* line_start, V3* line_end, V3* midpoint);
 void Line3GetClosestPoint(V3* start, V3* end, V3* point, V3* closest);
+B32  Line3ContainsPoint(V3* start, V3* end, V3* point);
 B32  Line3IntersectLine3(V3* a_start, V3* a_end, V3* b_start, V3* b_end, V3* intersect_point);
 B32  Line3IntersectRay3(V3* line_start, V3* line_end, V3* ray_start, V3* ray_dir, V3* intersect_point);
 B32  Line3IntersectPlane3(V3* line_start, V3* line_end, V3* plane_normal, F32 plane_d, V3* intersect_point);
@@ -165,9 +165,9 @@ B32  Line3IntersectTri3(V3* line_start, V3* line_end, V3 tri_points[3], V3* inte
 B32  Line3IntersectConvexPolygon3(V3* line_start, V3* line_end, V3* polygon_points, U32 polygon_points_size, V3* intersect_point);
 // TODO: intersect sphere
 
-// TODO: Ray3ContainsPoint
 B32  Ray3Eq(V3* a_start, V3* a_dir, V3* b_start, V3* b_dir);
 B32  Ray3ApproxEq(V3* a_start, V3* a_dir, V3* b_start, V3* b_dir);
+B32  Ray3ContainsPoint(V3* ray_start, V3* ray_dir, V3* point);
 void Ray3GetDirInv(V3* ray_dir, V3* dir_inv);
 B32  Ray3IntersectLine3(V3* ray_start, V3* ray_dir, V3* line_start, V3* line_end, V3* intersect_point);
 B32  Ray3IntersectRay3(V3* a_start, V3* a_dir, V3* b_start, V3* b_dir, V3* intersect_point);
@@ -242,9 +242,9 @@ B32  Sphere3IntersectSphere3(V3* a_center, F32 a_radius, V3* b_center, F32 b_rad
 
 B32  ConvexHull3Eq(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size);
 B32  ConvexHull3ApproxEq(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size);
+void ConvexHullFlatten(Arena* arena, V3* src_points, U32 src_points_size, V3** dest_points, U32* dest_points_size); // NOTE: removes duplicate points
 B32  ConvexHull3IntersectConvexHull3(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size, IntersectManifold3* manifold);
 
-// TODO: convex hull 3
 // TODO: AABB3
 // TODO: OBB3
 
@@ -281,6 +281,18 @@ void Line2RotateAboutPoint(V2* start, V2* end, V2* point, F32 angle_rad) {
   F32 c = F32Cos(angle_rad);
   PointRotateAboutPoint(start, point, s, c);
   PointRotateAboutPoint(end, point, s, c);
+}
+
+B32 Line2ContainsPoint(V2* start, V2* end, V2* point) {
+  if (V2Eq(start, end)) { return V2Eq(start, point); }
+  V2 line, line_dir;
+  V2SubV2(&line, end, start);
+  V2Normalize(&line_dir, &line);
+  if (!Ray2ContainsPoint(start, &line_dir, point)) { return false; }
+  V2 to_point;
+  V2SubV2(&to_point, point, start);
+  if (V2LengthSq(&line) < V2LengthSq(&to_point)) { return false; }
+  return true;
 }
 
 void Line2GetMidpoint(V2* start, V2* end, V2* midpoint) {
@@ -459,6 +471,14 @@ void Ray2RotateAboutPoint(V2* ray_start, V2* ray_dir, V2* point, F32 angle_rad) 
   MEMORY_ZERO_STRUCT(&origin);
   PointRotateAboutPoint(ray_start, point, s, c);
   PointRotateAboutPoint(ray_dir, &origin, s, c);
+}
+
+B32 Ray2ContainsPoint(V2* ray_start, V2* ray_dir, V2* point) {
+  V2 to_point;
+  V2SubV2(&to_point, point, ray_start);
+  if (!F32ApproxEq(V2CrossV2(&to_point, ray_dir), 0)) { return false; }
+  if (V2DotV2(&to_point, ray_dir) < 0) { return false; }
+  return true;
 }
 
 void Ray2GetDirInv(V2* ray_dir, V2* dir_inv) {
@@ -1315,6 +1335,18 @@ void Line3GetClosestPoint(V3* start, V3* end, V3* point, V3* closest) {
   }
 }
 
+B32 Line3ContainsPoint(V3* start, V3* end, V3* point) {
+  if (V3Eq(start, end)) { return V3Eq(start, point); }
+  V3 line, line_dir;
+  V3SubV3(&line, end, start);
+  V3Normalize(&line_dir, &line);
+  if (!Ray3ContainsPoint(start, &line_dir, point)) { return false; }
+  V3 to_point;
+  V3SubV3(&to_point, point, start);
+  if (V3LengthSq(&line) < V3LengthSq(&to_point)) { return false; }
+  return true;
+}
+
 B32 Line3IntersectLine3(V3* a_start, V3* a_end, V3* b_start, V3* b_end, V3* intersect_point) {
   if (UNLIKELY(Line3GetLengthSq(b_start, b_end) == 0)) { return false; }
   V3 b_dir;
@@ -1361,6 +1393,15 @@ B32 Ray3Eq(V3* a_start, V3* a_dir, V3* b_start, V3* b_dir) {
 
 B32 Ray3ApproxEq(V3* a_start, V3* a_dir, V3* b_start, V3* b_dir) {
   return V3ApproxEq(a_start, b_start) && V3ApproxEq(a_dir, b_dir);
+}
+
+B32 Ray3ContainsPoint(V3* ray_start, V3* ray_dir, V3* point) {
+  V3 to_point, cross;
+  V3SubV3(&to_point, point, ray_start);
+  V3CrossV3(&cross, &to_point, ray_dir);
+  if (!F32ApproxEq(V3LengthSq(&cross), 0)) { return false; }
+  if (V3DotV3(&to_point, ray_dir) < 0) { return false; }
+  return true;
 }
 
 void Ray3GetDirInv(V3* ray_dir, V3* dir_inv) {
@@ -1835,6 +1876,25 @@ B32 ConvexHull3ApproxEq(V3* a_points, U32 a_points_size, V3* b_points, U32 b_poi
     if (!V3ApproxEq(&a_points[i], &b_points[i])) { return false; }
   }
   return true;
+}
+
+void ConvexHullFlatten(Arena* arena, V3* src_points, U32 src_points_size, V3** dest_points, U32* dest_points_size) {
+  *dest_points             = NULL;
+  *dest_points_size        = 0;
+  U32 dest_points_capacity = 0;
+  for (U32 i = 0; i < src_points_size; i++) {
+    V3* curr         = &src_points[i];
+    B32 is_duplicate = false;
+    for (U32 j = 0; j < *dest_points_size; j++) {
+      V3* test = &(*dest_points)[j];
+      if (V3Eq(curr, test)) { is_duplicate = true; break; }
+    }
+    if (!is_duplicate) {
+      DA_PUSH_BACK_EX(arena, *dest_points, *dest_points_size, dest_points_capacity, *curr);
+    }
+  }
+  // NOTE: pop excess
+  ARENA_POP_ARRAY(arena, V3, dest_points_capacity - *dest_points_size);
 }
 
 static V3 GjkSupport(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size, V3 d) {

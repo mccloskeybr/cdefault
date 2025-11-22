@@ -80,6 +80,12 @@ void Line2QueryTest() {
   EXPECT_V2_APPROX_EQ(normal, V2Assign(-1, 0));
   Line2GetNormalOut(&a, &b, &normal);
   EXPECT_V2_APPROX_EQ(normal, V2Assign(1, 0));
+
+  a = V2Assign(0, 0); b = V2Assign(0, 1);
+  point = V2Assign(0, 0.5f);
+  EXPECT_TRUE(Line2ContainsPoint(&a, &b, &point));
+  point = V2Assign(1, 0.5f);
+  EXPECT_FALSE(Line2ContainsPoint(&a, &b, &point));
 }
 
 void Line2IntersectLine2Test() {
@@ -359,6 +365,18 @@ void Ray2RotateAboutPointTest() {
   Ray2RotateAboutPoint(&start, &dir, &point, F32_PI / 2.0f);
   EXPECT_V2_APPROX_EQ(start, V2Assign(0, 0));
   EXPECT_V2_APPROX_EQ(dir,   V2Assign(0, 1));
+}
+
+void Ray2ContainsPointTest() {
+  V2 start, dir, point;
+
+  start = V2Assign(0, 0); dir = V2Assign(1, 0);
+  point = V2Assign(0, 0);
+  EXPECT_TRUE(Ray2ContainsPoint(&start, &dir, &point));
+  point = V2Assign(5, 0);
+  EXPECT_TRUE(Ray2ContainsPoint(&start, &dir, &point));
+  point = V2Assign(-1, 0);
+  EXPECT_FALSE(Ray2ContainsPoint(&start, &dir, &point));
 }
 
 void Ray2IntersectLine2Test() {
@@ -1579,6 +1597,18 @@ void ConvexHull2IntersectConvexHull2Test() {
   EXPECT_TRUE(m.penetration > 0);
 }
 
+void Ray3ContainsPointTest() {
+  V3 ray_start, ray_dir, point;
+
+  ray_start = V3Assign(0, 0, 0); ray_dir = V3Assign(1, 0, 0);
+  point = V3Assign(0, 0, 0);
+  EXPECT_TRUE(Ray3ContainsPoint(&ray_start, &ray_dir, &point));
+  point = V3Assign(10, 0, 0);
+  EXPECT_TRUE(Ray3ContainsPoint(&ray_start, &ray_dir, &point));
+  point = V3Assign(-10, 0, 0);
+  EXPECT_FALSE(Ray3ContainsPoint(&ray_start, &ray_dir, &point));
+}
+
 void Ray3IntersectLine3Test() {
   V3 ray_start, ray_dir, line_start, line_end, intersect;
 
@@ -1667,6 +1697,19 @@ void Ray3IntersectRay3Test() {
   b_start = V3Assign(0,0,0); b_dir = V3Assign(0,1,0);
   EXPECT_TRUE(Ray3IntersectRay3(&a_start, &a_dir, &b_start, &b_dir, &intersect));
   EXPECT_V3_APPROX_EQ(intersect, V3Assign(0,0,0));
+}
+
+void Line3ContainsPointTest() {
+  V3 start, end, point;
+  start = V3Assign(0, 0, 0); end = V3Assign(10, 0, 0);
+  point = V3Assign(0, 0, 0);
+  EXPECT_TRUE(Line3ContainsPoint(&start, &end, &point));
+  point = V3Assign(5, 0, 0);
+  EXPECT_TRUE(Line3ContainsPoint(&start, &end, &point));
+  point = V3Assign(15, 0, 0);
+  EXPECT_FALSE(Line3ContainsPoint(&start, &end, &point));
+  point = V3Assign(-5, 0, 0);
+  EXPECT_FALSE(Line3ContainsPoint(&start, &end, &point));
 }
 
 void Line3IntersectLine3Test() {
@@ -1959,6 +2002,39 @@ static void MakeCube(V3 cube[8], V3 center, F32 half_extent) {
   cube[7] = V3Assign(center.x - half_extent, center.y + half_extent, center.z + half_extent);
 }
 
+void ConvexHull3Flatten() {
+  V3 vs[] = {
+    // apex
+    {0.0f, 0.0f, 1.0f},
+    // base
+    {-1.0f, -1.0f, 0.0f},
+    { 1.0f, -1.0f, 0.0f},
+    { 1.0f,  1.0f, 0.0f},
+    {-1.0f,  1.0f, 0.0f},
+  };
+  V3 pyramid_faces[] = {
+      // sides
+      vs[0], vs[1], vs[2],
+      vs[0], vs[2], vs[3],
+      vs[0], vs[3], vs[4],
+      vs[0], vs[4], vs[1],
+      // base
+      vs[1], vs[2], vs[3],
+      vs[1], vs[3], vs[4],
+  };
+
+  Arena* arena = ArenaAllocate();
+  V3* points; U32 points_size;
+  ConvexHullFlatten(arena, pyramid_faces, STATIC_ARRAY_SIZE(pyramid_faces), &points, &points_size);
+  EXPECT_U32_EQ(points_size, 5);
+  EXPECT_V3_EQ(points[0], vs[0]);
+  EXPECT_V3_EQ(points[1], vs[1]);
+  EXPECT_V3_EQ(points[2], vs[2]);
+  EXPECT_V3_EQ(points[3], vs[3]);
+  EXPECT_V3_EQ(points[4], vs[4]);
+  ArenaRelease(arena);
+}
+
 void ConvexHull3IntersectConvexHull3Test() {
   V3 a[8], b[8];
   IntersectManifold3 manifold;
@@ -2003,6 +2079,7 @@ int main(void) {
 
   RUN_TEST(Ray2EqTest);
   RUN_TEST(Ray2RotateAboutPointTest);
+  RUN_TEST(Ray2ContainsPointTest);
   RUN_TEST(Ray2IntersectLine2Test);
   RUN_TEST(Ray2IntersectRay2Test);
   RUN_TEST(Ray2IntersectTri2Test);
@@ -2075,11 +2152,13 @@ int main(void) {
   RUN_TEST(ConvexHull2IntersectCircle2Test);
   RUN_TEST(ConvexHull2IntersectConvexHull2Test);
 
-  RUN_TEST(Ray3IntersectLine3Test);
-  RUN_TEST(Ray3IntersectRay3Test);
-
+  RUN_TEST(Line3ContainsPointTest);
   RUN_TEST(Line3IntersectLine3Test);
   RUN_TEST(Line3IntersectRay3Test);
+
+  RUN_TEST(Ray3ContainsPointTest);
+  RUN_TEST(Ray3IntersectLine3Test);
+  RUN_TEST(Ray3IntersectRay3Test);
 
   RUN_TEST(Plane3CreateTest);
   RUN_TEST(Plane3MutateTest);
@@ -2090,6 +2169,8 @@ int main(void) {
 
   RUN_TEST(ConvexPolygon3IntersectPlane3Test);
   RUN_TEST(ConvexPolygon3IntersectConvexPolygon3Test);
+
+  RUN_TEST(ConvexHull3Flatten);
   RUN_TEST(ConvexHull3IntersectConvexHull3Test);
 
   LogTestReport();
