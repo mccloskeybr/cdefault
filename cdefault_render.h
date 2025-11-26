@@ -62,6 +62,8 @@ void RendererEnableScissorTest(S32 x, S32 y, S32 width, S32 height);
 void RendererDisableScissorTest(void);
 void RendererEnableDepthTest(void);
 void RendererDisableDepthTest(void);
+void RendererEnableWireframe(void);
+void RendererDisableWireframe(void);
 void RendererSetClearColor(F32 red, F32 green, F32 blue, F32 alpha);
 void RendererSetClearColorV(V4 color);
 void RendererCastRay(F32 x, F32 y, V2* intersect);
@@ -117,6 +119,9 @@ void DrawStringSdfEx(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_h
 void DrawStringSdfExV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 threshold, F32 smoothing, V2 pos);
 
 // NOTE: 3D API
+// void DrawLine();
+void DrawSphere(F32 center_x, F32 center_y, F32 center_z, F32 radius, F32 red, F32 green, F32 blue);
+void DrawSphereV(V3 center, F32 radius, V3 color);
 void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale);
 
 enum KeyboardKey {
@@ -279,6 +284,7 @@ typedef void   glClear_Fn(GLenum);
 typedef void   glDrawArrays_Fn(GLenum, GLint, GLsizei);
 typedef void   glDrawElements_Fn(GLenum, GLsizei, GLenum, const void*);
 typedef void   glPixelStorei_Fn(GLenum, GLint);
+typedef void   glPolygonMode_Fn(GLenum, GLenum);
 
 // NOTE: platform agnostic open gl api.
 typedef struct OpenGLAPI OpenGLAPI;
@@ -326,6 +332,7 @@ struct OpenGLAPI {
   glDrawArrays_Fn*              glDrawArrays;
   glDrawElements_Fn*            glDrawElements;
   glPixelStorei_Fn*             glPixelStorei;
+  glPolygonMode_Fn*             glPolygonMode;
 };
 static OpenGLAPI _ogl;
 
@@ -395,6 +402,7 @@ struct Renderer {
   RenderMesh* meshes_head;
   RenderMesh* meshes_tail;
   RenderMesh* meshes_free_list;
+  U32 icosphere_handle;
 };
 static Renderer _renderer;
 
@@ -702,6 +710,56 @@ static B32 RendererInit(void) {
   r->camera_3d.up_dir   = V3_Y_POS;
 
   r->mesh_pool = ArenaAllocate();
+  V3 icosphere_points[12] = {
+    (V3){-0.5257311f,  0.8506508f,  0.0000000f},
+    (V3){ 0.5257311f,  0.8506508f,  0.0000000f},
+    (V3){-0.5257311f, -0.8506508f,  0.0000000f},
+    (V3){ 0.5257311f, -0.8506508f,  0.0000000f},
+    (V3){ 0.0000000f, -0.5257311f,  0.8506508f},
+    (V3){ 0.0000000f,  0.5257311f,  0.8506508f},
+    (V3){ 0.0000000f, -0.5257311f, -0.8506508f},
+    (V3){ 0.0000000f,  0.5257311f, -0.8506508f},
+    (V3){ 0.8506508f,  0.0000000f, -0.5257311f},
+    (V3){ 0.8506508f,  0.0000000f,  0.5257311f},
+    (V3){-0.8506508f,  0.0000000f, -0.5257311f},
+    (V3){-0.8506508f,  0.0000000f,  0.5257311f},
+  };
+  V3 icosphere_norms[12] = {
+    (V3){-0.5257311f,  0.8506508f,  0.0000000f},
+    (V3){ 0.5257311f,  0.8506508f,  0.0000000f},
+    (V3){-0.5257311f, -0.8506508f,  0.0000000f},
+    (V3){ 0.5257311f, -0.8506508f,  0.0000000f},
+    (V3){ 0.0000000f, -0.5257311f,  0.8506508f},
+    (V3){ 0.0000000f,  0.5257311f,  0.8506508f},
+    (V3){ 0.0000000f, -0.5257311f, -0.8506508f},
+    (V3){ 0.0000000f,  0.5257311f, -0.8506508f},
+    (V3){ 0.8506508f,  0.0000000f, -0.5257311f},
+    (V3){ 0.8506508f,  0.0000000f,  0.5257311f},
+    (V3){-0.8506508f,  0.0000000f, -0.5257311f},
+    (V3){-0.8506508f,  0.0000000f,  0.5257311f},
+  };
+  V2 icosphere_uvs[12] = {
+    (V2){1.0000f, 0.8230f},
+    (V2){0.5000f, 0.8230f},
+    (V2){1.0000f, 0.1770f},
+    (V2){0.5000f, 0.1770f},
+    (V2){0.7500f, 0.3237f},
+    (V2){0.7500f, 0.6763f},
+    (V2){0.2500f, 0.3237f},
+    (V2){0.2500f, 0.6763f},
+    (V2){0.4115f, 0.5000f},
+    (V2){0.5885f, 0.5000f},
+    (V2){0.0885f, 0.5000f},
+    (V2){0.9115f, 0.5000f},
+  };
+  U32 icosphere_indices[60] = {
+    0, 11, 5, 0, 5, 1,  0, 1, 7,   0, 7, 10, 0, 10, 11,
+    1, 5, 9,  5, 11, 4, 11, 10, 2, 10, 7, 6, 7, 1, 8,
+    3, 9, 4,  3, 4, 2,  3, 2, 6,   3, 6, 8,  3, 8, 9,
+    4, 9, 5,  2, 4, 11, 6, 2, 10,  8, 6, 7,  9, 8, 1,
+  };
+  RendererRegisterMesh(&r->icosphere_handle, 0, (V3*) &icosphere_points, (V3*) &icosphere_norms, (V2*) &icosphere_uvs, 12, (U32*) &icosphere_indices, 60);
+
 
   LOG_INFO("[RENDER] OpenGL renderer initialized.");
   success = true;
@@ -855,6 +913,16 @@ void RendererEnableDepthTest(void) {
 void RendererDisableDepthTest(void) {
   OpenGLAPI* g = &_ogl;
   g->glDisable(GL_DEPTH_TEST);
+}
+
+void RendererEnableWireframe(void) {
+  OpenGLAPI* g = &_ogl;
+  g->glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+}
+
+void RendererDisableWireframe(void) {
+  OpenGLAPI* g = &_ogl;
+  g->glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
 
 void RendererSetClearColor(F32 red, F32 green, F32 blue, F32 alpha) {
@@ -1300,6 +1368,18 @@ void DrawStringSdfExV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_
   }
 }
 
+void DrawSphere(F32 center_x, F32 center_y, F32 center_z, F32 radius, F32 red, F32 green, F32 blue) {
+  Renderer* r = &_renderer;
+  V3 pos = V3Assign(center_x, center_y, center_z);
+  V4 rot = V4_QUAT_IDENT;
+  V3 scale = V3Assign(radius, radius, radius);
+  DrawMesh(r->icosphere_handle, pos, rot, scale);
+}
+
+void DrawSphereV(V3 center, F32 radius, V3 color) {
+  DrawSphere(center.x, center.y, center.z, radius, color.r, color.g, color.b);
+}
+
 void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale) {
   Renderer* r = &_renderer;
   OpenGLAPI* g = &_ogl;
@@ -1554,6 +1634,7 @@ B32 WIN_WindowInit(S32 width, S32 height, char* title) {
   _ogl.glDrawArrays = glDrawArrays;
   _ogl.glDrawElements = glDrawElements;
   _ogl.glPixelStorei = glPixelStorei;
+  _ogl.glPolygonMode = glPolygonMode;
 
 #undef WIN_LINK_GL
 

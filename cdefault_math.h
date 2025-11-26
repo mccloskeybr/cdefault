@@ -115,6 +115,7 @@ B32 V2Eq(V2* x, V2* y);
 B32 V2ApproxEq(V2* x, V2* y);
 F32 V2LengthSq(V2* x);
 F32 V2Length(V2* x);
+V2* V2Abs(V2* dest, V2* src);
 V2* V2Normalize(V2* dest, V2* src);
 F32 V2MinValue(V2* x);
 F32 V2MaxValue(V2* x);
@@ -159,6 +160,7 @@ B32 V3ApproxEq(V3* x, V3* y);
 B32 V3Eq(V3* x, V3* y);
 F32 V3LengthSq(V3* x);
 F32 V3Length(V3* x);
+V3* V3Abs(V3* dest, V3* src);
 V3* V3Normalize(V3* dest, V3* src);
 F32 V3MinValue(V3* x);
 F32 V3MaxValue(V3* x);
@@ -209,6 +211,7 @@ B32 V4ApproxEq(V4* a, V4* b);
 B32 V4Eq(V4* x , V4* y);
 F32 V4LengthSq(V4* x);
 F32 V4Length(V4* x);
+V4* V4Abs(V4* dest, V4* src);
 V4* V4Normalize(V4* dest, V4* x);
 V4* V4Project(V4* dest, V4* x, V4* y);
 V4* V4Clamp(V4* dest, V4* src, F32 min, F32 max);
@@ -419,6 +422,12 @@ F32 V2Length(V2* x) {
   return F32Sqrt(V2LengthSq(x));
 }
 
+V2* V2Abs(V2* dest, V2* src) {
+  dest->x = F32Abs(src->x);
+  dest->y = F32Abs(src->y);
+  return dest;
+}
+
 V2* V2Normalize(V2* dest, V2* x) {
   V2DivF32(dest, x, V2Length(x));
   return dest;
@@ -573,6 +582,13 @@ F32 V3LengthSq(V3* x) {
 
 F32 V3Length(V3* x) {
   return F32Sqrt(V3LengthSq(x));
+}
+
+V3* V3Abs(V3* dest, V3* src) {
+  dest->x = F32Abs(src->x);
+  dest->y = F32Abs(src->y);
+  dest->z = F32Abs(src->z);
+  return dest;
 }
 
 V3* V3Normalize(V3* dest, V3* src) {
@@ -788,6 +804,13 @@ B32 V4ApproxEq(V4* x, V4* y) {
          F32ApproxEq(x->y, y->y) &&
          F32ApproxEq(x->z, y->z) &&
          F32ApproxEq(x->w, y->w);
+}
+
+V4* V4Abs(V4* dest, V4* src) {
+  dest->x = F32Abs(src->x);
+  dest->y = F32Abs(src->y);
+  dest->z = F32Abs(src->z);
+  return dest;
 }
 
 V4* V4Normalize(V4* dest, V4* x) {

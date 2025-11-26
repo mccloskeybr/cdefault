@@ -120,6 +120,7 @@ B32  Circle2IntersectObb2(V2* circle_center, F32 circle_radius, V2* obb_center, 
 B32  Circle2IntersectCircle2(V2* a_center, F32 a_radius, V2* b_center, F32 b_radius, IntersectManifold2* manifold);
 B32  Circle2IntersectConvexHull2(V2* circle_center, F32 circle_radius, V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold);
 
+// TODO: flatten / triangulate fns
 B32  ConvexHull2Eq(V2* a_points, U32 a_points_size, V2* b_points, U32 b_points_size);
 B32  ConvexHull2ApproxEq(V2* a_points, U32 a_points_size, V2* b_points, U32 b_points_size);
 void ConvexHull2FromAabb2(V2 aabb_points[4], V2* aabb_center, V2* aabb_size);
@@ -162,8 +163,8 @@ B32  Line3IntersectLine3(V3* a_start, V3* a_end, V3* b_start, V3* b_end, V3* int
 B32  Line3IntersectRay3(V3* line_start, V3* line_end, V3* ray_start, V3* ray_dir, V3* intersect_point);
 B32  Line3IntersectPlane3(V3* line_start, V3* line_end, V3* plane_normal, F32 plane_d, V3* intersect_point);
 B32  Line3IntersectTri3(V3* line_start, V3* line_end, V3 tri_points[3], V3* intersect_point);
+B32  Line3IntersectSphere3(V3* line_start, V3* line_end, V3* sphere_center, F32 sphere_radius, V3* enter_point, V3* exit_point);
 B32  Line3IntersectConvexPolygon3(V3* line_start, V3* line_end, V3* polygon_points, U32 polygon_points_size, V3* intersect_point);
-// TODO: intersect sphere
 
 B32  Ray3Eq(V3* a_start, V3* a_dir, V3* b_start, V3* b_dir);
 B32  Ray3ApproxEq(V3* a_start, V3* a_dir, V3* b_start, V3* b_dir);
@@ -173,8 +174,8 @@ B32  Ray3IntersectLine3(V3* ray_start, V3* ray_dir, V3* line_start, V3* line_end
 B32  Ray3IntersectRay3(V3* a_start, V3* a_dir, V3* b_start, V3* b_dir, V3* intersect_point);
 B32  Ray3IntersectPlane3(V3* ray_start, V3* ray_dir, V3* plane_normal, F32 plane_d, V3* intersect_point);
 B32  Ray3IntersectTri3(V3* ray_start, V3* ray_dir, V3 tri_points[3], V3* intersect_point);
+B32  Ray3IntersectSphere3(V3* ray_start, V3* ray_dir, V3* sphere_center, F32 sphere_radius, V3* enter_point, V3* exit_point);
 B32  Ray3IntersectConvexPolygon3(V3* ray_start, V3* ray_dir, V3* polygon_points, U32 polygon_points_size, V3* intersect_point);
-// TODO: intersect sphere
 
 // TODO: plane contains flat shape fns
 B32  Plane3Eq(V3* a_normal, F32 a_d, V3* b_normal, F32 b_d);
@@ -229,20 +230,31 @@ B32  ConvexPolygon3IntersectConvexPolygon3(V3* a_points, U32 a_points_size, V3* 
 // TODO: intersect sphere
 
 void Aabb3RelativeNormal(V3* center_point, V3* point, V3* normal);
+B32  Aabb3Eq(V3* a_center, V3* a_size, V3* b_center, V3* b_size);
+B32  Aabb3ApproxEq(V3* a_center, V3* a_size, V3* b_center, V3* b_size);
+void Aabb3FromMinMax(V3* aabb_center, V3* aabb_size, V3* min, V3* max);
+void Aabb3GetMinMax(V3* aabb_center, V3* aabb_size, V3* min, V3* max);
+void Aabb3GetEnclosingSphere3(V3* aabb_center, V3* aabb_size, F32* sphere_radius);
+B32  Aabb3ContainsPoint(V3* aabb_center, V3* aabb_size, V3* point);
+B32  Aabb3IntersectAabb3(V3* a_center, V3* a_size, V3* b_center, V3* b_size, IntersectManifold3* manifold);
+B32  Aabb3IntersectConvexHull3(V3* aabb_center, V3* aabb_size, V3* hull_points, U32 hull_points_size, IntersectManifold3* manifold);
 
 B32  Sphere3Eq(V3* a_center, F32 a_radius, V3* b_center, F32 b_radius);
 B32  Sphere3ApproxEq(V3* a_center, F32 a_radius, V3* b_center, F32 b_radius);
 B32  Sphere3ContainsPoint(V3* sphere_center, F32 sphere_radius, V3* point);
+B32  Sphere3IntersectLine3(V3* sphere_center, F32 sphere_radius, V3* line_start, V3* line_end, V3* enter_point, V3* exit_point);
+B32  Sphere3IntersectRay3(V3* sphere_center, F32 sphere_radius, V3* ray_start, V3* ray_dir, V3* enter_point, V3* exit_point);
 B32  Sphere3IntersectSphere3(V3* a_center, F32 a_radius, V3* b_center, F32 b_radius, IntersectManifold3* manifold);
-// intersect ray
-// intersect line
 // intersect plane
 // intersect tri3
 // intersect polygon
 
+// TODO: triangulate given flattened convex hull. quickhull
 B32  ConvexHull3Eq(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size);
 B32  ConvexHull3ApproxEq(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size);
-void ConvexHullFlatten(Arena* arena, V3* src_points, U32 src_points_size, V3** dest_points, U32* dest_points_size); // NOTE: removes duplicate points
+void ConvexHull3Flatten(Arena* arena, V3* src_points, U32 src_points_size, V3** dest_points, U32* dest_points_size); // NOTE: removes duplicate points
+void ConvexHull3FromAabb3(V3 hull_points[8], V3* aabb_center, V3* aabb_size);
+B32  ConvexHull3IntersectAabb3(V3* hull_points, U32 hull_points_size, V3* aabb_center, V3* aabb_size, IntersectManifold3* manifold);
 B32  ConvexHull3IntersectConvexHull3(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size, IntersectManifold3* manifold);
 
 // TODO: AABB3
@@ -414,7 +426,8 @@ B32 Line2IntersectObb2(V2* line_start, V2* line_end, V2* obb_center, V2* obb_siz
 }
 
 B32 Line2IntersectCircle2(V2* line_start, V2* line_end, V2* circle_center, F32 circle_radius, V2* enter_point, V2* exit_point) {
-  if (UNLIKELY(Line2GetLengthSq(line_start, line_end) == 0)) { return false; }
+  F32 length_sq = Line2GetLengthSq(line_start, line_end);
+  if (UNLIKELY(length_sq == 0)) { return false; }
 
   V2 line_dir;
   V2SubV2(&line_dir, line_end, line_start);
@@ -423,12 +436,11 @@ B32 Line2IntersectCircle2(V2* line_start, V2* line_end, V2* circle_center, F32 c
   V2 enter, exit;
   if (!Ray2IntersectCircle2(line_start, &line_dir, circle_center, circle_radius, &enter, &exit)) { return false; }
 
-  F32 length_sq = Line2GetLengthSq(line_start, line_end);
   if (length_sq < Line2GetLengthSq(line_start, &enter)) { return false; }
-  if (length_sq < Line2GetLengthSq(line_start, &exit)) { exit = enter; }
+  if (length_sq < Line2GetLengthSq(line_start, &exit))  { exit = enter; }
 
   if (enter_point != NULL) { *enter_point = enter; }
-  if (exit_point != NULL) { *exit_point = exit; }
+  if (exit_point != NULL)  { *exit_point = exit;   }
   return true;
 }
 
@@ -584,10 +596,11 @@ B32 Ray2IntersectCircle2(V2* ray_start, V2* ray_dir, V2* circle_center, F32 circ
   V2 rel_center;
   V2SubV2(&rel_center, circle_center, ray_start);
   F32 to_perp_center = V2DotV2(&rel_center, ray_dir);
-  F32 d2 = V2DotV2(&rel_center, &rel_center) - (to_perp_center * to_perp_center);
-  if (d2 > circle_radius * circle_radius) { return false; }
+  F32 d2 = V2LengthSq(&rel_center) - (to_perp_center * to_perp_center);
+  F32 circle_radius_sq = circle_radius * circle_radius;
+  if (d2 > circle_radius_sq) { return false; }
   if (enter_point == NULL && exit_point == NULL) { return true; }
-  F32 center_to_edge = F32Sqrt(circle_radius * circle_radius - d2);
+  F32 center_to_edge = F32Sqrt(circle_radius_sq - d2);
   F32 t0 = to_perp_center - center_to_edge;
   F32 t1 = to_perp_center + center_to_edge;
   if (t1 < t0) { SWAP(F32, t0, t1); }
@@ -724,10 +737,8 @@ void Aabb2FromTopLeft(V2* aabb_center, V2* top_left_point, V2* size) {
 void Aabb2GetMinMax(V2* aabb_center, V2* aabb_size, V2* min, V2* max) {
   V2 half_size;
   V2DivF32(&half_size, aabb_size, 2.0f);
-  min->x = aabb_center->x - half_size.x;
-  min->y = aabb_center->y - half_size.y;
-  max->x = aabb_center->x + half_size.x;
-  max->y = aabb_center->y + half_size.y;
+  V2SubV2(min, aabb_center, &half_size);
+  V2AddV2(max, aabb_center, &half_size);
 }
 
 void Aabb2GetEnclosingCircle2(V2* aabb_center, V2* aabb_size, F32* circle_radius) {
@@ -1383,6 +1394,25 @@ B32 Line3IntersectTri3(V3* line_start, V3* line_end, V3 tri_points[3], V3* inter
   return Tri3IntersectLine3(tri_points, line_start, line_end, intersect_point);
 }
 
+B32 Line3IntersectSphere3(V3* line_start, V3* line_end, V3* sphere_center, F32 sphere_radius, V3* enter_point, V3* exit_point) {
+  F32 length_sq = Line3GetLengthSq(line_start, line_end);
+  if (UNLIKELY(length_sq == 0)) { return false; }
+
+  V3 line_dir;
+  V3SubV3(&line_dir, line_end, line_start);
+  V3Normalize(&line_dir, &line_dir);
+
+  V3 enter, exit;
+  if (!Ray3IntersectSphere3(line_start, &line_dir, sphere_center, sphere_radius, &enter, &exit)) { return false; }
+
+  if (length_sq < Line3GetLengthSq(line_start, &enter)) { return false; }
+  if (length_sq < Line3GetLengthSq(line_start, &exit))  { exit = enter; }
+
+  if (enter_point != NULL) { *enter_point = enter; }
+  if (exit_point != NULL)  { *exit_point = exit;   }
+  return true;
+}
+
 B32 Line3IntersectConvexPolygon3(V3* line_start, V3* line_end, V3* polygon_points, U32 polygon_points_size, V3* intersect_point) {
   return ConvexPolygon3IntersectLine3(polygon_points, polygon_points_size, line_start, line_end, intersect_point);
 }
@@ -1477,6 +1507,32 @@ B32 Ray3IntersectPlane3(V3* ray_start, V3* ray_dir, V3* plane_normal, F32 plane_
 
 B32 Ray3IntersectTri3(V3* ray_start, V3* ray_dir, V3 tri_points[3], V3* intersect_point) {
   return Tri3IntersectRay3(tri_points, ray_start, ray_dir, intersect_point);
+}
+
+B32 Ray3IntersectSphere3(V3* ray_start, V3* ray_dir, V3* sphere_center, F32 sphere_radius, V3* enter_point, V3* exit_point) {
+  V3 rel_center;
+  V3SubV3(&rel_center, sphere_center, ray_start);
+  F32 to_perp_center = V3DotV3(&rel_center, ray_dir);
+  F32 d2 = V3LengthSq(&rel_center) - (to_perp_center * to_perp_center);
+  F32 sphere_radius_sq = sphere_radius * sphere_radius;
+  if (d2 > sphere_radius_sq) { return false; }
+  F32 center_to_edge = F32Sqrt(sphere_radius_sq - d2);
+  F32 t0 = to_perp_center - center_to_edge;
+  F32 t1 = to_perp_center + center_to_edge;
+  if (t1 < t0) { SWAP(F32, t0, t1); }
+  if (t0 < 0) {
+    if (t1 < 0) { return false; }
+    t0 = t1;
+  }
+  if (enter_point != NULL) {
+    V3MultF32(enter_point, ray_dir, t0);
+    V3AddV3(enter_point, ray_start, enter_point);
+  }
+  if (exit_point != NULL) {
+    V3MultF32(exit_point, ray_dir, t1);
+    V3AddV3(exit_point, ray_start, exit_point);
+  }
+  return true;
 }
 
 B32 Ray3IntersectConvexPolygon3(V3* ray_start, V3* ray_dir, V3* polygon_points, U32 polygon_points_size, V3* intersect_point) {
@@ -1834,6 +1890,86 @@ void Aabb3RelativeNormal(V3* center_point, V3* point, V3* normal) {
   UNREACHABLE();
 }
 
+B32 Aabb3Eq(V3* a_center, V3* a_size, V3* b_center, V3* b_size) {
+  return V3Eq(a_center, b_center) && V3Eq(a_size, b_size);
+}
+
+B32 Aabb3ApproxEq(V3* a_center, V3* a_size, V3* b_center, V3* b_size) {
+  return V3Eq(a_center, b_center) && V3Eq(a_size, b_size);
+}
+
+void Aabb3FromMinMax(V3* aabb_center, V3* aabb_size, V3* min, V3* max) {
+  DEBUG_ASSERT(min->x < max->x);
+  DEBUG_ASSERT(min->y < max->y);
+  DEBUG_ASSERT(min->z < max->z);
+  aabb_center->x = (min->x + max->x) / 2.0f;
+  aabb_center->y = (min->y + max->y) / 2.0f;
+  aabb_center->z = (min->z + max->z) / 2.0f;
+  aabb_size->x   = max->x - min->x;
+  aabb_size->y   = max->y - min->y;
+  aabb_size->z   = max->z - min->z;
+}
+
+void Aabb3GetMinMax(V3* aabb_center, V3* aabb_size, V3* min, V3* max) {
+  V3 half_size;
+  V3DivF32(&half_size, aabb_size, 2.0f);
+  V3SubV3(min, aabb_center, &half_size);
+  V3AddV3(max, aabb_center, &half_size);
+}
+
+void Aabb3GetEnclosingSphere3(V3* aabb_center, V3* aabb_size, F32* sphere_radius) {
+  V3 min, max, rel_center;
+  Aabb3GetMinMax(aabb_center, aabb_size, &min, &max);
+  V3SubV3(&rel_center, &max, aabb_center);
+  *sphere_radius = V3Length(&rel_center);
+}
+
+B32 Aabb3ContainsPoint(V3* aabb_center, V3* aabb_size, V3* point) {
+  V3 min, max;
+  Aabb3GetMinMax(aabb_center, aabb_size, &min, &max);
+  return (min.x <= point->x && point->x <= max.x) &&
+         (min.y <= point->y && point->y <= max.y) &&
+         (min.z <= point->z && point->z <= max.z);
+}
+
+B32 Aabb3IntersectAabb3(V3* a_center, V3* a_size, V3* b_center, V3* b_size, IntersectManifold3* manifold) {
+  V3 a_half, b_half;
+  V3DivF32(&a_half, a_size, 2);
+  V3DivF32(&b_half, b_size, 2);
+
+  V3 dist, overlap;
+  V3SubV3(&dist, a_center, b_center);
+  V3Abs(&dist, &dist);
+  V3AddV3(&overlap, &a_half, &b_half);
+  V3SubV3(&overlap, &overlap, &dist);
+  if (overlap.x <= 0 || overlap.y <= 0 || overlap.z <= 0) { return false; }
+
+  if (manifold == NULL) { return true; }
+  U32 axis = 0;
+  manifold->penetration = overlap.x;
+  if (overlap.y < manifold->penetration) {
+    axis = 1;
+    manifold->penetration = overlap.y;
+  }
+  if (overlap.z < manifold->penetration) {
+    axis = 2;
+    manifold->penetration = overlap.z;
+  }
+  switch (axis) {
+    case 0:  { manifold->normal = (dist.x < 0) ? V3_X_NEG : V3_X_POS; } break;
+    case 1:  { manifold->normal = (dist.y < 0) ? V3_Y_NEG : V3_Y_POS; } break;
+    case 2:  { manifold->normal = (dist.z < 0) ? V3_Z_NEG : V3_Z_POS; } break;
+    default: { UNREACHABLE(); } break;
+  }
+  return true;
+}
+
+B32 Aabb3IntersectConvexHull3(V3* aabb_center, V3* aabb_size, V3* hull_points, U32 hull_points_size, IntersectManifold3* manifold) {
+  V3 aabb_points[8];
+  ConvexHull3FromAabb3(aabb_points, aabb_center, aabb_size);
+  return ConvexHull3IntersectConvexHull3(aabb_points, 8, hull_points, hull_points_size, manifold);
+}
+
 B32 Sphere3Eq(V3* a_center, F32 a_radius, V3* b_center, F32 b_radius) {
   return V3Eq(a_center, b_center) && a_radius == b_radius;
 }
@@ -1846,6 +1982,14 @@ B32 Sphere3ContainsPoint(V3* sphere_center, F32 sphere_radius, V3* point) {
   V3 to_pt;
   V3SubV3(&to_pt, point, sphere_center);
   return V3LengthSq(&to_pt) < (sphere_radius * sphere_radius);
+}
+
+B32 Sphere3IntersectLine3(V3* sphere_center, F32 sphere_radius, V3* line_start, V3* line_end, V3* enter_point, V3* exit_point) {
+  return Line3IntersectSphere3(line_start, line_end, sphere_center, sphere_radius, enter_point, exit_point);
+}
+
+B32 Sphere3IntersectRay3(V3* sphere_center, F32 sphere_radius, V3* ray_start, V3* ray_dir, V3* enter_point, V3* exit_point) {
+  return Ray3IntersectSphere3(ray_start, ray_dir, sphere_center, sphere_radius, enter_point, exit_point);
 }
 
 B32 Sphere3IntersectSphere3(V3* a_center, F32 a_radius, V3* b_center, F32 b_radius, IntersectManifold3* manifold) {
@@ -1878,7 +2022,7 @@ B32 ConvexHull3ApproxEq(V3* a_points, U32 a_points_size, V3* b_points, U32 b_poi
   return true;
 }
 
-void ConvexHullFlatten(Arena* arena, V3* src_points, U32 src_points_size, V3** dest_points, U32* dest_points_size) {
+void ConvexHull3Flatten(Arena* arena, V3* src_points, U32 src_points_size, V3** dest_points, U32* dest_points_size) {
   *dest_points             = NULL;
   *dest_points_size        = 0;
   U32 dest_points_capacity = 0;
@@ -1895,6 +2039,26 @@ void ConvexHullFlatten(Arena* arena, V3* src_points, U32 src_points_size, V3** d
   }
   // NOTE: pop excess
   ARENA_POP_ARRAY(arena, V3, dest_points_capacity - *dest_points_size);
+}
+
+void ConvexHull3FromAabb3(V3 hull_points[8], V3* aabb_center, V3* aabb_size) {
+  V3 min, max;
+  Aabb3GetMinMax(aabb_center, aabb_size, &min, &max);
+  hull_points[0] = V3Assign(min.x, min.y, min.z);
+  hull_points[1] = V3Assign(max.x, min.y, min.z);
+  hull_points[2] = V3Assign(max.x, max.y, min.z);
+  hull_points[3] = V3Assign(min.x, max.y, min.z);
+
+  hull_points[4] = V3Assign(min.x, min.y, max.z);
+  hull_points[5] = V3Assign(max.x, min.y, max.z);
+  hull_points[6] = V3Assign(max.x, max.y, max.z);
+  hull_points[7] = V3Assign(min.x, max.y, max.z);
+}
+
+B32 ConvexHull3IntersectAabb3(V3* hull_points, U32 hull_points_size, V3* aabb_center, V3* aabb_size, IntersectManifold3* manifold) {
+  V3 aabb_points[8];
+  ConvexHull3FromAabb3(aabb_points, aabb_center, aabb_size);
+  return ConvexHull3IntersectConvexHull3(hull_points, hull_points_size, aabb_points, 8, manifold);
 }
 
 static V3 GjkSupport(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size, V3 d) {
@@ -1980,13 +2144,13 @@ B32 ConvexHull3IntersectConvexHull3(V3* a_points, U32 a_points_size, V3* b_point
         V3CrossV3(&bcd_norm, &db, &dc);
         V3CrossV3(&cad_norm, &dc, &da);
 
-        if (V3DotV3(&abd_norm, &od) < 0) {
+        if (V3DotV3(&abd_norm, &od) > 0) {
           DA_SWAP_REMOVE_EX(simplex_points, simplex_points_size, 2);
           dir = abd_norm;
-        } else if (V3DotV3(&bcd_norm, &od) < 0) {
+        } else if (V3DotV3(&bcd_norm, &od) > 0) {
           DA_SWAP_REMOVE_EX(simplex_points, simplex_points_size, 0);
           dir = bcd_norm;
-        } else if (V3DotV3(&cad_norm, &od) < 0) {
+        } else if (V3DotV3(&cad_norm, &od) > 0) {
           DA_SWAP_REMOVE_EX(simplex_points, simplex_points_size, 1);
           dir = cad_norm;
         } else {
@@ -2009,6 +2173,7 @@ gjk_found_intersection:
   U32 epa_simplex_capacity = 0;
   DA_COPY_EX(temp_arena, simplex_points, simplex_points_size, 4, epa_simplex, epa_simplex_size, epa_simplex_capacity);
 
+  // TODO: proper 3D EPA finds distance using faces, not edges... this goes into inf loop sometimes...
   while (true) {
     // NOTE: find closest edge in simplex to origin
     V3  closest_norm;
@@ -2042,9 +2207,8 @@ gjk_found_intersection:
       manifold->normal      = closest_norm;
       manifold->penetration = dist;
       goto epa_found_manifold;
-    } else {
-      DA_INSERT_EX(temp_arena, epa_simplex, epa_simplex_size, epa_simplex_capacity, test, closest_idx);
     }
+    DA_INSERT_EX(temp_arena, epa_simplex, epa_simplex_size, epa_simplex_capacity, test, closest_idx);
   }
 epa_found_manifold:
   ArenaRelease(temp_arena);

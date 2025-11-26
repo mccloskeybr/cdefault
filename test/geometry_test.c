@@ -1991,6 +1991,165 @@ void ConvexPolygon3IntersectConvexPolygon3Test() {
   EXPECT_V3_APPROX_EQ(intersect_end,   V3Assign(0.75f, 0.75f, 0));
 }
 
+void Aabb3IntersectAabb3Test() {
+  V3 ca, sa, cb, sb;
+  IntersectManifold3 m;
+
+  // NOTE: no intersection
+  ca = V3Assign(0,0,0);  sa = V3Assign(4,4,4);
+  cb = V3Assign(10,0,0); sb = V3Assign(4,4,4);
+  EXPECT_FALSE(Aabb3IntersectAabb3(&ca,&sa,&cb,&sb,&m));
+
+  // NOTE: simple centered overlap on X axis
+  ca = V3Assign(0,0,0); sa = V3Assign(4,4,4);
+  cb = V3Assign(3,0,0); sb = V3Assign(4,4,4);
+  EXPECT_TRUE(Aabb3IntersectAabb3(&ca,&sa,&cb,&sb,&m));
+  EXPECT_F32_APPROX_EQ(m.penetration, 1.0f);
+  EXPECT_V3_APPROX_EQ(m.normal, V3Assign(1,0,0));
+
+  // NOTE: overlap on Y axis (A below B)
+  ca = V3Assign(0,0,0);
+  cb = V3Assign(0,1,0);
+  EXPECT_TRUE(Aabb3IntersectAabb3(&ca,&sa,&cb,&sb,&m));
+  EXPECT_F32_APPROX_EQ(m.penetration, 3.0f);
+  EXPECT_V3_APPROX_EQ(m.normal, V3Assign(0,1,0));
+
+  // NOTE: overlap on Z axis (A in front of B)
+  ca = V3Assign(0,0,0);
+  cb = V3Assign(0,0,1);
+  EXPECT_TRUE(Aabb3IntersectAabb3(&ca,&sa,&cb,&sb,&m));
+  EXPECT_F32_APPROX_EQ(m.penetration, 3.0f);
+  EXPECT_V3_APPROX_EQ(m.normal, V3Assign(0,0,1));
+
+  // NOTE: diagonal overlap → smallest axis is X
+  ca = V3Assign(0,0,0); cb = V3Assign(1.5f, 1.0f, 0.5f);
+  EXPECT_TRUE(Aabb3IntersectAabb3(&ca,&sa,&cb,&sb,&m));
+  EXPECT_F32_APPROX_EQ(m.penetration, 2.5f);
+  EXPECT_V3_APPROX_EQ(m.normal, V3Assign(1,0,0));
+
+  // NOTE: A fully inside B (all overlaps positive)
+  ca = V3Assign(0,0,0); sa = V3Assign(2,2,2);
+  cb = V3Assign(0,0,0); sb = V3Assign(10,10,10);
+  EXPECT_TRUE(Aabb3IntersectAabb3(&ca,&sa,&cb,&sb,&m));
+  EXPECT_F32_APPROX_EQ(m.penetration, 6.0f);
+  EXPECT_V3_APPROX_EQ(m.normal, V3Assign(1,0,0));
+}
+
+void Aabb3IntersectConvexHull3Test() {
+  V3 ac, as;
+  V3 hull[8];
+  IntersectManifold3 manifold;
+
+  hull[0] = V3Assign(-1, -1, -1); hull[1] = V3Assign(1, -1, -1);
+  hull[2] = V3Assign(1, 1, -1);   hull[3] = V3Assign(-1, 1, -1);
+  hull[4] = V3Assign(-1, -1, 1);  hull[5] = V3Assign(1, -1, 1);
+  hull[6] = V3Assign(1, 1, 1);    hull[7] = V3Assign(-1, 1, 1);
+
+  // NOTE: no intersection
+  ac = V3Assign(0, 0, 5);  as = V3Assign(1, 1, 1);
+  EXPECT_FALSE(Aabb3IntersectConvexHull3(&ac, &as, hull, 8, &manifold));
+
+  // NOTE: deep overlap
+  ac = V3Assign(0, 0, 0);  as = V3Assign(1, 1, 1);
+  EXPECT_TRUE(Aabb3IntersectConvexHull3(&ac, &as, hull, 8, &manifold));
+  EXPECT_F32_APPROX_EQ(manifold.penetration, 1.5f);
+  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(1, 0, 0));
+
+  // NOTE: touching face
+  ac = V3Assign(0, 0, 2);  as = V3Assign(2, 2, 2);
+  EXPECT_TRUE(Aabb3IntersectConvexHull3(&ac, &as, hull, 8, &manifold));
+  EXPECT_F32_APPROX_EQ(manifold.penetration, 0.0f);
+  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, 1));
+
+  // NOTE: touching a corner
+  ac = V3Assign(2, 2, 2);  as = V3Assign(2, 2, 2);
+  EXPECT_TRUE(Aabb3IntersectConvexHull3(&ac, &as, hull, 8, &manifold));
+  EXPECT_F32_APPROX_EQ(manifold.penetration, 0.0f);
+  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, 1));
+}
+
+void Sphere3IntersectLine3Test() {
+  V3 a, b, enter, exit;
+
+  V3 c = V3Assign(0, 0, 0);
+  F32 rad = 2.0f;
+
+  // NOTE: simple centered hit (line passes fully through sphere)
+  a = V3Assign(-5, 0, 0); b = V3Assign(5, 0, 0);
+  EXPECT_TRUE(Sphere3IntersectLine3(&c, rad, &a, &b, &enter, &exit));
+  EXPECT_V3_APPROX_EQ(enter, V3Assign(-2, 0, 0));
+  EXPECT_V3_APPROX_EQ(exit,  V3Assign( 2, 0, 0));
+
+  // NOTE: offset hit (skimming through the sphere)
+  a = V3Assign(-5, 1, 0); b = V3Assign(5, 1, 0);
+  EXPECT_TRUE(Sphere3IntersectLine3(&c, rad, &a, &b, &enter, &exit));
+  EXPECT_TRUE(enter.x < exit.x);
+  EXPECT_F32_APPROX_EQ(enter.y, 1.0f);
+  EXPECT_F32_APPROX_EQ(exit.y,  1.0f);
+
+  // NOTE: tangential hit (line just grazes the sphere)
+  a = V3Assign(-5, 2, 0); b = V3Assign(5, 2, 0);
+  EXPECT_TRUE(Sphere3IntersectLine3(&c, rad, &a, &b, &enter, &exit));
+  EXPECT_V3_APPROX_EQ(enter, exit);
+  EXPECT_V3_APPROX_EQ(enter, V3Assign(0, 2, 0));
+
+  // NOTE: line misses sphere entirely
+  a = V3Assign(-5, 3, 0); b = V3Assign(5, 3, 0);
+  EXPECT_FALSE(Sphere3IntersectLine3(&c, rad, &a, &b, &enter, &exit));
+
+  // NOTE: line starts inside sphere and exits
+  a = V3Assign(0.5f, 0, 0); b = V3Assign(5, 0, 0);
+  EXPECT_TRUE(Sphere3IntersectLine3(&c, rad, &a, &b, &enter, &exit));
+  EXPECT_V3_APPROX_EQ(enter, V3Assign(2.0f, 0, 0));
+  EXPECT_V3_APPROX_EQ(exit,  V3Assign(2.0f, 0, 0));
+
+  // NOTE: line ends inside sphere (enter outside, exit inside)
+  a = V3Assign(-5, 0, 0); b = V3Assign(1, 0, 0);
+  EXPECT_TRUE(Sphere3IntersectLine3(&c, rad, &a, &b, &enter, &exit));
+  EXPECT_V3_APPROX_EQ(enter, V3Assign(-2, 0, 0));
+  EXPECT_V3_APPROX_EQ(exit,  V3Assign(-2, 0, 0));
+}
+
+void Sphere3IntersectRay3Test() {
+  V3 r0, d, enter, exit;
+
+  V3 c = V3Assign(0, 0, 0);
+  F32 rad = 2.0f;
+
+  // NOTE: simple centered hit (ray aimed directly at sphere)
+  r0 = V3Assign(-5, 0, 0); d  = V3Assign(1, 0, 0);
+  EXPECT_TRUE(Sphere3IntersectRay3(&c, rad, &r0, &d, &enter, &exit));
+  EXPECT_V3_APPROX_EQ(enter, V3Assign(-2, 0, 0));
+  EXPECT_V3_APPROX_EQ(exit,  V3Assign( 2, 0, 0));
+
+  // NOTE: offset hit (skimming through the sphere)
+  r0 = V3Assign(-5, 1, 0); d  = V3Assign(1, 0, 0);
+  EXPECT_TRUE(Sphere3IntersectRay3(&c, rad, &r0, &d, &enter, &exit));
+  EXPECT_TRUE(enter.x < exit.x);
+  EXPECT_F32_APPROX_EQ(enter.y, 1.0f);
+  EXPECT_F32_APPROX_EQ(exit.y,  1.0f);
+
+  // NOTE: tangential hit (ray just grazes the sphere)
+  r0 = V3Assign(-5, 2, 0); d  = V3Assign(1, 0, 0);
+  EXPECT_TRUE(Sphere3IntersectRay3(&c, rad, &r0, &d, &enter, &exit));
+  EXPECT_V3_APPROX_EQ(enter, exit);  // tangent => same point
+  EXPECT_V3_APPROX_EQ(enter, V3Assign(0, 2, 0));
+
+  // NOTE: ray misses sphere entirely
+  r0 = V3Assign(-5, 3, 0); d  = V3Assign(1, 0, 0);
+  EXPECT_FALSE(Sphere3IntersectRay3(&c, rad, &r0, &d, &enter, &exit));
+
+  // NOTE: ray starts inside sphere
+  r0 = V3Assign(0.5f, 0, 0); d  = V3Assign(1, 0, 0);
+  EXPECT_TRUE(Sphere3IntersectRay3(&c, rad, &r0, &d, &enter, &exit));
+  EXPECT_V3_APPROX_EQ(enter, V3Assign(2.0f, 0, 0));
+  EXPECT_V3_APPROX_EQ(exit,  V3Assign(2.0f, 0, 0));
+
+  // NOTE: ray points away from sphere
+  r0 = V3Assign(5, 0, 0); d  = V3Assign(1, 0, 0);
+  EXPECT_FALSE(Sphere3IntersectRay3(&c, rad, &r0, &d, &enter, &exit));
+}
+
 static void MakeCube(V3 cube[8], V3 center, F32 half_extent) {
   cube[0] = V3Assign(center.x - half_extent, center.y - half_extent, center.z - half_extent);
   cube[1] = V3Assign(center.x + half_extent, center.y - half_extent, center.z - half_extent);
@@ -2002,7 +2161,7 @@ static void MakeCube(V3 cube[8], V3 center, F32 half_extent) {
   cube[7] = V3Assign(center.x - half_extent, center.y + half_extent, center.z + half_extent);
 }
 
-void ConvexHull3Flatten() {
+void ConvexHull3FlattenTest() {
   V3 vs[] = {
     // apex
     {0.0f, 0.0f, 1.0f},
@@ -2025,7 +2184,7 @@ void ConvexHull3Flatten() {
 
   Arena* arena = ArenaAllocate();
   V3* points; U32 points_size;
-  ConvexHullFlatten(arena, pyramid_faces, STATIC_ARRAY_SIZE(pyramid_faces), &points, &points_size);
+  ConvexHull3Flatten(arena, pyramid_faces, STATIC_ARRAY_SIZE(pyramid_faces), &points, &points_size);
   EXPECT_U32_EQ(points_size, 5);
   EXPECT_V3_EQ(points[0], vs[0]);
   EXPECT_V3_EQ(points[1], vs[1]);
@@ -2170,7 +2329,13 @@ int main(void) {
   RUN_TEST(ConvexPolygon3IntersectPlane3Test);
   RUN_TEST(ConvexPolygon3IntersectConvexPolygon3Test);
 
-  RUN_TEST(ConvexHull3Flatten);
+  RUN_TEST(Aabb3IntersectAabb3Test);
+  RUN_TEST(Aabb3IntersectConvexHull3Test);
+
+  RUN_TEST(Sphere3IntersectLine3Test);
+  RUN_TEST(Sphere3IntersectRay3Test);
+
+  RUN_TEST(ConvexHull3FlattenTest);
   RUN_TEST(ConvexHull3IntersectConvexHull3Test);
 
   LogTestReport();

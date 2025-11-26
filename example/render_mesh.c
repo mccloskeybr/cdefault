@@ -53,8 +53,11 @@ int main(void) {
     // V4Normalize(&rot_4, &rot_4);
     V4QuatMulV4(&rot_4, &rot_4, &rot_3);
     V4Normalize(&rot_4, &rot_4);
-    DrawMesh(mesh_handle, (V3) { -0.5f, 0, 0 }, rot_4, (V3) { 0.1f, 0.1f, 0.1f});
-    DrawMesh(mesh_handle, (V3) { +0.5f, 0, 0 }, rot_4, (V3) { 0.1f, 0.1f, 0.1f});
+    RendererEnableWireframe();
+    DrawSphere(-0.5f, 0, 0, 1, 1, 1, 1);
+    RendererDisableWireframe();
+    // DrawMesh(mesh_handle, (V3) { -0.5f, 0, 0 }, rot_4, (V3) { 0.1f, 0.1f, 0.1f});
+    // DrawMesh(mesh_handle, (V3) { +0.5f, 0, 0 }, rot_4, (V3) { 0.1f, 0.1f, 0.1f});
     obj_theta += 0.01f;
 
     do { dt_s = StopwatchReadSeconds(&frame_stopwatch); } while (dt_s < 0.016);

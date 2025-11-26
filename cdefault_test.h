@@ -3,6 +3,8 @@
 
 #include "cdefault_std.h"
 
+// NOTE: suppress pass reports by defining CDEFAULT_TEST_PASS_SUPPRESS
+
 // NOTE: this implements a framework for basic unit test running and reporting.
 //
 // e.g.
@@ -116,9 +118,11 @@ void _RunTest(String8 test_file, String8 test_name, Test_Fn* test_fn) {
   } else {
     c->num_pass++;
 
+#ifndef CDEFAULT_TEST_PASS_SUPPRESS
     String8ListNode* test_result = ARENA_PUSH_STRUCT(c->arena, String8ListNode);
     test_result->string = Str8Format(c->arena, "[" ANSI_COLOR_GREEN "PASS" ANSI_COLOR_RESET "] : %.*s:%.*s\n", test_file.size, test_file.str, test_name.size, test_name.str);
     Str8ListAppend(&c->report, test_result);
+#endif
   }
 }
 
