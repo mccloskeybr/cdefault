@@ -121,7 +121,6 @@ void DrawStringSdfExV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_
 // NOTE: 3D API
 // draw flat shapes
 // void DrawLine();
-// void DrawTetrahedron();
 void DrawSphere(F32 center_x, F32 center_y, F32 center_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 radius, F32 red, F32 green, F32 blue);
 void DrawSphereV(V3 center, V4 rot, F32 radius, V3 color);
 void DrawCube(F32 center_x, F32 center_y, F32 center_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 size_x, F32 size_y, F32 size_z, F32 red, F32 green, F32 blue);
@@ -1466,26 +1465,35 @@ void DrawTetrahedron(F32 x1, F32 y1, F32 z1, F32 x2, F32 y2, F32 z2, F32 x3, F32
 
 void DrawTetrahedronV(V3 p1, V3 p2, V3 p3, V3 p4, V3 color) {
   V3 v[4] = {p1, p2, p3, p4};
-  U32 faces[4][3] = {
-    {0, 1, 2},
-    {0, 2, 3},
-    {0, 3, 1},
-    {1, 3, 2},
+  // NOTE: 4th vertex is explicitly *not* on the face, required for determining face winding order.
+  U32 faces[4][4] = {
+    {0, 1, 2, 3},
+    {0, 2, 3, 1},
+    {0, 3, 1, 2},
+    {1, 3, 2, 0},
   };
-  V3 points[12];
-  V3 norms[12];
-  V2 uvs[12];
+  V3  points[12];
+  V3  norms[12];
+  V2  uvs[12];
   U32 indices[12];
   for (U32 i = 0; i < 4; i++) {
     U32 a = faces[i][0];
     U32 b = faces[i][1];
     U32 c = faces[i][2];
+    U32 d = faces[i][3];
 
-    // TODO: normal is not always correct here.
-    V3 ab, ac, cross;
+    V3 ab, ac, ad, cross;
     V3SubV3(&ab, &v[b], &v[a]);
     V3SubV3(&ac, &v[c], &v[a]);
+    V3SubV3(&ad, &v[d], &v[a]);
     V3CrossV3(&cross, &ab, &ac);
+    // NOTE: if norm is pointing at 4th vertex, winding order is flipped
+    if (V3DotV3(&cross, &ad) > 0) {
+      SWAP(U32, b, c);
+      V3SubV3(&ab, &v[b], &v[a]);
+      V3SubV3(&ac, &v[c], &v[a]);
+      V3CrossV3(&cross, &ab, &ac);
+    }
     if (V3LengthSq(&cross) == 0) { return; }
     V3Normalize(&cross, &cross);
 
@@ -1506,7 +1514,7 @@ void DrawTetrahedronV(V3 p1, V3 p2, V3 p3, V3 p4, V3 color) {
 
   U32 tetrahedron_handle;
   RendererRegisterMesh(&tetrahedron_handle, 0, (V3*) &points, (V3*) &norms, (V2*) &uvs, 12, indices, 12);
-  // NOTE: pos already in world space, so don't need to do additional translation.
+  // NOTE: verts already in world space, so don't need to do additional transformation.
   DrawMeshExV(tetrahedron_handle, V3_ZEROES, V4_QUAT_IDENT, V3_ONES, color, 1);
   RendererReleaseMesh(tetrahedron_handle);
 }
@@ -1970,7 +1978,6 @@ void WIN_WindowFlushEvents() {
     }
   }
 }
-//
 
 B32 WIN_WindowShouldClose() {
   WIN_Window* window = &_win_window;
