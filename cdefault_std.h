@@ -352,15 +352,15 @@ void  MemoryDecommit(void* ptr, U64 size);
     (curr_node)->prev = NULL;                                    \
   }                                                              \
   else if ((prev_node) == NULL) {                                \
-    (curr_node)->next = (tail);                                  \
-    (tail)->prev = (curr_node);                                  \
-    (tail) = (curr_node);                                        \
+    (curr_node)->next = (head);                                  \
+    (head)->prev = (curr_node);                                  \
+    (head) = (curr_node);                                        \
     (curr_node)->prev = NULL;                                    \
   }                                                              \
-  else if ((prev_node) == (head)) {                              \
-    (head)->next = (curr_node);                                  \
-    (curr_node)->prev = (head);                                  \
-    (head) = (curr_node);                                        \
+  else if ((prev_node) == (tail)) {                              \
+    (tail)->next = (curr_node);                                  \
+    (curr_node)->prev = (tail);                                  \
+    (tail) = (curr_node);                                        \
     (curr_node)->next = NULL;                                    \
   }                                                              \
   else {                                                         \
@@ -374,13 +374,13 @@ void  MemoryDecommit(void* ptr, U64 size);
     tail = NULL;                                        \
     head = NULL;                                        \
   }                                                     \
-  else if ((curr_node) == (tail)) {                     \
-    (tail) = (tail)->next;                              \
-    tail->prev = NULL;                                  \
-  }                                                     \
   else if ((curr_node) == (head)) {                     \
-    (head) = (head)->prev;                              \
-    head->next = NULL;                                  \
+    (head) = (head)->next;                              \
+    (head)->prev = NULL;                                \
+  }                                                     \
+  else if ((curr_node) == (tail)) {                     \
+    (tail) = (tail)->prev;                              \
+    (tail)->next = NULL;                                \
   }                                                     \
   else {                                                \
     if ((curr_node)->prev != NULL) {                    \
@@ -398,10 +398,10 @@ void  MemoryDecommit(void* ptr, U64 size);
     (curr_node)->prev = NULL;                            \
   }                                                      \
   else {                                                 \
-    (curr_node)->next = (tail);                          \
-    (tail)->prev = (curr_node);                          \
+    (curr_node)->prev = (tail);                          \
+    (tail)->next = (curr_node);                          \
     (tail) = (curr_node);                                \
-    (curr_node)->prev = NULL;                            \
+    (curr_node)->next = NULL;                            \
   }
 #define DLL_PUSH_FRONT(head, tail, curr_node, prev, next) \
   if ((head) == NULL) {                                   \
@@ -411,10 +411,10 @@ void  MemoryDecommit(void* ptr, U64 size);
     (curr_node)->prev = NULL;                             \
   }                                                       \
   else {                                                  \
-    (curr_node)->prev = (head);                           \
-    (head)->next = (curr_node);                           \
+    (curr_node)->next = (head);                           \
+    (head)->prev = (curr_node);                           \
     (head) = (curr_node);                                 \
-    (curr_node)->next = NULL;                             \
+    (curr_node)->prev = NULL;                             \
   }
 #define DLL_POP_FRONT(head, tail, prev, next) \
     DLL_REMOVE(head, tail, head, prev, next);
@@ -753,6 +753,7 @@ String8 Str8FormatV(Arena* arena, U8* fmt, va_list args);
 String8 _Str8Format(Arena* arena, U8* fmt, ...);
 #define Str8Format(a, fmt, ...) _Str8Format(a, (U8*) fmt, ##__VA_ARGS__)
 
+U32     Str8ListSize(String8List* list);
 void    Str8ListPrepend(String8List* list, String8ListNode* node);
 void    Str8ListAppend(String8List* list, String8ListNode* node);
 String8 Str8ListJoin(Arena* arena, String8List* list);
@@ -2065,6 +2066,12 @@ String8 _Str8Format(Arena* arena, U8* fmt, ...) {
   va_start(args, fmt);
   String8 result = Str8FormatV(arena, fmt, args);
   va_end(args);
+  return result;
+}
+
+U32 Str8ListSize(String8List* list) {
+  U32 result = 0;
+  for (String8ListNode* curr = list->head; curr != NULL; curr = curr->next) { result += 1; }
   return result;
 }
 

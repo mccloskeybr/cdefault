@@ -14,10 +14,10 @@ int main(void) {
 
   U32 image_handle, mesh_handle;
   Image image;
-  DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, Str8Lit("../data/16bpp.bmp")));
+  DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, Str8Lit("../data/suzanne.bmp")));
   RendererRegisterImage(&image_handle, &image);
   Mesh obj;
-  DEBUG_ASSERT(MeshLoadFile(arena, &obj, Str8Lit("../data/teapot.obj")));
+  DEBUG_ASSERT(MeshLoadFile(arena, &obj, Str8Lit("../data/suzanne.obj")));
   RendererRegisterMesh(&mesh_handle, image_handle, obj.points, obj.normals, obj.uvs, obj.vertices_size, obj.indices, obj.indices_size);
 
   Camera* camera = RendererCamera3D();
@@ -39,10 +39,15 @@ int main(void) {
     }
     if (WindowIsKeyPressed(Key_A)) {
       V3RotateAroundAxis(&camera->look_dir, &camera->look_dir, &camera->up_dir, +0.1f);
-      // V3RotateAroundAxis(&camera->up_dir, &camera->up_dir, &camera->look_dir, -0.1f);
     } else if (WindowIsKeyPressed(Key_D)) {
       V3RotateAroundAxis(&camera->look_dir, &camera->look_dir, &camera->up_dir, -0.1f);
-      // V3RotateAroundAxis(&camera->up_dir, &camera->up_dir, &camera->look_dir, +0.1f);
+    }
+    V3 cam_vert_delta = V3_Y_POS;
+    V3MultF32(&cam_vert_delta, &cam_vert_delta, dt_s);
+    if (WindowIsKeyPressed(Key_Shift)) {
+      V3AddV3(&camera->pos, &camera->pos, &cam_vert_delta);
+    } else if (WindowIsKeyPressed(Key_Control)) {
+      V3SubV3(&camera->pos, &camera->pos, &cam_vert_delta);
     }
 
     V4 rot_1, rot_2, rot_3, rot_4;
@@ -53,11 +58,17 @@ int main(void) {
     // V4Normalize(&rot_4, &rot_4);
     V4QuatMulV4(&rot_4, &rot_4, &rot_3);
     V4Normalize(&rot_4, &rot_4);
+
+    DrawTetrahedronV(V3Assign(-0.5f, -0.5f, -0.5f), V3Assign(0.5f, -0.5f, -0.5f), V3Assign(0, -0.5f, 0.5f), V3Assign(0, -1.0f, 0), V3_RED);
+
     RendererEnableWireframe();
-    DrawSphere(-0.5f, 0, 0, 1, 1, 1, 1);
+    // DrawSphere(-0.5f, 0, 0, 0, 0, 0, 1, 0.5f, 1, 0, 0);
+    // DrawCube(-0.5f, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0);
+    DrawTetrahedronV(V3Assign(-0.5f, -0.5f, -0.5f), V3Assign(0.5f, -0.5f, -0.5f), V3Assign(0, -0.5f, 0.5f), V3Assign(0, -1.0f, 0), V3_BLACK);
+    DrawMeshV(mesh_handle, (V3) { -0.5f, 0, 0 }, rot_4, (V3) { 0.1f, 0.1f, 0.1f});
+    DrawMeshV(mesh_handle, (V3) { +0.5f, 0, 0 }, rot_4, (V3) { 0.1f, 0.1f, 0.1f});
     RendererDisableWireframe();
-    // DrawMesh(mesh_handle, (V3) { -0.5f, 0, 0 }, rot_4, (V3) { 0.1f, 0.1f, 0.1f});
-    // DrawMesh(mesh_handle, (V3) { +0.5f, 0, 0 }, rot_4, (V3) { 0.1f, 0.1f, 0.1f});
+
     obj_theta += 0.01f;
 
     do { dt_s = StopwatchReadSeconds(&frame_stopwatch); } while (dt_s < 0.016);

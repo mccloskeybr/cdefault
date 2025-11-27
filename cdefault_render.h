@@ -119,10 +119,21 @@ void DrawStringSdfEx(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_h
 void DrawStringSdfExV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 threshold, F32 smoothing, V2 pos);
 
 // NOTE: 3D API
+// draw flat shapes
 // void DrawLine();
-void DrawSphere(F32 center_x, F32 center_y, F32 center_z, F32 radius, F32 red, F32 green, F32 blue);
-void DrawSphereV(V3 center, F32 radius, V3 color);
-void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale);
+// void DrawTetrahedron();
+void DrawSphere(F32 center_x, F32 center_y, F32 center_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 radius, F32 red, F32 green, F32 blue);
+void DrawSphereV(V3 center, V4 rot, F32 radius, V3 color);
+void DrawCube(F32 center_x, F32 center_y, F32 center_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 size_x, F32 size_y, F32 size_z, F32 red, F32 green, F32 blue);
+void DrawCubeV(V3 center, V4 rot, V3 size, V3 color);
+void DrawTetrahedron(F32 x1, F32 y1, F32 z1, F32 x2, F32 y2, F32 z2, F32 x3, F32 y3, F32 z3, F32 x4, F32 y4, F32 z4, F32 color_r, F32 color_g, F32 color_b);
+void DrawTetrahedronV(V3 p1, V3 p2, V3 p3, V3 p4, V3 color);
+void DrawMesh(U32 mesh_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 quat_x, F32 quat_y, F32 quat_z, F32 quat_w, F32 scale_x, F32 scale_y, F32 scale_z);
+void DrawMeshV(U32 mesh_handle, V3 pos, V4 rot, V3 scale);
+void DrawMeshColor(U32 mesh_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 quat_x, F32 quat_y, F32 quat_z, F32 quat_w, F32 scale_x, F32 scale_y, F32 scale_z, F32 color_r, F32 color_g, F32 color_b);
+void DrawMeshColorV(U32 mesh_handle, V3 pos, V4 rot, V3 scale, V3 color);
+void DrawMeshEx(U32 mesh_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 quat_x, F32 quat_y, F32 quat_z, F32 quat_w, F32 scale_x, F32 scale_y, F32 scale_z, F32 color_r, F32 color_g, F32 color_b, F32 tex_color_ratio);
+void DrawMeshExV(U32 mesh_handle, V3 pos, V4 rot, V3 scale, V3 color, F32 tex_color_ratio);
 
 enum KeyboardKey {
   Key_A,
@@ -392,6 +403,8 @@ struct Renderer {
   GLuint mesh_shader;
   GLint  mesh_camera_uniform;
   GLint  mesh_texture_uniform;
+  GLint  mesh_color_uniform;
+  GLint  mesh_tex_color_ratio_uniform;
 
   Camera camera_3d;
   M4 projection_3d;
@@ -403,6 +416,7 @@ struct Renderer {
   RenderMesh* meshes_tail;
   RenderMesh* meshes_free_list;
   U32 icosphere_handle;
+  U32 cube_handle;
 };
 static Renderer _renderer;
 
@@ -668,15 +682,21 @@ static B32 RendererInit(void) {
   char* mesh_fragment_shader_source =
     "#version 330 core\n"
     "uniform sampler2D texture_image;\n"
+    "uniform vec3 color;\n"
+    "uniform float tex_color_ratio;\n"
     "in vec3 normal;\n"
     "in vec2 tex_coord;\n"
     "out vec4 frag_color;\n"
     "void main() {\n"
-    "  frag_color = texture(texture_image, tex_coord);\n"
+    "  vec4 tex_color = texture(texture_image, tex_coord);\n"
+    "  vec4 in_color  = vec4(color, 1.0);\n"
+    "  frag_color = mix(tex_color, in_color, tex_color_ratio);\n"
     "}\0";
   DEBUG_ASSERT(RendererCompileShader(&r->mesh_shader, mesh_vertex_shader_source, mesh_fragment_shader_source));
   r->mesh_camera_uniform = g->glGetUniformLocation(r->mesh_shader, "to_camera_transform");
   r->mesh_texture_uniform = g->glGetUniformLocation(r->mesh_shader, "texture_image");
+  r->mesh_color_uniform = g->glGetUniformLocation(r->mesh_shader, "color");
+  r->mesh_tex_color_ratio_uniform = g->glGetUniformLocation(r->mesh_shader, "tex_color_ratio");
 
   F32 quad_vertices[6][4] = {
     {-0.5f, +0.5f, 0, 1 },
@@ -753,13 +773,66 @@ static B32 RendererInit(void) {
     (V2){0.9115f, 0.5000f},
   };
   U32 icosphere_indices[60] = {
-    0, 11, 5, 0, 5, 1,  0, 1, 7,   0, 7, 10, 0, 10, 11,
-    1, 5, 9,  5, 11, 4, 11, 10, 2, 10, 7, 6, 7, 1, 8,
-    3, 9, 4,  3, 4, 2,  3, 2, 6,   3, 6, 8,  3, 8, 9,
-    4, 9, 5,  2, 4, 11, 6, 2, 10,  8, 6, 7,  9, 8, 1,
+    0, 11, 5, 0, 5, 1,  0, 1, 7, 0, 7, 10, 0, 10, 11,
+    1, 5, 9, 5, 11, 4, 11, 10, 2, 10, 7, 6, 7, 1, 8,
+    3, 9, 4, 3, 4, 2,  3, 2, 6, 3, 6, 8,  3, 8, 9,
+    4, 9, 5, 2, 4, 11, 6, 2, 10, 8, 6, 7,  9, 8, 1,
   };
   RendererRegisterMesh(&r->icosphere_handle, 0, (V3*) &icosphere_points, (V3*) &icosphere_norms, (V2*) &icosphere_uvs, 12, (U32*) &icosphere_indices, 60);
 
+  V3 cube_points[24] = {
+    (V3){ 0.5f, -0.5f, -0.5f },
+    (V3){ 0.5f,  0.5f, -0.5f },
+    (V3){ 0.5f,  0.5f,  0.5f },
+    (V3){ 0.5f, -0.5f,  0.5f },
+    (V3){ -0.5f, -0.5f,  0.5f },
+    (V3){ -0.5f,  0.5f,  0.5f },
+    (V3){ -0.5f,  0.5f, -0.5f },
+    (V3){ -0.5f, -0.5f, -0.5f },
+    (V3){ -0.5f, 0.5f, -0.5f },
+    (V3){ -0.5f, 0.5f,  0.5f },
+    (V3){  0.5f, 0.5f,  0.5f },
+    (V3){  0.5f, 0.5f, -0.5f },
+    (V3){ -0.5f, -0.5f,  0.5f },
+    (V3){ -0.5f, -0.5f, -0.5f },
+    (V3){  0.5f, -0.5f, -0.5f },
+    (V3){  0.5f, -0.5f,  0.5f },
+    (V3){ -0.5f, -0.5f, 0.5f },
+    (V3){  0.5f, -0.5f, 0.5f },
+    (V3){  0.5f,  0.5f, 0.5f },
+    (V3){ -0.5f,  0.5f, 0.5f },
+    (V3){  0.5f, -0.5f, -0.5f },
+    (V3){ -0.5f, -0.5f, -0.5f },
+    (V3){ -0.5f,  0.5f, -0.5f },
+    (V3){  0.5f,  0.5f, -0.5f },
+  };
+  V3 cube_norms[24] = {
+    (V3){ 1,0,0 }, (V3){ 1,0,0 }, (V3){ 1,0,0 }, (V3){ 1,0,0 },
+    (V3){ -1,0,0 }, (V3){ -1,0,0 }, (V3){ -1,0,0 }, (V3){ -1,0,0 },
+    (V3){ 0,1,0 }, (V3){ 0,1,0 }, (V3){ 0,1,0 }, (V3){ 0,1,0 },
+    (V3){ 0,-1,0 }, (V3){ 0,-1,0 }, (V3){ 0,-1,0 }, (V3){ 0,-1,0 },
+    (V3){ 0,0,1 }, (V3){ 0,0,1 }, (V3){ 0,0,1 }, (V3){ 0,0,1 },
+    (V3){ 0,0,-1 }, (V3){ 0,0,-1 }, (V3){ 0,0,-1 }, (V3){ 0,0,-1 },
+  };
+  V2 cube_uvs[24] = {
+    (V2){0,0}, (V2){1,0}, (V2){1,1}, (V2){0,1},
+    (V2){0,0}, (V2){1,0}, (V2){1,1}, (V2){0,1},
+    (V2){0,0}, (V2){1,0}, (V2){1,1}, (V2){0,1},
+    (V2){0,0}, (V2){1,0}, (V2){1,1}, (V2){0,1},
+    (V2){0,0}, (V2){1,0}, (V2){1,1}, (V2){0,1},
+    (V2){0,0}, (V2){1,0}, (V2){1,1}, (V2){0,1},
+  };
+  U32 cube_indices[36] = {
+    0,1,2,     0,2,3,
+    4,5,6,     4,6,7,
+    8,9,10,    8,10,11,
+    12,13,14,  12,14,15,
+    16,17,18,  16,18,19,
+    20,21,22,  20,22,23
+  };
+  RendererRegisterMesh(&r->cube_handle, 0, (V3*) &cube_points, (V3*) &cube_norms, (V2*) &cube_uvs, 24, (U32*) &cube_indices, 36);
+
+  RendererEnableDepthTest();
 
   LOG_INFO("[RENDER] OpenGL renderer initialized.");
   success = true;
@@ -886,7 +959,8 @@ void RendererReleaseMesh(U32 mesh_handle) {
   Renderer* r = &_renderer;
   OpenGLAPI* g = &_ogl;
   RenderMesh* mesh = RendererFindMesh(mesh_handle);
-  if (mesh == NULL) { return; }
+  DEBUG_ASSERT(mesh != NULL);
+  // if (mesh == NULL) { return; }
   g->glDeleteVertexArrays(1, &mesh->vao);
   g->glDeleteBuffers(1, &mesh->vbo);
   g->glDeleteBuffers(1, &mesh->ibo);
@@ -1368,19 +1442,96 @@ void DrawStringSdfExV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_
   }
 }
 
-void DrawSphere(F32 center_x, F32 center_y, F32 center_z, F32 radius, F32 red, F32 green, F32 blue) {
+void DrawSphere(F32 center_x, F32 center_y, F32 center_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 radius, F32 red, F32 green, F32 blue) {
   Renderer* r = &_renderer;
-  V3 pos = V3Assign(center_x, center_y, center_z);
-  V4 rot = V4_QUAT_IDENT;
-  V3 scale = V3Assign(radius, radius, radius);
-  DrawMesh(r->icosphere_handle, pos, rot, scale);
+  DrawMeshColor(r->icosphere_handle, center_x, center_y, center_z, rot_x, rot_y, rot_z, rot_w, radius, radius, radius, red, green, blue);
 }
 
-void DrawSphereV(V3 center, F32 radius, V3 color) {
-  DrawSphere(center.x, center.y, center.z, radius, color.r, color.g, color.b);
+void DrawSphereV(V3 center, V4 rot, F32 radius, V3 color) {
+  DrawSphere(center.x, center.y, center.z, rot.x, rot.y, rot.z, rot.w, radius, color.r, color.g, color.b);
 }
 
-void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale) {
+void DrawCube(F32 center_x, F32 center_y, F32 center_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 size_x, F32 size_y, F32 size_z, F32 red, F32 green, F32 blue) {
+  Renderer* r = &_renderer;
+  DrawMeshColor(r->cube_handle, center_x, center_y, center_z, rot_x, rot_y, rot_z, rot_w, size_x, size_y, size_z, red, green, blue);
+}
+
+void DrawCubeV(V3 center, V4 rot, V3 size, V3 color) {
+  DrawCube(center.x, center.y, center.z, rot.x, rot.y, rot.z, rot.w, size.x, size.y, size.z, color.r, color.g, color.b);
+}
+
+void DrawTetrahedron(F32 x1, F32 y1, F32 z1, F32 x2, F32 y2, F32 z2, F32 x3, F32 y3, F32 z3, F32 x4, F32 y4, F32 z4, F32 color_r, F32 color_g, F32 color_b) {
+  DrawTetrahedronV(V3Assign(x1, y1, z1), V3Assign(x2, y2, z2), V3Assign(x3, y3, z3), V3Assign(x4, y4, z4), V3Assign(color_r, color_g, color_b));
+}
+
+void DrawTetrahedronV(V3 p1, V3 p2, V3 p3, V3 p4, V3 color) {
+  V3 v[4] = {p1, p2, p3, p4};
+  U32 faces[4][3] = {
+    {0, 1, 2},
+    {0, 2, 3},
+    {0, 3, 1},
+    {1, 3, 2},
+  };
+  V3 points[12];
+  V3 norms[12];
+  V2 uvs[12];
+  U32 indices[12];
+  for (U32 i = 0; i < 4; i++) {
+    U32 a = faces[i][0];
+    U32 b = faces[i][1];
+    U32 c = faces[i][2];
+
+    // TODO: normal is not always correct here.
+    V3 ab, ac, cross;
+    V3SubV3(&ab, &v[b], &v[a]);
+    V3SubV3(&ac, &v[c], &v[a]);
+    V3CrossV3(&cross, &ab, &ac);
+    if (V3LengthSq(&cross) == 0) { return; }
+    V3Normalize(&cross, &cross);
+
+    U32 idx = i * 3;
+    points[idx + 0] = v[a];
+    points[idx + 1] = v[b];
+    points[idx + 2] = v[c];
+    norms[idx + 0] = cross;
+    norms[idx + 1] = cross;
+    norms[idx + 2] = cross;
+    uvs[idx + 0] = V2Assign(0, 0);
+    uvs[idx + 1] = V2Assign(1, 0);
+    uvs[idx + 2] = V2Assign(0.5f, 1);
+    indices[idx + 0] = idx + 0;
+    indices[idx + 1] = idx + 1;
+    indices[idx + 2] = idx + 2;
+  }
+
+  U32 tetrahedron_handle;
+  RendererRegisterMesh(&tetrahedron_handle, 0, (V3*) &points, (V3*) &norms, (V2*) &uvs, 12, indices, 12);
+  // NOTE: pos already in world space, so don't need to do additional translation.
+  DrawMeshExV(tetrahedron_handle, V3_ZEROES, V4_QUAT_IDENT, V3_ONES, color, 1);
+  RendererReleaseMesh(tetrahedron_handle);
+}
+
+void DrawMesh(U32 mesh_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 scale_x, F32 scale_y, F32 scale_z) {
+  DrawMeshEx(mesh_handle, pos_x, pos_y, pos_z, rot_x, rot_y, rot_z, rot_w, scale_x, scale_y, scale_z, 0, 0, 0, 0);
+}
+
+void DrawMeshV(U32 mesh_handle, V3 pos, V4 rot, V3 scale) {
+  DrawMeshExV(mesh_handle, pos, rot, scale, V3Assign(0, 0, 0), 0);
+}
+
+void DrawMeshColor(U32 mesh_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 scale_x, F32 scale_y, F32 scale_z, F32 color_r, F32 color_g, F32 color_b) {
+  DrawMeshEx(mesh_handle, pos_x, pos_y, pos_z, rot_x, rot_y, rot_z, rot_w, scale_x, scale_y, scale_z, color_r, color_g, color_b, 1);
+}
+
+void DrawMeshColorV(U32 mesh_handle, V3 pos, V4 rot, V3 scale, V3 color) {
+  DrawMeshExV(mesh_handle, pos, rot, scale, color, 1);
+}
+
+void DrawMeshEx(U32 mesh_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 scale_x, F32 scale_y, F32 scale_z, F32 color_r, F32 color_g, F32 color_b, F32 tex_color_ratio) {
+  DrawMeshExV(mesh_handle, V3Assign(pos_x, pos_y, pos_z), V4Assign(rot_x, rot_y, rot_z, rot_w), V3Assign(scale_x, scale_y, scale_z), V3Assign(color_r, color_g, color_b), tex_color_ratio);
+}
+
+void DrawMeshExV(U32 mesh_handle, V3 pos, V4 rot, V3 scale, V3 color, F32 tex_color_ratio) {
   Renderer* r = &_renderer;
   OpenGLAPI* g = &_ogl;
   RenderMesh* mesh = RendererFindMesh(mesh_handle);
@@ -1397,6 +1548,8 @@ void DrawMesh(U32 mesh_handle, V3 pos, V4 rot, V3 scale) {
 
   g->glUseProgram(r->mesh_shader);
   g->glUniformMatrix4fv(r->mesh_camera_uniform, 1, GL_FALSE, (GLfloat*) &mesh_to_camera_t);
+  g->glUniform3fv(r->mesh_color_uniform, 1, (GLfloat*) &color);
+  g->glUniform1f(r->mesh_tex_color_ratio_uniform, tex_color_ratio);
   g->glBindTexture(GL_TEXTURE_2D, mesh->image_handle);
   g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);

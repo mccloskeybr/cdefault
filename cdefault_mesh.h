@@ -94,7 +94,7 @@ static B32 MeshLoadObj(Arena* arena, Mesh* mesh, U8* file_data, U32 file_data_si
   mesh->indices = ARENA_PUSH_ARRAY(arena, U32, vertices_size_estimate);
   mesh->points  = ARENA_PUSH_ARRAY(arena, V3, vertices_size_estimate);
   if (obj_normals_size > 0) { mesh->normals = ARENA_PUSH_ARRAY(arena, V3, vertices_size_estimate); }
-  if (obj_uvs_size > 0)     { mesh->uvs = ARENA_PUSH_ARRAY(arena, V2, vertices_size_estimate); }
+  if (obj_uvs_size > 0)     { mesh->uvs = ARENA_PUSH_ARRAY(arena, V2, vertices_size_estimate);     }
   for (String8ListNode* line = lines.head; line != NULL; line = line->next) {
     if (!Str8StartsWith(line->string, Str8Lit("f "))) { continue; }
     String8List line_parts = Str8Split(temp_arena, line->string, ' ');
@@ -103,6 +103,7 @@ static B32 MeshLoadObj(Arena* arena, Mesh* mesh, U8* file_data, U32 file_data_si
       String8List face_parts = Str8Split(temp_arena, line_part->string, '/');
       DEBUG_ASSERT(face_parts.head != NULL);
 
+      // NOTE: parse face point vertex/uv/normal
       S32 point_idx  = -1;
       S32 uv_idx     = -1;
       S32 normal_idx = -1;
@@ -123,6 +124,7 @@ static B32 MeshLoadObj(Arena* arena, Mesh* mesh, U8* file_data, U32 file_data_si
       }
       DEBUG_ASSERT(point_idx < obj_points_size && normal_idx < obj_normals_size && uv_idx < obj_uvs_size);
 
+      // NOTE: search for duplicate vertex
       S32 duplicate_idx = -1;
       for (U32 i = 0; i < mesh->vertices_size; i++) {
         if (V3Eq(&mesh->points[i], &obj_points[point_idx])) {
@@ -135,6 +137,7 @@ static B32 MeshLoadObj(Arena* arena, Mesh* mesh, U8* file_data, U32 file_data_si
         }
       }
 
+      // NOTE: add vertex to lists
       if (duplicate_idx == -1) {
         mesh->points[mesh->vertices_size] = obj_points[point_idx];
         if (normal_idx != -1) { mesh->normals[mesh->vertices_size] = obj_normals[normal_idx]; }
@@ -146,7 +149,8 @@ static B32 MeshLoadObj(Arena* arena, Mesh* mesh, U8* file_data, U32 file_data_si
       }
       mesh->indices_size++;
 
-      if (face_vertices_size++ > 3) {
+      // TODO: support this
+      if (++face_vertices_size > 3) {
         LOG_ERROR("[MESH] OBJ importer does not support defining more than 3 vertices per face face. For line: %.*s", line->string.size, line->string.str);
         goto mesh_load_obj_end;
       }
