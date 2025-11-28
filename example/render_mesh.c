@@ -61,13 +61,15 @@ int main(void) {
 
     DrawTetrahedronV(V3Assign(-0.5f, -0.5f, -0.5f), V3Assign(0.5f, -0.5f, -0.5f), V3Assign(0, -0.5f, 0.5f), V3Assign(0, -1.0f, 0), V3_RED);
 
-    RendererEnableWireframe();
+    DrawLine3V(V3Assign(-0.5f, 0, 0), V3Assign(0.5f, 0, 0), V3_RED);
+
+    // RendererEnableWireframe();
     // DrawSphere(-0.5f, 0, 0, 0, 0, 0, 1, 0.5f, 1, 0, 0);
     // DrawCube(-0.5f, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0);
     DrawTetrahedronV(V3Assign(-0.5f, -0.5f, -0.5f), V3Assign(0.5f, -0.5f, -0.5f), V3Assign(0, -0.5f, 0.5f), V3Assign(0, -1.0f, 0), V3_BLACK);
     DrawMeshV(mesh_handle, (V3) { -0.5f, 0, 0 }, rot_4, (V3) { 0.1f, 0.1f, 0.1f});
     DrawMeshV(mesh_handle, (V3) { +0.5f, 0, 0 }, rot_4, (V3) { 0.1f, 0.1f, 0.1f});
-    RendererDisableWireframe();
+    // RendererDisableWireframe();
 
     obj_theta += 0.01f;
 

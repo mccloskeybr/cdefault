@@ -440,7 +440,7 @@ void ImageConvert(Arena* arena, Image* to, Image* from, ImageFormat to_format) {
           to->data[(((i * to->width) + j) * 3) + 2] = b;
         } break;
         case ImageFormat_R: {
-          to->data[(((i * to->width) + j) * 4) + 0] = (r + g + b) / 3;
+          to->data[(((i * to->width) + j) * 1) + 0] = (r + g + b) / 3;
         } break;
       }
     }

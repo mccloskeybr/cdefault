@@ -250,6 +250,7 @@ B32  Sphere3IntersectSphere3(V3* a_center, F32 a_radius, V3* b_center, F32 b_rad
 // intersect polygon
 
 // TODO: triangulate given flattened convex hull. quickhull
+// TODO: offset, other mut fns
 B32  ConvexHull3Eq(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size);
 B32  ConvexHull3ApproxEq(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size);
 void ConvexHull3Flatten(Arena* arena, V3* src_points, U32 src_points_size, V3** dest_points, U32* dest_points_size); // NOTE: removes duplicate points

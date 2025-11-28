@@ -72,8 +72,8 @@ void RendererCastRay3(F32 x, F32 y, V3* start, V3* dir);
 void RendererCastRay3V(V2 pos, V3* start, V3* dir);
 
 // NOTE: 2D API
-void DrawLine(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32 red, F32 green, F32 blue);
-void DrawLineV(V2 start, V2 end, F32 thickness, V3 color);
+void DrawLine2(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32 red, F32 green, F32 blue);
+void DrawLine2V(V2 start, V2 end, F32 thickness, V3 color);
 void DrawQuadBezier(F32 start_x, F32 start_y, F32 control_x, F32 control_y, F32 end_x, F32 end_y, U32 resolution, F32 thickness, F32 red, F32 green, F32 blue);
 void DrawQuadBezierV(V2 start, V2 control, V2 end, U32 resolution, F32 thickness, V3 color);
 void DrawRectangle(F32 center_x, F32 center_y, F32 width, F32 height, F32 red, F32 green, F32 blue);
@@ -119,8 +119,9 @@ void DrawStringSdfEx(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_h
 void DrawStringSdfExV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 threshold, F32 smoothing, V2 pos);
 
 // NOTE: 3D API
-// draw flat shapes
-// void DrawLine();
+// TODO: draw flat shapes
+void DrawLine3(F32 start_x, F32 start_y, F32 start_z, F32 end_x, F32 end_y, F32 end_z, F32 color_r, F32 color_g, F32 color_b);
+void DrawLine3V(V3 start, V3 end, V3 color);
 void DrawSphere(F32 center_x, F32 center_y, F32 center_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 radius, F32 red, F32 green, F32 blue);
 void DrawSphereV(V3 center, V4 rot, F32 radius, V3 color);
 void DrawCube(F32 center_x, F32 center_y, F32 center_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 size_x, F32 size_y, F32 size_z, F32 red, F32 green, F32 blue);
@@ -295,6 +296,7 @@ typedef void   glDrawArrays_Fn(GLenum, GLint, GLsizei);
 typedef void   glDrawElements_Fn(GLenum, GLsizei, GLenum, const void*);
 typedef void   glPixelStorei_Fn(GLenum, GLint);
 typedef void   glPolygonMode_Fn(GLenum, GLenum);
+typedef void   glLineWidth_Fn(GLfloat);
 
 // NOTE: platform agnostic open gl api.
 typedef struct OpenGLAPI OpenGLAPI;
@@ -343,9 +345,11 @@ struct OpenGLAPI {
   glDrawElements_Fn*            glDrawElements;
   glPixelStorei_Fn*             glPixelStorei;
   glPolygonMode_Fn*             glPolygonMode;
+  glLineWidth_Fn*               glLineWidth;
 };
 static OpenGLAPI _ogl;
 
+// TODO: accessing through a linked list is prolly a little too slow for this.
 typedef struct RenderMesh RenderMesh;
 struct RenderMesh {
   U32 id;
@@ -360,6 +364,8 @@ struct RenderMesh {
 
 typedef struct Renderer Renderer;
 struct Renderer {
+  // NOTE: 2d data
+
   GLuint quad_vbo;
   GLuint quad_vao;
 
@@ -399,15 +405,7 @@ struct Renderer {
   GLint  font_sdf_max_uv_uniform;
   GLint  font_sdf_color_uniform;
 
-  GLuint mesh_shader;
-  GLint  mesh_camera_uniform;
-  GLint  mesh_texture_uniform;
-  GLint  mesh_color_uniform;
-  GLint  mesh_tex_color_ratio_uniform;
-
-  Camera camera_3d;
-  M4 projection_3d;
-  M4 world_to_camera_2d;
+  // NOTE: 3D data
 
   U32 next_mesh_id;
   Arena* mesh_pool;
@@ -416,6 +414,20 @@ struct Renderer {
   RenderMesh* meshes_free_list;
   U32 icosphere_handle;
   U32 cube_handle;
+
+  GLuint mesh_shader;
+  GLint  mesh_camera_uniform;
+  GLint  mesh_texture_uniform;
+  GLint  mesh_color_uniform;
+  GLint  mesh_tex_color_ratio_uniform;
+
+  GLuint line_shader;
+  GLint  line_camera_uniform;
+  GLint  line_color_uniform;
+
+  Camera camera_3d;
+  M4 projection_3d;
+  M4 world_to_camera_2d;
 };
 static Renderer _renderer;
 
@@ -697,6 +709,24 @@ static B32 RendererInit(void) {
   r->mesh_color_uniform = g->glGetUniformLocation(r->mesh_shader, "color");
   r->mesh_tex_color_ratio_uniform = g->glGetUniformLocation(r->mesh_shader, "tex_color_ratio");
 
+  char* line_vertex_shader_source =
+    "#version 330 core\n"
+    "uniform mat4 to_camera_transform;\n"
+    "layout (location = 0) in vec3 in_pos;\n"
+    "void main() {\n"
+    "  gl_Position = to_camera_transform * vec4(in_pos, 1.0);\n"
+    "}\0";
+  char* line_fragment_shader_source =
+    "#version 330 core\n"
+    "uniform vec3 color;\n"
+    "out vec4 frag_color;\n"
+    "void main() {\n"
+    "  frag_color = vec4(color, 1.0);\n"
+    "}\0";
+  DEBUG_ASSERT(RendererCompileShader(&r->line_shader, line_vertex_shader_source, line_fragment_shader_source));
+  r->line_camera_uniform = g->glGetUniformLocation(r->line_shader, "to_camera_transform");
+  r->line_color_uniform = g->glGetUniformLocation(r->line_shader, "color");
+
   F32 quad_vertices[6][4] = {
     {-0.5f, +0.5f, 0, 1 },
     {-0.5f, -0.5f, 0, 0 },
@@ -832,6 +862,7 @@ static B32 RendererInit(void) {
   RendererRegisterMesh(&r->cube_handle, 0, (V3*) &cube_points, (V3*) &cube_norms, (V2*) &cube_uvs, 24, (U32*) &cube_indices, 36);
 
   RendererEnableDepthTest();
+  g->glLineWidth(3);
 
   LOG_INFO("[RENDER] OpenGL renderer initialized.");
   success = true;
@@ -1052,7 +1083,7 @@ void RendererCastRay3V(V2 pos, V3* start, V3* dir) {
   RendererCastRay3(pos.x, pos.y, start, dir);
 }
 
-void DrawLine(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32 red, F32 green, F32 blue) {
+void DrawLine2(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32 red, F32 green, F32 blue) {
   V2 start = { start_x, start_y };
   V2 end   = { end_x, end_y };
   V2 delta;
@@ -1063,7 +1094,7 @@ void DrawLine(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32
 }
 
 void DrawLineV(V2 start, V2 end, F32 thickness, V3 color) {
-  DrawLine(start.x, start.y, end.x, end.y, thickness, color.r, color.g, color.b);
+  DrawLine2(start.x, start.y, end.x, end.y, thickness, color.r, color.g, color.b);
 }
 
 void DrawQuadBezier(F32 start_x, F32 start_y, F32 control_x, F32 control_y, F32 end_x, F32 end_y, U32 resolution, F32 thickness, F32 red, F32 green, F32 blue) {
@@ -1077,7 +1108,7 @@ void DrawQuadBezier(F32 start_x, F32 start_y, F32 control_x, F32 control_y, F32 
     F32 y_2 = F32Lerp(control_y, end_y, t);
     F32 x_3 = F32Lerp(x_1, x_2, t);
     F32 y_3 = F32Lerp(y_1, y_2, t);
-    DrawLine(x_prev, y_prev, x_3, y_3, thickness, red, green, blue);
+    DrawLine2(x_prev, y_prev, x_3, y_3, thickness, red, green, blue);
     x_prev = x_3;
     y_prev = y_3;
   }
@@ -1441,6 +1472,46 @@ void DrawStringSdfExV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_
   }
 }
 
+void DrawLine3(F32 start_x, F32 start_y, F32 start_z, F32 end_x, F32 end_y, F32 end_z, F32 color_r, F32 color_g, F32 color_b) {
+  DrawLine3V(V3Assign(start_x, start_y, start_z), V3Assign(end_x, end_y, end_z), V3Assign(color_r, color_g, color_b));
+}
+
+// TODO: add thickness? sdf w/ 3d rect, similar to 2d api. remove reliance on glLineWidth.
+void DrawLine3V(V3 start, V3 end, V3 color) {
+  Renderer* r = &_renderer;
+  OpenGLAPI* g = &_ogl;
+
+  V3 vertices[2] = { start, end };
+  GLuint line_vao, line_vbo;
+  g->glGenVertexArrays(1, &line_vao);
+  g->glGenBuffers(1, &line_vbo);
+  g->glBindVertexArray(line_vao);
+  g->glBindBuffer(GL_ARRAY_BUFFER, line_vbo);
+  g->glBufferData(GL_ARRAY_BUFFER, sizeof(F32) * 6, vertices, GL_STATIC_DRAW);
+  g->glEnableVertexAttribArray(0);
+  g->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(F32), (void*)(sizeof(F32) * 0));
+
+  V3 camera_target;
+  V3AddV3(&camera_target, &r->camera_3d.pos, &r->camera_3d.look_dir);
+  M4 camera, world_to_camera, mesh_to_world, mesh_to_camera, mesh_to_camera_t;
+  camera = M4LookAt(&r->camera_3d.pos, &camera_target, &r->camera_3d.up_dir);
+  M4MultM4(&world_to_camera, &r->projection_3d, &camera);
+  mesh_to_world = M4FromTransform(&V3_ZEROES, &V4_QUAT_IDENT, &V3_ONES);
+  M4MultM4(&mesh_to_camera, &world_to_camera, &mesh_to_world);
+  M4Transpose(&mesh_to_camera_t, &mesh_to_camera);
+
+  g->glUseProgram(r->line_shader);
+  g->glUniformMatrix4fv(r->line_camera_uniform, 1, GL_FALSE, (GLfloat*) &mesh_to_camera_t);
+  g->glUniform3fv(r->line_color_uniform, 1, (GLfloat*) &color);
+  g->glBindVertexArray(line_vao);
+  g->glDrawArrays(GL_LINES, 0, 2);
+
+  g->glBindVertexArray(0);
+  g->glUseProgram(0);
+  g->glDeleteVertexArrays(1, &line_vao);
+  g->glDeleteBuffers(1, &line_vbo);
+}
+
 void DrawSphere(F32 center_x, F32 center_y, F32 center_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 radius, F32 red, F32 green, F32 blue) {
   Renderer* r = &_renderer;
   DrawMeshColor(r->icosphere_handle, center_x, center_y, center_z, rot_x, rot_y, rot_z, rot_w, radius, radius, radius, red, green, blue);
@@ -1796,6 +1867,7 @@ B32 WIN_WindowInit(S32 width, S32 height, char* title) {
   _ogl.glDrawElements = glDrawElements;
   _ogl.glPixelStorei = glPixelStorei;
   _ogl.glPolygonMode = glPolygonMode;
+  _ogl.glLineWidth = glLineWidth;
 
 #undef WIN_LINK_GL
 
