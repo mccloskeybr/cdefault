@@ -201,6 +201,7 @@ B32  Tri3ApproxEq(V3 a_points[3], V3 b_points[3]);
 void Tri3Offset(V3 tri_points[3], V3* offset);
 void Tri3SetCenter(V3 tri_points[3], V3* center);
 void Tri3GetCenter(V3 tri_points[3], V3* center);
+B32  Tri3GetNormal(V3 tri_points[3], V3* normal);
 // Tri3GetEnclosingCircle3
 // Tri3GetEnclosingAabb3
 B32  Tri3ContainsPoint(V3 tri_points[3], V3* point);
@@ -245,6 +246,7 @@ B32  Sphere3ContainsPoint(V3* sphere_center, F32 sphere_radius, V3* point);
 B32  Sphere3IntersectLine3(V3* sphere_center, F32 sphere_radius, V3* line_start, V3* line_end, V3* enter_point, V3* exit_point);
 B32  Sphere3IntersectRay3(V3* sphere_center, F32 sphere_radius, V3* ray_start, V3* ray_dir, V3* enter_point, V3* exit_point);
 B32  Sphere3IntersectSphere3(V3* a_center, F32 a_radius, V3* b_center, F32 b_radius, IntersectManifold3* manifold);
+B32  Sphere3IntersectConvexHull3(V3* sphere_center, F32 sphere_radius, V3* hull_points, U32 hull_points_size, IntersectManifold3* manifold);
 // intersect plane
 // intersect tri3
 // intersect polygon
@@ -257,14 +259,69 @@ void ConvexHull3Flatten(Arena* arena, V3* src_points, U32 src_points_size, V3** 
 void ConvexHull3FromAabb3(V3 hull_points[8], V3* aabb_center, V3* aabb_size);
 B32  ConvexHull3IntersectAabb3(V3* hull_points, U32 hull_points_size, V3* aabb_center, V3* aabb_size, IntersectManifold3* manifold);
 B32  ConvexHull3IntersectConvexHull3(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size, IntersectManifold3* manifold);
+B32  ConvexHull3IntersectSphere3(V3* hull_points, U32 hull_points_size, V3* sphere_center, F32 sphere_radius, IntersectManifold3* manifold);
 
 // TODO: AABB3
 // TODO: OBB3
+
+// NOTE: The GJK implementation is exposed in the event that you want to define other shapes outside of what is supported here.
+// GjkContext should be constructed and passed into the GjkIntersection3(...). For example:
+//
+// GjkParamsConvexHull3 a_params = { ... };
+// GjkContext a_context = { GjkSupportConvexHull3, &a_params };
+// GjkParamsConvexHull3 b_params = { ... };
+// GjkContext b_context = { GjkSupportConvexHull3, &b_params };
+// GjkIntersection3(&a_contex, &b_context, &manifold);
+
+// NOTE: The support function should find the maximal vertex in the shape along the given direction.
+typedef V3 GjkSupport_Fn(void* user_data, V3* search_dir);
+// NOTE user_data is passed directly into the provided support_fn. It is intended for you to define your own struct / params to pass
+// necessary shape data in to achieve the support fn's goals.
+typedef struct GjkContext GjkContext;
+struct GjkContext { GjkSupport_Fn* support_fn; void* user_data; };
+
+typedef struct GjkParamsConvexHull3 GjkParamsConvexHull3;
+struct GjkParamsConvexHull3 { V3* points; U32 points_size; };
+V3 GjkSupportConvexHull3(void* user_data, V3* search_dir);
+
+typedef struct GjkParamsSphere3 GjkParamsSphere3;
+struct GjkParamsSphere3 { V3* center; F32 radius; };
+V3 GjkSupportSphere3(void* user_data, V3* search_dir);
+
+// NOTE: GJK implementation for 3D convex shape intersection. Uses EPA to determine intersection manifolds.
+B32 GjkIntersection3(GjkContext* a, GjkContext* b, IntersectManifold3* manifold);
 
 #endif // CDEFAULT_GEOMETRY_H_
 
 #ifdef CDEFAULT_GEOMETRY_IMPLEMENTATION
 #undef CDEFAULT_GEOMETRY_IMPLEMENTATION
+
+typedef struct EpaPolytopeFace EpaPolytopeFace;
+struct EpaPolytopeFace {
+  V3  points[3];
+  V3  normal;
+  F32 distance;
+};
+
+typedef struct EpaPolytope EpaPolytope;
+struct EpaPolytope {
+  EpaPolytopeFace* data;
+  U32 size;
+  U32 capacity;
+};
+
+typedef struct EpaHorizonLine EpaHorizonLine;
+struct EpaHorizonLine {
+  V3 points[2];
+  U32 count;
+};
+
+typedef struct EpaHorizon EpaHorizon;
+struct EpaHorizon {
+  EpaHorizonLine* data;
+  U32 size;
+  U32 capacity;
+};
 
 // TODO make public, in V2?
 static void PointRotateAboutPoint(V2* a, V2* p, F32 s, F32 c) {
@@ -993,7 +1050,7 @@ B32 Circle2IntersectConvexHull2(V2* circle_center, F32 circle_radius, V2* hull_p
     }
   }
   if (manifold != NULL) {
-    if (V2DotV2(&rel_center, &manifold->normal) > 0) { V2MultF32(&manifold->normal, &manifold->normal, -1); }
+    if (V2DotV2(&rel_center, &manifold->normal) > 0) { V2Negate(&manifold->normal, &manifold->normal); }
     V2Normalize(&manifold->normal, &manifold->normal);
 
     V2MultF32(&manifold->contact_points[0], &manifold->normal, -circle_radius);
@@ -1218,11 +1275,11 @@ B32 ConvexHull2IntersectCircle2(V2* hull_points, U32 hull_points_size, V2* circl
   }
 
   if (manifold != NULL) {
-    if (V2DotV2(&rel_center, &manifold->normal) < 0) { V2MultF32(&manifold->normal, &manifold->normal, -1); }
+    if (V2DotV2(&rel_center, &manifold->normal) < 0) { V2Negate(&manifold->normal, &manifold->normal); }
     V2Normalize(&manifold->normal, &manifold->normal);
 
     V2 *i_start, *i_end, *feature, i_normal_inv;
-    V2MultF32(&i_normal_inv, &manifold->normal, -1);
+    V2Negate(&i_normal_inv, &manifold->normal);
     ConvexHull2MaxFeatureAlongNormal(hull_points, hull_points_size, &hull_center, &i_normal_inv, &feature, &i_start, &i_end);
     Line2GetClosestPoint(i_start, i_end, circle_center, &manifold->contact_points[0]);
     manifold->contact_points_size = 1;
@@ -1267,18 +1324,18 @@ B32 ConvexHull2IntersectConvexHull2(V2* a_points, U32 a_points_size, V2* b_point
   }
   // https://dyn4j.org/2011/11/contact-points-using-clipping/
   if (manifold != NULL) {
-    if (V2DotV2(&rel_center, &manifold->normal) < 0) { V2MultF32(&manifold->normal, &manifold->normal, -1); }
+    if (V2DotV2(&rel_center, &manifold->normal) < 0) { V2Negate(&manifold->normal, &manifold->normal); }
     V2Normalize(&manifold->normal, &manifold->normal);
 
     V2 *a_i_start, *a_i_end, *b_i_start, *b_i_end, *a_feature, *b_feature, i_normal_inv;
-    V2MultF32(&i_normal_inv, &manifold->normal, -1);
+    V2Negate(&i_normal_inv, &manifold->normal);
     ConvexHull2MaxFeatureAlongNormal(a_points, a_points_size, &a_center, &i_normal_inv, &a_feature, &a_i_start, &a_i_end);
     ConvexHull2MaxFeatureAlongNormal(b_points, b_points_size, &b_center, &manifold->normal, &b_feature, &b_i_start, &b_i_end);
 
     V2 ref_edge, ref_edge_inv, ref_normal;
     V2SubV2(&ref_edge, b_i_end, b_i_start);
     V2Normalize(&ref_edge, &ref_edge);
-    V2MultF32(&ref_edge_inv, &ref_edge, -1);
+    V2Negate(&ref_edge_inv, &ref_edge);
     Line2GetNormalOut(b_i_start, b_i_end, &ref_normal);
 
     V2 c_points[2];
@@ -1609,7 +1666,7 @@ void Plane3Offset(V3* plane_normal, F32* plane_d, V3* offset) {
 
 void Plane3Flip(V3* plane_normal, F32* plane_d) {
   DEBUG_ASSERT(F32ApproxEq(V3LengthSq(plane_normal), 1));
-  V3MultF32(plane_normal, plane_normal, -1);
+  V3Negate(plane_normal, plane_normal);
   *plane_d *= -1;
 }
 
@@ -1694,6 +1751,16 @@ void Tri3SetCenter(V3 tri_points[3], V3* center) {
 
 void Tri3GetCenter(V3 tri_points[3], V3* center) {
   ConvexPolygon3GetCenter(tri_points, 3, center);
+}
+
+B32 Tri3GetNormal(V3 tri_points[3], V3* normal) {
+  V3 ab, ac;
+  V3SubV3(&ab, &tri_points[1], &tri_points[0]);
+  V3SubV3(&ac, &tri_points[2], &tri_points[0]);
+  V3CrossV3(normal, &ab, &ac);
+  if (V3LengthSq(normal) == 0) { return false; }
+  V3Normalize(normal, normal);
+  return true;
 }
 
 B32 Tri3ContainsPoint(V3 tri_points[3], V3* point) {
@@ -2007,6 +2074,24 @@ B32 Sphere3IntersectSphere3(V3* a_center, F32 a_radius, V3* b_center, F32 b_radi
   return true;
 }
 
+B32 Sphere3IntersectConvexHull3(V3* sphere_center, F32 sphere_radius, V3* hull_points, U32 hull_points_size, IntersectManifold3* manifold) {
+  GjkContext a;
+  GjkParamsSphere3 a_params;
+  a_params.center = sphere_center;
+  a_params.radius = sphere_radius;
+  a.support_fn = GjkSupportSphere3;
+  a.user_data = &a_params;
+
+  GjkContext b;
+  GjkParamsConvexHull3 b_params;
+  b_params.points = hull_points;
+  b_params.points_size = hull_points_size;
+  b.support_fn = GjkSupportConvexHull3;
+  b.user_data = &b_params;
+
+  return GjkIntersection3(&a, &b, manifold);
+}
+
 B32 ConvexHull3Eq(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size) {
   if (a_points_size != b_points_size) { return false; }
   for (U32 i = 0; i < a_points_size; i++) {
@@ -2062,157 +2147,398 @@ B32 ConvexHull3IntersectAabb3(V3* hull_points, U32 hull_points_size, V3* aabb_ce
   return ConvexHull3IntersectConvexHull3(hull_points, hull_points_size, aabb_points, 8, manifold);
 }
 
-static V3 GjkSupport(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size, V3 d) {
-  DEBUG_ASSERT(a_points_size >= 3);
-  DEBUG_ASSERT(b_points_size >= 3);
+B32 ConvexHull3IntersectConvexHull3(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size, IntersectManifold3* manifold) {
+  GjkContext a;
+  GjkParamsConvexHull3 a_params;
+  a_params.points = a_points;
+  a_params.points_size = a_points_size;
+  a.support_fn = GjkSupportConvexHull3;
+  a.user_data = &a_params;
 
-  V3* a_max_point     = NULL;
-  F32 a_max_point_dot = F32_MIN;
-  for (U32 i = 0; i < a_points_size; i++) {
-    V3* test     = &a_points[i];
-    F32 test_dot = V3DotV3(test, &d);
-    if (test_dot > a_max_point_dot) {
-      a_max_point     = test;
-      a_max_point_dot = test_dot;
+  GjkContext b;
+  GjkParamsConvexHull3 b_params;
+  b_params.points = b_points;
+  b_params.points_size = b_points_size;
+  b.support_fn = GjkSupportConvexHull3;
+  b.user_data = &b_params;
+
+  return GjkIntersection3(&a, &b, manifold);
+}
+
+B32 ConvexHull3IntersectSphere3(V3* hull_points, U32 hull_points_size, V3* sphere_center, F32 sphere_radius, IntersectManifold3* manifold) {
+  GjkContext a;
+  GjkParamsConvexHull3 a_params;
+  a_params.points = hull_points;
+  a_params.points_size = hull_points_size;
+  a.support_fn = GjkSupportConvexHull3;
+  a.user_data = &a_params;
+
+  GjkContext b;
+  GjkParamsSphere3 b_params;
+  b_params.center = sphere_center;
+  b_params.radius = sphere_radius;
+  b.support_fn = GjkSupportSphere3;
+  b.user_data = &b_params;
+
+  return GjkIntersection3(&a, &b, manifold);
+}
+
+V3 GjkSupportConvexHull3(void* user_data, V3* search_dir) {
+  GjkParamsConvexHull3* params = (GjkParamsConvexHull3*) user_data;
+  V3* max_point = NULL;
+  F32 max_point_dot = F32_MIN;
+  for (U32 i = 0; i < params->points_size; i++) {
+    V3* test     = &params->points[i];
+    F32 test_dot = V3DotV3(test, search_dir);
+    if (test_dot > max_point_dot) {
+      max_point     = test;
+      max_point_dot = test_dot;
     }
   }
+  return *max_point;
+}
 
-  V3* b_min_point     = NULL;
-  F32 b_min_point_dot = F32_MAX;
-  for (U32 i = 0; i < b_points_size; i++) {
-    V3* test     = &b_points[i];
-    F32 test_dot = V3DotV3(test, &d);
-    if (test_dot < b_min_point_dot) {
-      b_min_point     = test;
-      b_min_point_dot = test_dot;
-    }
-  }
-
+V3 GjkSupportSphere3(void* user_data, V3* search_dir) {
+  DEBUG_ASSERT(V3LengthSq(search_dir) > 0);
+  GjkParamsSphere3* params = (GjkParamsSphere3*) user_data;
   V3 result;
-  V3SubV3(&result, a_max_point, b_min_point);
+  V3Normalize(&result, search_dir);
+  V3MultF32(&result, &result, params->radius);
+  V3AddV3(&result, &result, params->center);
   return result;
 }
 
-// https://en.wikipedia.org/wiki/Gilbert%E2%80%93Johnson%E2%80%93Keerthi_distance_algorithm
-// https://blog.hamaluik.ca/posts/building-a-collision-engine-part-3-3d-gjk-collision-detection/
-// https://dyn4j.org/2010/05/epa-expanding-polytope-algorithm/
-B32 ConvexHull3IntersectConvexHull3(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size, IntersectManifold3* manifold) {
-  DEBUG_ASSERT(a_points_size >= 3);
-  DEBUG_ASSERT(b_points_size >= 3);
+static B32 EpaPolytopeAddFace(Arena* arena, EpaPolytope* polytope, V3 p0, V3 p1, V3 p2) {
+  // NOTE: cache information like the normal and distance since we check it regularly for EPA.
+  EpaPolytopeFace face;
+  face.points[0] = p0;
+  face.points[1] = p1;
+  face.points[2] = p2;
 
-  // NOTE: determine intersection using GJK
-  V3  simplex_points[4];
-  U32 simplex_points_size = 0;
-  MEMORY_ZERO_STATIC_ARRAY(simplex_points);
-  V3 dir = V3_X_POS;
-  simplex_points[simplex_points_size++] = GjkSupport(a_points, a_points_size, b_points, b_points_size, dir);
-  V3MultF32(&dir, &dir, -1);
-  while (true) {
-    V3 test = GjkSupport(a_points, a_points_size, b_points, b_points_size, dir);
-    if (V3DotV3(&test, &dir) < 0) { return false; }
-    simplex_points[simplex_points_size++] = test;
-
-    switch (simplex_points_size) {
-      case 2: {
-        // NOTE: next direction should be from line to origin
-        V3 ba, oa, cross;
-        V3SubV3(&ba, &simplex_points[1], &simplex_points[0]);
-        V3MultF32(&oa, &simplex_points[0], -1);
-        V3CrossV3(&cross, &ba, &oa);
-        V3CrossV3(&dir, &cross, &dir);
-      } break;
-      case 3: {
-        // NOTE: next direction should be triangle normal
-        V3 ba, ca, oa;
-        V3SubV3(&ba, &simplex_points[1], &simplex_points[0]);
-        V3SubV3(&ca, &simplex_points[2], &simplex_points[0]);
-        V3CrossV3(&dir, &ca, &ba);
-        V3MultF32(&oa, &simplex_points[0], -1);
-        if (V3DotV3(&dir, &oa) < 0) { V3MultF32(&dir, &dir, -1); }
-      } break;
-      case 4: {
-        // NOTE: determine if any polyhedra face normal excludes the origin,
-        // use it to iterate / find the next direction to travel. if all include
-        // origin, then we've found an intersection.
-        V3 da, db, dc, od;
-        V3SubV3(&da, &simplex_points[3], &simplex_points[0]);
-        V3SubV3(&db, &simplex_points[3], &simplex_points[1]);
-        V3SubV3(&dc, &simplex_points[3], &simplex_points[2]);
-        V3MultF32(&od, &simplex_points[3], -1);
-
-        V3 abd_norm, bcd_norm, cad_norm;
-        V3CrossV3(&abd_norm, &da, &db);
-        V3CrossV3(&bcd_norm, &db, &dc);
-        V3CrossV3(&cad_norm, &dc, &da);
-
-        if (V3DotV3(&abd_norm, &od) > 0) {
-          DA_SWAP_REMOVE_EX(simplex_points, simplex_points_size, 2);
-          dir = abd_norm;
-        } else if (V3DotV3(&bcd_norm, &od) > 0) {
-          DA_SWAP_REMOVE_EX(simplex_points, simplex_points_size, 0);
-          dir = bcd_norm;
-        } else if (V3DotV3(&cad_norm, &od) > 0) {
-          DA_SWAP_REMOVE_EX(simplex_points, simplex_points_size, 1);
-          dir = cad_norm;
-        } else {
-          goto gjk_found_intersection;
-        }
-      } break;
-      default: UNREACHABLE();
+  // NOTE: e.g. degenerate / line / duplicate points
+  // if (!Tri3GetNormal(face.points, &face.normal)) { return false; }
+  if (!Tri3GetNormal(face.points, &face.normal)) {
+    face.distance = 0;
+    face.normal = V3_ZEROES;
+  } else {
+    face.distance = V3DotV3(&face.normal, &face.points[0]);
+    if (face.distance < 0) {
+      face.distance *= -1;
+      V3Negate(&face.normal, &face.normal);
     }
   }
-gjk_found_intersection:
-  // NOTE: determine manifold penetration and normal using EPA
+
+  DA_PUSH_BACK(arena, polytope, face);
+  return true;
+}
+
+static void EpaHorizonAddLine(Arena* arena, EpaHorizon* horizon, V3 p0, V3 p1) {
+  // NOTE: for the horizon, we only want to keep track of edges which join a triangle with a normal that faces the new point with one that does not.
+  // this is tracked through a count on each edge. edges meet this criteria if they are only observed a single time. others join 2 triangles that
+  // face the new point. then, when creating the superset / union polytope, we only consider an edge with a count == 1, as we know this criteria is met.
+  // e.g.
+  //
+  //    b------c
+  //   / \   /
+  //  /   \ /
+  // a-----d
+  //
+  // imagine some support point e that extends in Z+ from the line bd. we want to keep lines ad, dc, cb, ba, and remove the line bd.
+  // when adding points to this data structure, bd will be counted twice when we add tris adb and bdc.
+
+  for (U32 i = 0; i < horizon->size; i++) {
+    EpaHorizonLine* test = &horizon->data[i];
+    if ((V3Eq(&test->points[0], &p0) && V3Eq(&test->points[1], &p1)) ||
+        (V3Eq(&test->points[1], &p0) && V3Eq(&test->points[0], &p1))) {
+      test->count += 1;
+      return;
+    }
+  }
+
+  EpaHorizonLine line;
+  line.points[0] = p0;
+  line.points[1] = p1;
+  line.count = 1;
+  DA_PUSH_BACK(arena, horizon, line);
+}
+
+static void GjkSimplexAddPoint(V3 simplex_points[4], U32* simplex_points_size, V3 point) {
+  DEBUG_ASSERT(*simplex_points_size < 4);
+  // NOTE: simplex points are ordered (first -> last) from newest to oldest.
+  for (U32 i = *simplex_points_size; i > 0; i--) { simplex_points[i] = simplex_points[i - 1]; }
+  simplex_points[0] = point;
+  *simplex_points_size += 1;
+}
+
+static B32 GjkSimplexIterLine(V3* simplex_points, U32* simplex_points_size, V3* search_dir) {
+  DEBUG_ASSERT(*simplex_points_size == 2);
+  V3 a = simplex_points[0];
+  V3 b = simplex_points[1];
+
+  V3 ab, ao;
+  V3SubV3(&ab, &b, &a);
+  V3Negate(&ao, &a);
+
+  if (V3DotV3(&ab, &ao) > 0) {
+    // NOTE: origin projects onto the line ab
+    V3CrossV3(search_dir, &ab, &ao);
+    V3CrossV3(search_dir, search_dir, &ab);
+    return false;
+
+  } else {
+    // NOTE: origin does not project onto the line, search towards newly added point.
+    simplex_points[0] = a;
+    *simplex_points_size = 1;
+    *search_dir = ao;
+    return false;
+  }
+}
+
+static B32 GjkSimplexIterTriangle(V3* simplex_points, U32* simplex_points_size, V3* search_dir) {
+  DEBUG_ASSERT(*simplex_points_size == 3);
+  V3 a = simplex_points[0];
+  V3 b = simplex_points[1];
+  V3 c = simplex_points[2];
+
+  V3 ab, ac, ao, abc;
+  V3SubV3(&ab, &b, &a);
+  V3SubV3(&ac, &c, &a);
+  V3Negate(&ao, &a);
+  V3CrossV3(&abc, &ab, &ac);
+
+  V3 abc_cross_ac, ab_cross_abc;
+  V3CrossV3(&abc_cross_ac, &abc, &ac);
+  V3CrossV3(&ab_cross_abc, &ab, &abc);
+
+  if (V3DotV3(&abc_cross_ac, &ao) > 0) {
+    if (V3DotV3(&ac, &ao) > 0) {
+      // NOTE: origin is closest to ac
+      simplex_points[0] = a;
+      simplex_points[1] = c;
+      *simplex_points_size = 2;
+      V3CrossV3(search_dir, &ac, &ao);
+      V3CrossV3(search_dir, search_dir, &ac);
+      return false;
+
+    } else {
+      // NOTE: origin is closest to ab or a
+      simplex_points[0] = a;
+      simplex_points[1] = b;
+      *simplex_points_size = 2;
+      return GjkSimplexIterLine(simplex_points, simplex_points_size, search_dir);
+
+    }
+  } else if (V3DotV3(&ab_cross_abc, &ao) > 0) {
+    // NOTE: origin is closest to ab or a
+    simplex_points[0] = a;
+    simplex_points[1] = b;
+    *simplex_points_size = 2;
+    return GjkSimplexIterLine(simplex_points, simplex_points_size, search_dir);
+
+  } else if (V3DotV3(&abc, &ao) > 0) {
+    // NOTE: origin is closest to triangle abc
+    *search_dir = abc;
+    return false;
+
+  } else {
+    // NOTE: origin is closest to triange acb
+    simplex_points[0] = a;
+    simplex_points[1] = c;
+    simplex_points[2] = b;
+    *simplex_points_size = 3;
+    V3Negate(search_dir, &abc);
+    return false;
+  }
+}
+
+static B32 GjkSimplexIterTetrahedron(V3* simplex_points, U32* simplex_points_size, V3* search_dir) {
+  DEBUG_ASSERT(*simplex_points_size == 4);
+  V3 a = simplex_points[0];
+  V3 b = simplex_points[1];
+  V3 c = simplex_points[2];
+  V3 d = simplex_points[3];
+
+  V3 ab, ac, ad, ao;
+  V3SubV3(&ab, &b, &a);
+  V3SubV3(&ac, &c, &a);
+  V3SubV3(&ad, &d, &a);
+  V3Negate(&ao, &a);
+
+  V3 abc, acd, adb;
+  V3CrossV3(&abc, &ab, &ac);
+  V3CrossV3(&acd, &ac, &ad);
+  V3CrossV3(&adb, &ad, &ab);
+
+  if (V3DotV3(&abc, &ao) > 0) {
+    // NOTE: origin closest to abc
+    simplex_points[0] = a;
+    simplex_points[1] = b;
+    simplex_points[2] = c;
+    *simplex_points_size = 3;
+    return GjkSimplexIterTriangle(simplex_points, simplex_points_size, search_dir);
+
+  } else if (V3DotV3(&acd, &ao) > 0) {
+    // NOTE: origin closest to acd
+    simplex_points[0] = a;
+    simplex_points[1] = c;
+    simplex_points[2] = d;
+    *simplex_points_size = 3;
+    return GjkSimplexIterTriangle(simplex_points, simplex_points_size, search_dir);
+
+  } else if (V3DotV3(&adb, &ao) > 0) {
+    // NOTE: origin closest to adb
+    simplex_points[0] = a;
+    simplex_points[1] = d;
+    simplex_points[2] = b;
+    *simplex_points_size = 3;
+    return GjkSimplexIterTriangle(simplex_points, simplex_points_size, search_dir);
+
+  } else {
+    // NOTE: origin is fully enclosed in the tetrahedron
+    return true;
+  }
+}
+
+static V3 GjkSupport(GjkContext* a, GjkContext* b, V3* search_dir) {
+  V3 search_dir_inv, result;
+  V3Negate(&search_dir_inv, search_dir);
+  V3 a_max_point = a->support_fn(a->user_data, search_dir);
+  V3 b_min_point = b->support_fn(b->user_data, &search_dir_inv);
+  V3SubV3(&result, &a_max_point, &b_min_point);
+  return result;
+}
+
+// https://winter.dev/articles/gjk-algorithm
+// https://winter.dev/articles/epa-algorithm
+// https://github.com/kujukuju/KodaPhysics/
+// https://github.com/Another-Ghost/3D-Collision-Detection-and-Resolution-Using-GJK-and-EPA/blob/master/CSC8503/CSC8503Common/GJK.cpp
+#define GJK_MAX_ITERATIONS 64
+#define EPA_MAX_ITERATIONS 64
+B32 GjkIntersection3(GjkContext* a, GjkContext* b, IntersectManifold3* manifold) {
+  // NOTE: determine intersection using GJK
+  B32 gjk_success = false;
+  V3  simplex_points[4];
+  MEMORY_ZERO_STATIC_ARRAY(simplex_points);
+  U32 simplex_points_size = 0;
+
+  V3 search_dir = V3_Y_POS;
+  V3 support = GjkSupport(a, b, &search_dir);
+  GjkSimplexAddPoint((V3*) simplex_points, &simplex_points_size, support);
+  V3Negate(&search_dir, &search_dir);
+
+  // NOTE: GJK works by building a simplex (tetrahedron) surrounding the origin (perspective of the minkowski difference), which is only
+  // possible when the two shapes are intersecting. so, we iteratively add vertices to this tetrahedron based on the "support" fn, which
+  // finds extreme vertices along a given search direction. the search direction is also updated each iteration to look towards the origin
+  // from the perspective of the most recently added vertex.
+  for (U32 iter = 0; iter < GJK_MAX_ITERATIONS; iter++) {
+    support = GjkSupport(a, b, &search_dir);
+    if (V3DotV3(&support, &search_dir) < 0) {
+      // NOTE: no intersection.
+      goto gjk_exit;
+    }
+    GjkSimplexAddPoint((V3*) simplex_points, &simplex_points_size, support);
+
+    B32 contains_origin = false;
+    switch (simplex_points_size) {
+      case 2:  { contains_origin = GjkSimplexIterLine(simplex_points, &simplex_points_size, &search_dir);        } break;
+      case 3:  { contains_origin = GjkSimplexIterTriangle(simplex_points, &simplex_points_size, &search_dir);    } break;
+      case 4:  { contains_origin = GjkSimplexIterTetrahedron(simplex_points, &simplex_points_size, &search_dir); } break;
+      default: { UNREACHABLE(); } break;
+    }
+
+    if (contains_origin) {
+      gjk_success = true;
+      goto gjk_exit;
+    }
+  }
+
+gjk_exit:
+  if (!gjk_success) { return false; }
   if (manifold == NULL) { return true; }
   DEBUG_ASSERT(simplex_points_size == 4);
-  manifold->normal      = V3_Z_POS;
-  manifold->penetration = 0;
 
-  Arena* temp_arena        = ArenaAllocate();
-  V3* epa_simplex          = NULL;
-  U32 epa_simplex_size     = 0;
-  U32 epa_simplex_capacity = 0;
-  DA_COPY_EX(temp_arena, simplex_points, simplex_points_size, 4, epa_simplex, epa_simplex_size, epa_simplex_capacity);
+  // NOTE: determine manifold penetration and normal using EPA
+  Arena* horizon_arena = ArenaAllocate();
+  EpaHorizon horizon;
+  MEMORY_ZERO_STRUCT(&horizon);
 
-  // TODO: proper 3D EPA finds distance using faces, not edges... this goes into inf loop sometimes...
-  while (true) {
-    // NOTE: find closest edge in simplex to origin
-    V3  closest_norm;
-    U32 closest_idx  = 0;
-    F32 closest_dist = F32_MAX;
-    for (U32 i = 0; i < epa_simplex_size; i++) {
-      U32 j = (i + 1) % epa_simplex_size;
-      V3* a = &epa_simplex[i];
-      V3* b = &epa_simplex[j];
+  // NOTE: convert from GJK simplex to EPA polytope. this can technically fail if the simplex is ill-formed, but that shouldn't be possible given well-formed inputs.
+  // TODO: this likely fails when passing flat shapes in? should investigate further.
+  Arena* polytope_arena = ArenaAllocate();
+  EpaPolytope polytope;
+  MEMORY_ZERO_STRUCT(&polytope);
+  DEBUG_ASSERT(EpaPolytopeAddFace(polytope_arena, &polytope, simplex_points[0], simplex_points[1], simplex_points[2]));
+  DEBUG_ASSERT(EpaPolytopeAddFace(polytope_arena, &polytope, simplex_points[0], simplex_points[3], simplex_points[1]));
+  DEBUG_ASSERT(EpaPolytopeAddFace(polytope_arena, &polytope, simplex_points[0], simplex_points[2], simplex_points[3]));
+  DEBUG_ASSERT(EpaPolytopeAddFace(polytope_arena, &polytope, simplex_points[1], simplex_points[3], simplex_points[2]));
 
-      V3 edge, cross, edge_origin;
-      V3SubV3(&edge, b, a);
-      V3CrossV3(&cross, &edge, a);
-      V3CrossV3(&edge_origin, &cross, &edge);
+  // NOTE: EPA works by iteratively expanding the GJK simplex in a polytope to find the closest face of the minkowski difference to the origin.
+  // we do this by finding the current face that is closest to the origin and attempting to expand it further into the minkowski difference hull.
+  // once we've found a side that can't be expanded any further, we've found the target face.
+  search_dir = V3_ZEROES;
+  F32 min_distance = 0;
+  for (U32 iter = 0; iter < EPA_MAX_ITERATIONS; iter++) {
+    // NOTE: find current closest face to origin.
+    EpaPolytopeFace* closest_face = &polytope.data[0];
+    for (U32 i = 1; i < polytope.size; i++) {
+      EpaPolytopeFace* test = &polytope.data[i];
+      if (test->distance < closest_face->distance) { closest_face = test; }
+    }
+    // NOTE: converged on some search direction, may happen when evaluating EPA on a continuous surface like a sphere.
+    // In this case, there's likely some better "true" value, but whatever this is close enough.
+    if (V3Eq(&search_dir, &closest_face->normal)) { goto epa_exit; }
+    search_dir   = closest_face->normal;
+    min_distance = closest_face->distance;
 
-      // NOTE: edge contains origin, e.g. if intersecting along face / edge / corner
-      if (V3LengthSq(&edge_origin) == 0) { goto epa_found_manifold; }
-      V3Normalize(&edge_origin, &edge_origin);
+    support = GjkSupport(a, b, &search_dir);
+    F32 support_distance = V3DotV3(&search_dir, &support);
+    if (support_distance - min_distance < 1e-5f) {
+      // NOTE: success
+      goto epa_exit;
+    }
 
-      F32 dot = V3DotV3(&edge_origin, a);
-      if (dot < closest_dist) {
-        closest_dist = dot;
-        closest_norm = edge_origin;
-        closest_idx  = j;
+    // NOTE: some faces are pointing at new point, meaning there may be a vertex on the face that is inside the new superset polytope.
+    // so, we need to remove these faces / reconstruct the new polytope from the polyline describing their horizon.
+    ArenaClear(horizon_arena);
+    MEMORY_ZERO_STRUCT(&horizon);
+    for (U32 i = 0; i < polytope.size; i++) {
+      EpaPolytopeFace* face = &polytope.data[i];
+      V3 face_to_support;
+      V3SubV3(&face_to_support, &support, &face->points[0]);
+      F32 face_norm_dot_support = V3DotV3(&face->normal, &face_to_support);
+      if (face_norm_dot_support - face->distance < 1e-5f) { continue; }
+
+      EpaHorizonAddLine(horizon_arena, &horizon, face->points[0], face->points[1]);
+      EpaHorizonAddLine(horizon_arena, &horizon, face->points[1], face->points[2]);
+      EpaHorizonAddLine(horizon_arena, &horizon, face->points[2], face->points[0]);
+      DA_SWAP_REMOVE(&polytope, i);
+      i--;
+    }
+
+    // NOTE: reconstruct the polytope -- all points on the horizon connect to the new support point.
+    for (U32 i = 0; i < horizon.size; i++) {
+      EpaHorizonLine* line = &horizon.data[i];
+      // NOTE: if line->count > 1, we saw the line more than once when constructing the horizon. this means the point is not actually on
+      // the horizon, e.g. joining two offending triangles that are enclosed by the horizon. see comment in EpaHorizonLineAdd.
+      if (line->count > 1) { continue; }
+      if (!EpaPolytopeAddFace(polytope_arena, &polytope, line->points[0], line->points[1], support)) {
+        // NOTE: degenerate face detected
+        LOG_WARN("[GEOMETRY] EPA found degenerate face. TODO fix?");
+        goto epa_exit;
       }
     }
-
-    V3  test = GjkSupport(a_points, a_points_size, b_points, b_points_size, closest_norm);
-    F32 dist = V3DotV3(&test, &closest_norm);
-    if (F32ApproxEq(dist, closest_dist)) {
-      manifold->normal      = closest_norm;
-      manifold->penetration = dist;
-      goto epa_found_manifold;
-    }
-    DA_INSERT_EX(temp_arena, epa_simplex, epa_simplex_size, epa_simplex_capacity, test, closest_idx);
   }
-epa_found_manifold:
-  ArenaRelease(temp_arena);
+
+epa_exit:
+  ArenaRelease(polytope_arena);
+  ArenaRelease(horizon_arena);
+
+  // NOTE: EPA can fail in certain cases, e.g. when one object is entirely contained inside of the other, or if the support fn is continuous.
+  // In these cases, the behavior here is to just use the most recent search dir w/ minimum distance when EPA iterations are exhausted or it converges.
+  // Otherwise, the correct values are populated here when the EPA loop exits.
+  V3Negate(&manifold->normal, &search_dir);
+  manifold->penetration = min_distance;
+
   return true;
 }
 

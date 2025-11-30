@@ -446,32 +446,36 @@ void  MemoryDecommit(void* ptr, U64 size);
 #endif
 
 #define DA_RESERVE(arena, list, expected_capacity) \
-  DA_RESERVE_EX(arena, (list)->data, (list)->capacity, expected_capacity);
+  DA_RESERVE_EX(arena, (list)->data, (list)->capacity, expected_capacity)
 #define DA_PUSH_BACK(arena, list, item) \
-  DA_PUSH_BACK_EX(arena, (list)->data, (list)->size, (list)->capacity, item);
+  DA_PUSH_BACK_EX(arena, (list)->data, (list)->size, (list)->capacity, item)
+#define DA_PUSH_FRONT(arena, list, item) \
+  DA_PUSH_FRONT_EX(arena, (list)->data, (list)->size, (list->capacity, item)
 #define DA_POP_BACK(list) \
-  DA_POP_BACK_EX((list)->size);
+  DA_POP_BACK_EX((list)->size)
 #define DA_INSERT(arena, list, item, idx) \
-  DA_INSERT_EX(arena, (list)->data, (list)->size, (list)->capacity, item, idx);
+  DA_INSERT_EX(arena, (list)->data, (list)->size, (list)->capacity, item, idx)
 #define DA_SWAP_REMOVE(list, idx) \
-  DA_SWAP_REMOVE_EX((list)->data, (list)->size, idx);
+  DA_SWAP_REMOVE_EX((list)->data, (list)->size, idx)
 #define DA_SHIFT_REMOVE(list, idx) \
-  DA_SHIFT_REMOVE_EX((list)->data, (list)->size, idx);
+  DA_SHIFT_REMOVE_EX((list)->data, (list)->size, idx)
 #define DA_COPY(arena, src, dest) \
   DA_COPY_EX(arena, (src)->data, (src)->size, (src)->capacity, (dest)->data, (dest)->size, (dest)->capacity)
 
-#define DA_RESERVE_EX(arena, data, capacity, expected_capacity)  \
-  if ((capacity) == 0) {                                         \
-    capacity = DA_INITIAL_CAPACITY;                              \
-    (data) = _ArenaPush(arena, sizeof(*(data)) * (capacity), 1); \
+#define DA_RESERVE_EX(arena, data, capacity, expected_capacity)           \
+  if ((capacity) == 0) {                                                  \
+    capacity = DA_INITIAL_CAPACITY;                                       \
+    (data) = _ArenaPush((Arena*) arena, sizeof(*(data)) * (capacity), 1); \
   }                                                              \
   while ((capacity) < (expected_capacity)) {                     \
-    _ArenaPush(arena, sizeof(*(data)) * (capacity), 1);          \
+    _ArenaPush((Arena*) arena, sizeof(*(data)) * (capacity), 1); \
     capacity *= 2;                                               \
   }
 #define DA_PUSH_BACK_EX(arena, data, size, capacity, item) \
   DA_RESERVE_EX(arena, data, capacity, (size) + 1);        \
   (data)[(size)++] = item;
+#define DA_PUSH_FRONT_EX(arena, data, size, capacity, item) \
+  DA_INSERT_EX(arena, data, size, capacity, item, 0)
 #define DA_POP_BACK_EX(size) \
   DEBUG_ASSERT((size) > 0);  \
   (size)--;

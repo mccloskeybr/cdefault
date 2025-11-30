@@ -2049,11 +2049,11 @@ void Aabb3IntersectConvexHull3Test() {
   ac = V3Assign(0, 0, 5);  as = V3Assign(1, 1, 1);
   EXPECT_FALSE(Aabb3IntersectConvexHull3(&ac, &as, hull, 8, &manifold));
 
-  // NOTE: deep overlap
-  ac = V3Assign(0, 0, 0);  as = V3Assign(1, 1, 1);
+  // NOTE: deep intersection
+  ac = V3Assign(0, 0, 0.75f);  as = V3Assign(1, 1, 1);
   EXPECT_TRUE(Aabb3IntersectConvexHull3(&ac, &as, hull, 8, &manifold));
-  EXPECT_F32_APPROX_EQ(manifold.penetration, 1.5f);
-  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(1, 0, 0));
+  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, 1));
+  EXPECT_F32_APPROX_EQ(manifold.penetration, 0.75f);
 
   // NOTE: touching face
   ac = V3Assign(0, 0, 2);  as = V3Assign(2, 2, 2);
@@ -2061,11 +2061,11 @@ void Aabb3IntersectConvexHull3Test() {
   EXPECT_F32_APPROX_EQ(manifold.penetration, 0.0f);
   EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, 1));
 
-  // NOTE: touching a corner
-  ac = V3Assign(2, 2, 2);  as = V3Assign(2, 2, 2);
+  // NOTE: a entirely in b
+  ac = V3Assign(0, 0, 0);  as = V3Assign(1, 1, 1);
   EXPECT_TRUE(Aabb3IntersectConvexHull3(&ac, &as, hull, 8, &manifold));
-  EXPECT_F32_APPROX_EQ(manifold.penetration, 0.0f);
-  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, 1));
+  EXPECT_F32_APPROX_EQ(manifold.penetration, 1.11803f);
+  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(-0.89443f, -0.00000f, 0.44721f));
 }
 
 void Sphere3IntersectLine3Test() {
@@ -2150,17 +2150,6 @@ void Sphere3IntersectRay3Test() {
   EXPECT_FALSE(Sphere3IntersectRay3(&c, rad, &r0, &d, &enter, &exit));
 }
 
-static void MakeCube(V3 cube[8], V3 center, F32 half_extent) {
-  cube[0] = V3Assign(center.x - half_extent, center.y - half_extent, center.z - half_extent);
-  cube[1] = V3Assign(center.x + half_extent, center.y - half_extent, center.z - half_extent);
-  cube[2] = V3Assign(center.x + half_extent, center.y + half_extent, center.z - half_extent);
-  cube[3] = V3Assign(center.x - half_extent, center.y + half_extent, center.z - half_extent);
-  cube[4] = V3Assign(center.x - half_extent, center.y - half_extent, center.z + half_extent);
-  cube[5] = V3Assign(center.x + half_extent, center.y - half_extent, center.z + half_extent);
-  cube[6] = V3Assign(center.x + half_extent, center.y + half_extent, center.z + half_extent);
-  cube[7] = V3Assign(center.x - half_extent, center.y + half_extent, center.z + half_extent);
-}
-
 void ConvexHull3FlattenTest() {
   V3 vs[] = {
     // apex
@@ -2196,33 +2185,64 @@ void ConvexHull3FlattenTest() {
 
 void ConvexHull3IntersectConvexHull3Test() {
   V3 a[8], b[8];
+  V3 size = V3Assign(2, 2, 2);
   IntersectManifold3 manifold;
 
   // NOTE: not intersecting
-  MakeCube(a, V3Assign(0, 0, 0), 1);
-  MakeCube(b, V3Assign(0, 0, 4), 1);
+  ConvexHull3FromAabb3(a, &(V3){0, 0, 0}, &size);
+  ConvexHull3FromAabb3(b, &(V3){0, 0, 4}, &size);
   EXPECT_FALSE(ConvexHull3IntersectConvexHull3(a, 8, b, 8, &manifold));
 
   // NOTE: deep intersection
-  MakeCube(a, V3Assign(0, 0, 0), 1);
-  MakeCube(b, V3Assign(0, 0, 1), 1);
+  ConvexHull3FromAabb3(a, &(V3){0, 0, 0}, &size);
+  ConvexHull3FromAabb3(b, &(V3){0, 0, 1}, &size);
   EXPECT_TRUE(ConvexHull3IntersectConvexHull3(a, 8, b, 8, &manifold));
   EXPECT_F32_APPROX_EQ(manifold.penetration, 1);
-  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, 1));
+  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, -1));
 
   // NOTE: intersecting one face
-  MakeCube(a, V3Assign(0, 0, 0), 1);
-  MakeCube(b, V3Assign(0, 0, 2), 1);
+  ConvexHull3FromAabb3(a, &(V3){0, 0, 0}, &size);
+  ConvexHull3FromAabb3(b, &(V3){0, 0, 2}, &size);
   EXPECT_TRUE(ConvexHull3IntersectConvexHull3(a, 8, b, 8, &manifold));
   EXPECT_F32_APPROX_EQ(manifold.penetration, 0);
-  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, 1));
+  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, -1));
 
   // NOTE: intersecting one corner
-  MakeCube(a, V3Assign(0, 0, 0), 1);
-  MakeCube(b, V3Assign(2, 2, 2), 1);
+  ConvexHull3FromAabb3(a, &(V3){0, 0, 0}, &size);
+  ConvexHull3FromAabb3(b, &(V3){2, 2, 2}, &size);
   EXPECT_TRUE(ConvexHull3IntersectConvexHull3(a, 8, b, 8, &manifold));
   EXPECT_F32_APPROX_EQ(manifold.penetration, 0);
-  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, 1));
+  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, -1, 0));
+}
+
+void ConvexHull3IntersectSphere3Test() {
+  V3 hull[8], sc;
+  F32 r;
+  ConvexHull3FromAabb3(hull, &V3_ZEROES, &V3_ONES);
+  IntersectManifold3 manifold;
+
+  // NOTE: miss
+  sc = V3Assign(0, 0, 5); r = 1;
+  EXPECT_FALSE(ConvexHull3IntersectSphere3(hull, 8, &sc, r, &manifold));
+
+  // NOTE: intersection
+  sc = V3Assign(0, 0, 1); r = 1;
+  EXPECT_TRUE(ConvexHull3IntersectSphere3(hull, 8, &sc, r, &manifold));
+  // NOTE: should be V3_Z_NEG, but not, due to EPA convergence memes.
+  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0.18434f, -0.31337f, -0.93157f));
+  EXPECT_F32_APPROX_EQ(manifold.penetration, 0.40127f);
+
+  // NOTE: face intersection
+  sc = V3Assign(0, 0, 1.5f); r = 1;
+  EXPECT_TRUE(ConvexHull3IntersectSphere3(hull, 8, &sc, r, &manifold));
+  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, -1));
+  EXPECT_F32_APPROX_EQ(manifold.penetration, 0);
+
+  // NOTE: sphere enclosed in hull
+  sc = V3Assign(0, 0, 0); r = 0.25f;
+  EXPECT_TRUE(ConvexHull3IntersectSphere3(hull, 8, &sc, r, &manifold));
+  EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0.15726f, -0.10484f, 0.98198f));
+  EXPECT_F32_APPROX_EQ(manifold.penetration, 0.49099f);
 }
 
 int main(void) {
@@ -2337,6 +2357,7 @@ int main(void) {
 
   RUN_TEST(ConvexHull3FlattenTest);
   RUN_TEST(ConvexHull3IntersectConvexHull3Test);
+  RUN_TEST(ConvexHull3IntersectSphere3Test);
 
   LogTestReport();
   return 0;

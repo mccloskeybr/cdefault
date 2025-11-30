@@ -117,6 +117,7 @@ F32 V2LengthSq(V2* x);
 F32 V2Length(V2* x);
 V2* V2Abs(V2* dest, V2* src);
 V2* V2Normalize(V2* dest, V2* src);
+V2* V2Negate(V2* dest, V2* src);
 F32 V2MinValue(V2* x);
 F32 V2MaxValue(V2* x);
 V2* V2Project(V2* dest, V2* x, V2* y);
@@ -162,6 +163,7 @@ F32 V3LengthSq(V3* x);
 F32 V3Length(V3* x);
 V3* V3Abs(V3* dest, V3* src);
 V3* V3Normalize(V3* dest, V3* src);
+V3* V3Negate(V3* dest, V3* src);
 F32 V3MinValue(V3* x);
 F32 V3MaxValue(V3* x);
 B32 V3IsBetween(V3* x, V3* start, V3* end);
@@ -212,7 +214,8 @@ B32 V4Eq(V4* x , V4* y);
 F32 V4LengthSq(V4* x);
 F32 V4Length(V4* x);
 V4* V4Abs(V4* dest, V4* src);
-V4* V4Normalize(V4* dest, V4* x);
+V4* V4Normalize(V4* dest, V4* src);
+V4* V4Negate(V4* dest, V4* src);
 V4* V4Project(V4* dest, V4* x, V4* y);
 V4* V4Clamp(V4* dest, V4* src, F32 min, F32 max);
 V4* V4Lerp(V4* dest, V4* a, V4* b, F32 t);
@@ -429,8 +432,11 @@ V2* V2Abs(V2* dest, V2* src) {
 }
 
 V2* V2Normalize(V2* dest, V2* x) {
-  V2DivF32(dest, x, V2Length(x));
-  return dest;
+  return V2DivF32(dest, x, V2Length(x));
+}
+
+V2* V2Negate(V2* dest, V2* src) {
+  return V2MultF32(dest, src, -1);
 }
 
 F32 V2MinValue(V2* x) {
@@ -449,8 +455,7 @@ V2* V2Clamp(V2* dest, V2* src, F32 min, F32 max) {
 
 V2* V2Project(V2* dest, V2* x, V2* y) {
   F32 ratio = V2DotV2(x, y) / V2DotV2(y, y);
-  V2MultF32(dest, y, ratio);
-  return dest;
+  return V2MultF32(dest, y, ratio);
 }
  
 V2* V2Rotate(V2* dest, V2* src, F32 angle_rad) {
@@ -592,8 +597,11 @@ V3* V3Abs(V3* dest, V3* src) {
 }
 
 V3* V3Normalize(V3* dest, V3* src) {
-  V3DivF32(dest, src, V3Length(src));
-  return dest;
+  return V3DivF32(dest, src, V3Length(src));
+}
+
+V3* V3Negate(V3* dest, V3* src) {
+  return V3MultF32(dest, src, -1);
 }
 
 F32 V3MinValue(V3* x) {
@@ -620,8 +628,7 @@ B32 V3IsBetween(V3* x, V3* start, V3* end) {
 // https://en.wikibooks.org/wiki/Linear_Algebra/Orthogonal_Projection_Onto_a_Line
 V3* V3Project(V3* dest, V3* x, V3* y) {
   F32 ratio = V3DotV3(x, y) / V3DotV3(y, y);
-  V3MultF32(dest, y, ratio);
-  return dest;
+  return V3MultF32(dest, y, ratio);
 }
 
 V3* V3Clamp(V3* dest, V3* src, F32 min, F32 max) {
@@ -813,15 +820,17 @@ V4* V4Abs(V4* dest, V4* src) {
   return dest;
 }
 
-V4* V4Normalize(V4* dest, V4* x) {
-  V4DivF32(dest, x, V4Length(x));
-  return dest;
+V4* V4Normalize(V4* dest, V4* src) {
+  return V4DivF32(dest, src, V4Length(src));
+}
+
+V4* V4Negate(V4* dest, V4* src) {
+  return V4MultF32(dest, src, -1);
 }
 
 V4* V4Project(V4* dest, V4* x, V4* y) {
   F32 ratio = V4DotV4(x, y) / V4DotV4(y, y);
-  V4MultF32(dest, y, ratio);
-  return dest;
+  return V4MultF32(dest, y, ratio);
 }
 
 V4* V4Clamp(V4* dest, V4* src, F32 min, F32 max) {
@@ -867,8 +876,7 @@ V4* V4RotateAroundAxis(V4* dest, V3* axis, F32 angle_rad) {
   dest->y = factor * axis->y;
   dest->z = factor * axis->z;
   dest->w = F32Cos(angle_rad / 2.0f);
-  V4Normalize(dest, dest);
-  return dest;
+  return V4Normalize(dest, dest);
 }
 
 // https://stackoverflow.com/questions/12435671/quaternion-lookat-function
