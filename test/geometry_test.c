@@ -1699,6 +1699,46 @@ void Ray3IntersectRay3Test() {
   EXPECT_V3_APPROX_EQ(intersect, V3Assign(0,0,0));
 }
 
+void Ray3IntersectConvexHull3Test() {
+  V3 ray_start, ray_dir;
+  V3 enter, exit;
+
+  V3  hull_points[8];
+  U32 hull_indices[36];
+  V3  hull_size = V3Assign(2, 2, 2);
+  ConvexHull3FromAabb3(hull_points, hull_indices, &V3_ZEROES, &hull_size);
+
+  // NOTE: ray hits hull front → exit at +x, enter at -x
+  ray_start = V3Assign(-3, 0, 0); ray_dir = V3Assign(1, 0, 0);
+  EXPECT_TRUE(Ray3IntersectConvexHull3(&ray_start, &ray_dir, hull_points, 8, hull_indices, 36, &enter, &exit));
+  EXPECT_V3_APPROX_EQ(enter, V3Assign(-1, 0, 0));
+  EXPECT_V3_APPROX_EQ(exit,  V3Assign( 1, 0, 0));
+
+  // NOTE: ray misses (parallel, offset on Y)
+  ray_start = V3Assign(-3, 3, 0); ray_dir = V3Assign(1, 0, 0);
+  EXPECT_FALSE(Ray3IntersectConvexHull3(&ray_start, &ray_dir, hull_points, 8, hull_indices, 36, NULL, NULL));
+
+  // NOTE: ray pointing away → miss (but hits when t < 0)
+  ray_start = V3Assign(3, 0, 0); ray_dir = V3Assign(1, 0, 0);
+  EXPECT_FALSE(Ray3IntersectConvexHull3(&ray_start, &ray_dir, hull_points, 8, hull_indices, 36, NULL, NULL));
+
+  // NOTE: ray starts inside hull
+  ray_start = V3Assign(0, 0, 0); ray_dir = V3Assign(0, 1, 0);
+  EXPECT_TRUE(Ray3IntersectConvexHull3(&ray_start, &ray_dir, hull_points, 8, hull_indices, 36, &enter, &exit));
+  EXPECT_V3_APPROX_EQ(enter, V3Assign(0, 1, 0));
+  EXPECT_V3_APPROX_EQ(exit,  V3Assign(0, 1, 0));
+
+  // NOTE: ray grazes face
+  ray_start = V3Assign(-3, 1, -1); ray_dir = V3Assign(1, 0, 0);
+  EXPECT_TRUE(Ray3IntersectConvexHull3(&ray_start, &ray_dir, hull_points, 8, hull_indices, 36, &enter, &exit));
+  EXPECT_V3_APPROX_EQ(enter, V3Assign(-1, 1, -1));
+  EXPECT_V3_APPROX_EQ(exit,  V3Assign(1, 1, -1));
+
+  // NOTE: ray intersects infinite planes but misses actual hull region
+  ray_start = V3Assign(0, 0, 3); ray_dir = V3Assign(0, 0, 1);
+  EXPECT_FALSE(Ray3IntersectConvexHull3(&ray_start, &ray_dir, hull_points, 8, hull_indices, 36, NULL, NULL));
+}
+
 void Line3ContainsPointTest() {
   V3 start, end, point;
   start = V3Assign(0, 0, 0); end = V3Assign(10, 0, 0);
@@ -2035,6 +2075,25 @@ void Aabb3IntersectAabb3Test() {
   EXPECT_V3_APPROX_EQ(m.normal, V3Assign(1,0,0));
 }
 
+void Aabb3IntersectSphere3Test() {
+  V3 rc, rs, sc;
+  F32 sr;
+  IntersectManifold3 m;
+
+  // NOTE: miss
+  rc = V3Assign(0, 0, 0); rs = V3Assign(2, 2, 2);
+  sc = V3Assign(0, 0, 5); sr = 1;
+  EXPECT_FALSE(Aabb3IntersectSphere3(&rc, &rs, &sc, sr, &m));
+
+  // NOTE: hit
+  rc = V3Assign(0, 0, 0); rs = V3Assign(2, 2, 2);
+  sc = V3Assign(0, 0, 1); sr = 1;
+  EXPECT_TRUE(Aabb3IntersectSphere3(&rc, &rs, &sc, sr, &m));
+  // NOTE: not V3_Z_NEG because of EPA imprecision.
+  EXPECT_V3_APPROX_EQ(m.normal, V3Assign(-0.22239f, 0.10352f, -0.96945f));
+  EXPECT_F32_APPROX_EQ(m.penetration, 0.85058f);
+}
+
 void Aabb3IntersectConvexHull3Test() {
   V3 ac, as;
   V3 hull[8];
@@ -2183,33 +2242,56 @@ void ConvexHull3FlattenTest() {
   ArenaRelease(arena);
 }
 
+void ConvexHull3ContainsPointTest() {
+  V3  hull_points[8], point;
+  U32 hull_indices[36];
+  V3 hull_size = V3Assign(2, 2, 2);
+  ConvexHull3FromAabb3(hull_points, hull_indices, &(V3){0, 0, 0}, &hull_size);
+
+  // NOTE: contains point
+  point = V3Assign(0, 0, 0);
+  EXPECT_TRUE(ConvexHull3ContainsPoint(hull_points, 8, hull_indices, 36, &point));
+
+  // NOTE: point on face
+  point = V3Assign(1, 0, 0);
+  EXPECT_TRUE(ConvexHull3ContainsPoint(hull_points, 8, hull_indices, 36, &point));
+
+  // NOTE: point on corner
+  point = V3Assign(1, 1, 1);
+  EXPECT_TRUE(ConvexHull3ContainsPoint(hull_points, 8, hull_indices, 36, &point));
+
+  // NOTE: does not contain point
+  point = V3Assign(100, 0, 0);
+  EXPECT_FALSE(ConvexHull3ContainsPoint(hull_points, 8, hull_indices, 36, &point));
+}
+
 void ConvexHull3IntersectConvexHull3Test() {
   V3 a[8], b[8];
   V3 size = V3Assign(2, 2, 2);
   IntersectManifold3 manifold;
 
   // NOTE: not intersecting
-  ConvexHull3FromAabb3(a, &(V3){0, 0, 0}, &size);
-  ConvexHull3FromAabb3(b, &(V3){0, 0, 4}, &size);
+  ConvexHull3FromAabb3(a, NULL, &(V3){0, 0, 0}, &size);
+  ConvexHull3FromAabb3(b, NULL, &(V3){0, 0, 4}, &size);
   EXPECT_FALSE(ConvexHull3IntersectConvexHull3(a, 8, b, 8, &manifold));
 
   // NOTE: deep intersection
-  ConvexHull3FromAabb3(a, &(V3){0, 0, 0}, &size);
-  ConvexHull3FromAabb3(b, &(V3){0, 0, 1}, &size);
+  ConvexHull3FromAabb3(a, NULL, &(V3){0, 0, 0}, &size);
+  ConvexHull3FromAabb3(b, NULL, &(V3){0, 0, 1}, &size);
   EXPECT_TRUE(ConvexHull3IntersectConvexHull3(a, 8, b, 8, &manifold));
   EXPECT_F32_APPROX_EQ(manifold.penetration, 1);
   EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, -1));
 
   // NOTE: intersecting one face
-  ConvexHull3FromAabb3(a, &(V3){0, 0, 0}, &size);
-  ConvexHull3FromAabb3(b, &(V3){0, 0, 2}, &size);
+  ConvexHull3FromAabb3(a, NULL, &(V3){0, 0, 0}, &size);
+  ConvexHull3FromAabb3(b, NULL, &(V3){0, 0, 2}, &size);
   EXPECT_TRUE(ConvexHull3IntersectConvexHull3(a, 8, b, 8, &manifold));
   EXPECT_F32_APPROX_EQ(manifold.penetration, 0);
   EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, -1));
 
   // NOTE: intersecting one corner
-  ConvexHull3FromAabb3(a, &(V3){0, 0, 0}, &size);
-  ConvexHull3FromAabb3(b, &(V3){2, 2, 2}, &size);
+  ConvexHull3FromAabb3(a, NULL, &(V3){0, 0, 0}, &size);
+  ConvexHull3FromAabb3(b, NULL, &(V3){2, 2, 2}, &size);
   EXPECT_TRUE(ConvexHull3IntersectConvexHull3(a, 8, b, 8, &manifold));
   EXPECT_F32_APPROX_EQ(manifold.penetration, 0);
   EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, -1, 0));
@@ -2218,7 +2300,7 @@ void ConvexHull3IntersectConvexHull3Test() {
 void ConvexHull3IntersectSphere3Test() {
   V3 hull[8], sc;
   F32 r;
-  ConvexHull3FromAabb3(hull, &V3_ZEROES, &V3_ONES);
+  ConvexHull3FromAabb3(hull, NULL, &V3_ZEROES, &V3_ONES);
   IntersectManifold3 manifold;
 
   // NOTE: miss
@@ -2338,6 +2420,7 @@ int main(void) {
   RUN_TEST(Ray3ContainsPointTest);
   RUN_TEST(Ray3IntersectLine3Test);
   RUN_TEST(Ray3IntersectRay3Test);
+  RUN_TEST(Ray3IntersectConvexHull3Test);
 
   RUN_TEST(Plane3CreateTest);
   RUN_TEST(Plane3MutateTest);
@@ -2350,12 +2433,14 @@ int main(void) {
   RUN_TEST(ConvexPolygon3IntersectConvexPolygon3Test);
 
   RUN_TEST(Aabb3IntersectAabb3Test);
+  RUN_TEST(Aabb3IntersectSphere3Test);
   RUN_TEST(Aabb3IntersectConvexHull3Test);
 
   RUN_TEST(Sphere3IntersectLine3Test);
   RUN_TEST(Sphere3IntersectRay3Test);
 
   RUN_TEST(ConvexHull3FlattenTest);
+  RUN_TEST(ConvexHull3ContainsPointTest);
   RUN_TEST(ConvexHull3IntersectConvexHull3Test);
   RUN_TEST(ConvexHull3IntersectSphere3Test);
 
