@@ -12,6 +12,7 @@
 #include "cdefault_math.h"
 #include "cdefault_mesh.h"
 #include "cdefault_physics_2d.h"
+#include "cdefault_physics_3d.h"
 #include "cdefault_profile.h"
 #include "cdefault_render.h"
 #include "cdefault_sound.h"
@@ -41,6 +42,8 @@
 #include "cdefault_mesh.h"
 #define CDEFAULT_PHYSICS2_IMPLEMENTATION
 #include "cdefault_physics_2d.h"
+#define CDEFAULT_PHYSICS3_IMPLEMENTATION
+#include "cdefault_physics_3d.h"
 #define CDEFAULT_PROFILE_IMPLEMENTATION
 #include "cdefault_profile.h"
 #define CDEFAULT_RENDER_IMPLEMENTATION

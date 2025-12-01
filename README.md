@@ -15,7 +15,8 @@ NOTE: Windows is explicitly supported. Linux is partially supported. I'll get ar
 *  `cdefault_json.h`       - JSON serializer / deserializer.
 *  `cdefault_math.h`       - Math library, particularly 2/3/4D vectors and 2x2/3x3/4x4 matrices for graphics.
 *  `cdefault_mesh.h`       - Mesh file importer.
-*  `cdefault_physics_2d.h` - Simple and extendible 2D physics API with a basic rigid body resolver.
+*  `cdefault_physics_2d.h` - Simple and extendible 2D physics API with a basic rigid body resolver (translation + rotation).
+*  `cdefault_physics_3d.h` - Simple and extendible 3D physics API with a basic rigid body resolver (translation only).
 *  `cdefault_profile.h`    - Simple profiler.
 *  `cdefault_render.h`     - Unified API for basic 2/3D rendering, focusing on prototypes.
 *  `cdefault_sound.h`      - Audio file importer.

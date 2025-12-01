@@ -163,8 +163,8 @@ struct RigidBody2Internal {
   RigidBody2Internal* next;
 };
 
-typedef struct ResolverEntry ResolverEntry;
-struct ResolverEntry {
+typedef struct Physics2ResolverEntry Physics2ResolverEntry;
+struct Physics2ResolverEntry {
   U32 type_a;
   U32 type_b;
   Arena* collisions_arena;
@@ -172,7 +172,7 @@ struct ResolverEntry {
   U32 collisions_size;
   U32 collisions_capacity;
   Collision2Resolver_Fn* fn;
-  ResolverEntry* next;
+  Physics2ResolverEntry* next;
 };
 
 typedef struct Physics2Context Physics2Context;
@@ -181,17 +181,17 @@ struct Physics2Context {
   F32 rigid_body_penetration_slop;
   F32 rigid_body_iter_pos_correction_pct;
   U32 rigid_body_iterations;
-  Arena*              collider_pool;
-  Collider2Internal*  collider_head;
-  Collider2Internal*  collider_tail;
-  Collider2Internal*  collider_free_list;
-  Arena*              rigid_body_pool;
-  RigidBody2Internal* rigid_body_free_list;
-  RigidBody2Internal* rigid_body_head;
-  RigidBody2Internal* rigid_body_tail;
-  V2                  rigid_body_gravity;
-  Arena*              resolver_pool;
-  ResolverEntry*      resolvers; // TODO: LRU for hot resolvers? or allow priority to be specified?
+  Arena*                 collider_pool;
+  Collider2Internal*     collider_head;
+  Collider2Internal*     collider_tail;
+  Collider2Internal*     collider_free_list;
+  Arena*                 rigid_body_pool;
+  RigidBody2Internal*    rigid_body_free_list;
+  RigidBody2Internal*    rigid_body_head;
+  RigidBody2Internal*    rigid_body_tail;
+  V2                     rigid_body_gravity;
+  Arena*                 resolver_pool;
+  Physics2ResolverEntry* resolvers; // TODO: LRU for hot resolvers? or allow priority to be specified?
 };
 static Physics2Context _cdef_phys_2d_context;
 
@@ -295,7 +295,7 @@ static void RigidBody2CommonInit(RigidBody2* rigid_body) {
 
 static void Physics2RigidBodyUpdate(F32 dt_s) {
   Physics2Context* c = &_cdef_phys_2d_context;
-  for (RigidBody2Internal* rigid_body_internal = c->rigid_body_tail; rigid_body_internal != NULL; rigid_body_internal = rigid_body_internal->next) {
+  for (RigidBody2Internal* rigid_body_internal = c->rigid_body_head; rigid_body_internal != NULL; rigid_body_internal = rigid_body_internal->next) {
     RigidBody2* rigid_body = &rigid_body_internal->rigid_body;
     if (rigid_body->type != RigidBody2Type_Dynamic) { continue; }
 
@@ -490,7 +490,7 @@ void Physics2Init(U32 iterations) {
 
 void Physics2Deinit() {
   Physics2Context* c = &_cdef_phys_2d_context;
-  for (ResolverEntry* resolver = c->resolvers; resolver != NULL; resolver = resolver->next) {
+  for (Physics2ResolverEntry* resolver = c->resolvers; resolver != NULL; resolver = resolver->next) {
     ArenaRelease(resolver->collisions_arena);
   }
   ArenaRelease(c->collider_pool);
@@ -510,7 +510,7 @@ void Physics2Update(F32 dt_s) {
   Physics2RigidBodyUpdate(dt_s);
 
   for (U32 iteration = 0; iteration < c->iterations; iteration++) {
-    for (Collider2Internal* a_internal = c->collider_tail; a_internal->next != NULL; a_internal = a_internal->next) {
+    for (Collider2Internal* a_internal = c->collider_head; a_internal->next != NULL; a_internal = a_internal->next) {
       for (Collider2Internal* b_internal = a_internal->next; b_internal != NULL; b_internal = b_internal->next) {
         Collider2* a = &a_internal->collider;
         Collider2* b = &b_internal->collider;
@@ -529,13 +529,13 @@ void Physics2Update(F32 dt_s) {
 
         for (Collider2SubtypeHeader* a_subtype = a->subtypes; a_subtype != NULL; a_subtype = a_subtype->next) {
           for (Collider2SubtypeHeader* b_subtype = b->subtypes; b_subtype != NULL; b_subtype = a_subtype->next) {
-            for (ResolverEntry* resolver = c->resolvers; resolver != NULL; resolver = resolver->next) {
+            for (Physics2ResolverEntry* resolver = c->resolvers; resolver != NULL; resolver = resolver->next) {
               if (a_subtype->type == resolver->type_a && b_subtype->type == resolver->type_b) {
                 DA_PUSH_BACK_EX(resolver->collisions_arena, resolver->collisions, resolver->collisions_size, resolver->collisions_capacity, collision);
                 break;
               } else if (a_subtype->type == resolver->type_b && b_subtype->type == resolver->type_a) {
                 SWAP(Collider2*, collision.a, collision.b);
-                V2MultF32(&collision.manifold.normal, &collision.manifold.normal, -1);
+                V2Negate(&collision.manifold.normal, &collision.manifold.normal);
                 DA_PUSH_BACK_EX(resolver->collisions_arena, resolver->collisions, resolver->collisions_size, resolver->collisions_capacity, collision);
                 break;
               }
@@ -545,7 +545,7 @@ void Physics2Update(F32 dt_s) {
       }
     }
 
-    for (ResolverEntry* resolver = c->resolvers; resolver != NULL; resolver = resolver->next) {
+    for (Physics2ResolverEntry* resolver = c->resolvers; resolver != NULL; resolver = resolver->next) {
       resolver->fn(resolver->collisions, resolver->collisions_size);
       resolver->collisions_size = 0;
     }
@@ -560,14 +560,14 @@ void Physics2SetGravity(V2 gravity) {
 void Physics2RegisterResolver(U32 type_a, U32 type_b, Collision2Resolver_Fn* resolver) {
   Physics2Context* c = &_cdef_phys_2d_context;
   // NOTE: Trip if the resolver has already been registered.
-  for (ResolverEntry* entry = c->resolvers; entry != NULL; entry = entry->next) {
+  for (Physics2ResolverEntry* entry = c->resolvers; entry != NULL; entry = entry->next) {
     if (entry->fn == resolver) {
       DEBUG_ASSERT(!(entry->type_a == type_a && entry->type_b == type_b));
       DEBUG_ASSERT(!(entry->type_a == type_b && entry->type_b == type_a));
     }
   }
 
-  ResolverEntry* entry = ARENA_PUSH_STRUCT(c->resolver_pool, ResolverEntry);
+  Physics2ResolverEntry* entry = ARENA_PUSH_STRUCT(c->resolver_pool, Physics2ResolverEntry);
   MEMORY_ZERO_STRUCT(entry);
   entry->type_a = type_a;
   entry->type_b = type_b;
@@ -610,7 +610,7 @@ Collider2* Physics2RegisterColliderConvexHull(V2* points, U32 points_size) {
   collider->convex_hull.points_size = points_size;
   ConvexHull2GetEnclosingCircle2(points, points_size, &collider->convex_hull.center, &collider->broad_circle_radius);
   V2 neg_center;
-  V2MultF32(&neg_center, &collider->convex_hull.center, -1);
+  V2Negate(&neg_center, &collider->convex_hull.center);
   ConvexHull2Offset(collider->convex_hull.points_local, collider->convex_hull.points_size, &neg_center);
   return collider;
 }

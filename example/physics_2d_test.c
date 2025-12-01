@@ -53,8 +53,9 @@ static void AddColliderConvexHull(V2 pos) {
 
 int main(void) {
   TimeInit();
-  ASSERT(WindowInit(1280, 720, "physics"));
+  ASSERT(WindowInit(1280, 720, "physics 2d"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
+  RendererDisableDepthTest();
   Physics2Init(5);
   Physics2SetGravity((V2) { 0, -90.8f });
 
