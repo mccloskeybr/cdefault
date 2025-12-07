@@ -73,7 +73,8 @@ int main(void) {
       }
     }
 
-    do { dt_s = StopwatchReadSeconds(&frame_stopwatch); } while (dt_s < 0.016);
+    dt_s = StopwatchReadSeconds(&frame_stopwatch);
+    // LOG_INFO("%0.5f", 1.0f / dt_s);
     StopwatchReset(&frame_stopwatch);
 
     WindowSwapBuffers();

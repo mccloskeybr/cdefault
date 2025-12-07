@@ -5,6 +5,8 @@
 #include "cdefault_math.h"
 #include "cdefault_std.h"
 
+// TODO: sleep for non-moving dynamic rigid bodies
+
 // NOTE: The physics system revolves around colliders and collisions as the core data type.
 // Colliders can have arbitrary types / datums attached to them, rigid bodies are a first-class
 // supported example of this. Each datum must have the Collider3SubtypeHeader as its first field.
@@ -80,7 +82,6 @@ struct RigidBody3 {
   Collider3SubtypeHeader header;
   RigidBody3Type type;
   F32 mass_inv;
-  F32 moment_inertia_inv;
   F32 restitution;
   F32 static_friction;
   F32 dynamic_friction;
@@ -126,7 +127,7 @@ Collider3* Physics3RegisterColliderRect(V3 center, V3 size);
 Collider3* Physics3RegisterColliderConvexHull(V3* points, U32 points_size); // NOTE: points is copied. TODO: separate fn for w/ center?
 void Physics3DeregisterCollider(Collider3* collider); // NOTE: Must be called after all subtypes are deinitialized.
 void Collider3SetSubtype(Collider3* collider, Collider3SubtypeHeader* subtype);
-B32  Collider3RemoveSubtype(Collider3* colluder, U32 type);
+B32  Collider3RemoveSubtype(Collider3* collider, U32 type);
 Collider3SubtypeHeader* Collider3GetSubtype(Collider3* collider, U32 type);
 
 // TODO: material-specific rigid body setup functions (for e.g. restitution, friction coeffs)
@@ -261,8 +262,8 @@ static RigidBody3* RigidBody3Allocate() {
 static void RigidBody3CommonInit(RigidBody3* rigid_body) {
   rigid_body->header.type = COLLIDER3_RIGID_BODY;
   rigid_body->restitution = 0.2f;
-  rigid_body->static_friction = 0.4f;
-  rigid_body->dynamic_friction = 0.6f;
+  rigid_body->static_friction = 0.2f;
+  rigid_body->dynamic_friction = 0.2f;
 }
 
 static void Physics3RigidBodyUpdate(F32 dt_s) {
@@ -285,93 +286,117 @@ static void Physics3RigidBodyUpdate(F32 dt_s) {
 
 static void Physics3RigidBodyResolver(Collision3* collisions, U32 collisions_size) {
   Physics3Context* c = &_cdef_phys_3d_context;
-  // NOTE: remove static / static collisions
   for (U32 i = 0; i < collisions_size; i++) {
-    RigidBody3* a_rigid_body = (RigidBody3*) Collider3GetSubtype(collisions[i].a, COLLIDER3_RIGID_BODY);
-    RigidBody3* b_rigid_body = (RigidBody3*) Collider3GetSubtype(collisions[i].b, COLLIDER3_RIGID_BODY);
+    Collision3* test = &collisions[i];
+    RigidBody3* a_rigid_body = (RigidBody3*) Collider3GetSubtype(test->a, COLLIDER3_RIGID_BODY);
+    RigidBody3* b_rigid_body = (RigidBody3*) Collider3GetSubtype(test->b, COLLIDER3_RIGID_BODY);
+    // NOTE: remove static / static collisions
     if (a_rigid_body->type == RigidBody3Type_Static && b_rigid_body->type == RigidBody3Type_Static) {
       DA_SWAP_REMOVE_EX(collisions, collisions_size, i);
       i--;
+      continue;
+    }
+    // NOTE: remove collisions that are too small
+    if (test->manifold.penetration < c->rigid_body_penetration_slop) {
+      DA_SWAP_REMOVE_EX(collisions, collisions_size, i);
+      i--;
+      continue;
     }
   }
 
-  for (U32 i = 0; i < collisions_size * c->rigid_body_iterations; i++) {
-    // NOTE: find collision with max penetration
-    Collision3* max = &collisions[0];
-    for (U32 j = 1; j < collisions_size; j++) {
-      Collision3* test = &collisions[j];
-      if (test->manifold.penetration > max->manifold.penetration) { max = test; }
-    }
-    if (max->manifold.penetration <= c->rigid_body_penetration_slop) { break; }
-
-    IntersectManifold3* manifold = &max->manifold;
-    Collider3* a = max->a;
-    Collider3* b = max->b;
-    RigidBody3* a_rigid_body = (RigidBody3*) Collider3GetSubtype(a, COLLIDER3_RIGID_BODY);
-    RigidBody3* b_rigid_body = (RigidBody3*) Collider3GetSubtype(b, COLLIDER3_RIGID_BODY);
-
-    // NOTE: separate bodies
-    F32 pen_ratio = c->rigid_body_iter_pos_correction_pct * MAX(manifold->penetration - c->rigid_body_penetration_slop, 0);
-    pen_ratio /= a_rigid_body->mass_inv + b_rigid_body->mass_inv;
-    F32 a_pen = a_rigid_body->mass_inv * pen_ratio;
-    F32 b_pen = b_rigid_body->mass_inv * pen_ratio;
-    V3 a_separation;
-    V3MultF32(&a_separation, &manifold->normal, a_pen);
-    V3AddV3(&a->center, &a->center, &a_separation);
-    V3 b_separation;
-    V3MultF32(&b_separation, &manifold->normal, b_pen);
-    V3SubV3(&b->center, &b->center, &b_separation);
-
-    // NOTE: determine impulse
-    V3 relative_velocity;
-    V3SubV3(&relative_velocity, &a_rigid_body->velocity, &b_rigid_body->velocity);
-    F32 separating_velocity = V3DotV3(&relative_velocity, &manifold->normal);
-    if (separating_velocity > 0) { continue; }
-    F32 e = a_rigid_body->restitution * b_rigid_body->restitution;
-    F32 j_num   = -(1.0f + e) * separating_velocity;
-    F32 j_denom = (a_rigid_body->mass_inv + b_rigid_body->mass_inv);
-    DEBUG_ASSERT(j_denom != 0);
-    F32 j = j_num / j_denom;
-    V3 impulse;
-    V3MultF32(&impulse, &manifold->normal, j);
-
-    // NOTE: determine tangent / friction impulse
-    V3 tangent;
-    V3MultF32(&tangent, &manifold->normal, separating_velocity);
-    V3SubV3(&tangent, &relative_velocity, &tangent);
-    if (V3LengthSq(&tangent) > 0) { V3Normalize(&tangent, &tangent); }
-    F32 jt_num   = -1.0f * V3DotV3(&relative_velocity, &tangent);
-    F32 jt_denom = a_rigid_body->mass_inv + b_rigid_body->mass_inv;
-    DEBUG_ASSERT(jt_denom != 0);
-    F32 jt = jt_num / jt_denom;
-    V2 static_friction  = V2Assign(a_rigid_body->static_friction, b_rigid_body->static_friction);
-    V2 dynamic_friction = V2Assign(a_rigid_body->dynamic_friction, b_rigid_body->dynamic_friction);
-    F32 mu_static       = V2Length(&static_friction);
-    F32 mu_dynamic      = V2Length(&dynamic_friction);
-    V3 friction_impulse;
-    if (F32Abs(jt) <= j * mu_static) { V3MultF32(&friction_impulse, &tangent, jt);              }
-    else                             { V3MultF32(&friction_impulse, &tangent, -j * mu_dynamic); }
-    V3AddV3(&impulse, &impulse, &friction_impulse);
-
-    // NOTE: apply impulse
-    V3 a_dv, b_dv;
-    V3MultF32(&a_dv, &impulse, a_rigid_body->mass_inv);
-    V3AddV3(&a_rigid_body->velocity, &a_rigid_body->velocity, &a_dv);
-    V3MultF32(&b_dv, &impulse, b_rigid_body->mass_inv);
-    V3SubV3(&b_rigid_body->velocity, &b_rigid_body->velocity, &b_dv);
-
-    // NOTE: Update object position across known collisions
-    for (U32 j = 0; j < collisions_size; j++) {
-      Collision3* test = &collisions[j];
-      if (test->a == a) {
-        test->manifold.penetration -= V3DotV3(&test->manifold.normal, &a_separation);
-      } else if (test->a == b) {
-        test->manifold.penetration += V3DotV3(&test->manifold.normal, &b_separation);
+  for (U32 iter = 0; iter < c->rigid_body_iterations; iter++) {
+    for (U32 i = 0; i < collisions_size; i++) {
+      // NOTE: find collision with max penetration
+      U32 max_idx = 0;
+      for (U32 j = 1; j < collisions_size; j++) {
+        if (collisions[j].manifold.penetration > collisions[max_idx].manifold.penetration) {
+          max_idx = j;
+        }
       }
-      if (test->b == a) {
-        test->manifold.penetration += V3DotV3(&test->manifold.normal, &a_separation);
-      } else if (test->b == b) {
-        test->manifold.penetration -= V3DotV3(&test->manifold.normal, &b_separation);
+      Collision3* max = &collisions[max_idx];
+      if (max->manifold.penetration <= c->rigid_body_penetration_slop) { break; }
+      IntersectManifold3* manifold = &max->manifold;
+      Collider3* a = max->a;
+      Collider3* b = max->b;
+      RigidBody3* a_rigid_body = (RigidBody3*) Collider3GetSubtype(a, COLLIDER3_RIGID_BODY);
+      RigidBody3* b_rigid_body = (RigidBody3*) Collider3GetSubtype(b, COLLIDER3_RIGID_BODY);
+
+      // NOTE: separate bodies
+      F32 pen_ratio = c->rigid_body_iter_pos_correction_pct * MAX(manifold->penetration - c->rigid_body_penetration_slop, 0);
+      pen_ratio /= a_rigid_body->mass_inv + b_rigid_body->mass_inv;
+      V3 a_separation = V3_ZEROES;
+      if (a_rigid_body->type == RigidBody3Type_Dynamic) {
+        F32 a_pen = a_rigid_body->mass_inv * pen_ratio;
+        V3MultF32(&a_separation, &manifold->normal, a_pen);
+        V3AddV3(&a->center, &a->center, &a_separation);
+      }
+      V3 b_separation = V3_ZEROES;
+      if (b_rigid_body->type == RigidBody3Type_Dynamic) {
+        F32 b_pen = b_rigid_body->mass_inv * pen_ratio;
+        V3MultF32(&b_separation, &manifold->normal, b_pen);
+        V3SubV3(&b->center, &b->center, &b_separation);
+      }
+
+      // NOTE: determine impulse
+      V3 relative_velocity;
+      V3SubV3(&relative_velocity, &a_rigid_body->velocity, &b_rigid_body->velocity);
+      F32 separating_velocity = V3DotV3(&relative_velocity, &manifold->normal);
+      if (separating_velocity > 0) {
+        // NOTE: remove from collisions, otherwise future iters will repeat the separation step
+        DA_SWAP_REMOVE_EX(collisions, collisions_size, max_idx);
+        continue;
+      }
+      F32 e = a_rigid_body->restitution * b_rigid_body->restitution;
+      F32 j_num   = -(1.0f + e) * separating_velocity;
+      F32 j_denom = (a_rigid_body->mass_inv + b_rigid_body->mass_inv);
+      DEBUG_ASSERT(j_denom != 0);
+      F32 j = j_num / j_denom;
+      V3 impulse;
+      V3MultF32(&impulse, &manifold->normal, j);
+
+      // NOTE: determine tangent / friction impulse
+      V3 tangent;
+      V3MultF32(&tangent, &manifold->normal, separating_velocity);
+      V3SubV3(&tangent, &relative_velocity, &tangent);
+      if (V3LengthSq(&tangent) > 0) { V3Normalize(&tangent, &tangent); }
+      F32 jt_num   = -1.0f * V3DotV3(&relative_velocity, &tangent);
+      F32 jt_denom = a_rigid_body->mass_inv + b_rigid_body->mass_inv;
+      DEBUG_ASSERT(jt_denom != 0);
+      F32 jt = jt_num / jt_denom;
+      V2 static_friction  = V2Assign(a_rigid_body->static_friction, b_rigid_body->static_friction);
+      V2 dynamic_friction = V2Assign(a_rigid_body->dynamic_friction, b_rigid_body->dynamic_friction);
+      F32 mu_static       = V2Length(&static_friction);
+      F32 mu_dynamic      = V2Length(&dynamic_friction);
+      V3 friction_impulse;
+      if (F32Abs(jt) <= j * mu_static) { V3MultF32(&friction_impulse, &tangent, jt);              }
+      else                             { V3MultF32(&friction_impulse, &tangent, -j * mu_dynamic); }
+      V3AddV3(&impulse, &impulse, &friction_impulse);
+
+      // NOTE: apply impulse
+      if (a_rigid_body->type == RigidBody3Type_Dynamic) {
+        V3 a_dv;
+        V3MultF32(&a_dv, &impulse, a_rigid_body->mass_inv);
+        V3AddV3(&a_rigid_body->velocity, &a_rigid_body->velocity, &a_dv);
+      }
+      if (b_rigid_body->type == RigidBody3Type_Dynamic) {
+        V3 b_dv;
+        V3MultF32(&b_dv, &impulse, b_rigid_body->mass_inv);
+        V3SubV3(&b_rigid_body->velocity, &b_rigid_body->velocity, &b_dv);
+      }
+
+      // NOTE: Update collisions
+      for (U32 k = 0; k < collisions_size; k++) {
+        Collision3* test = &collisions[k];
+        if (test->a == a) {
+          test->manifold.penetration -= V3DotV3(&test->manifold.normal, &a_separation);
+        } else if (test->a == b) {
+          test->manifold.penetration += V3DotV3(&test->manifold.normal, &b_separation);
+        }
+        if (test->b == a) {
+          test->manifold.penetration += V3DotV3(&test->manifold.normal, &a_separation);
+        } else if (test->b == b) {
+          test->manifold.penetration -= V3DotV3(&test->manifold.normal, &b_separation);
+        }
       }
     }
   }
@@ -381,8 +406,8 @@ void Physics3Init(U32 iterations) {
   Physics3Context* c = &_cdef_phys_3d_context;
   MEMORY_ZERO_STRUCT(c);
   c->iterations = iterations;
-  c->rigid_body_penetration_slop = 0.05f;
-  c->rigid_body_iter_pos_correction_pct = 0.7f;
+  c->rigid_body_penetration_slop = 0.01f;
+  c->rigid_body_iter_pos_correction_pct = 0.9f;
   c->rigid_body_iterations = 2;
   c->collider_pool = ArenaAllocate();
   c->rigid_body_pool = ArenaAllocate();
@@ -409,13 +434,14 @@ void Physics3ConfigRigidBodies(U32 iterations, F32 penetration_slop, F32 pos_cor
 
 void Physics3Update(F32 dt_s) {
   Physics3Context* c = &_cdef_phys_3d_context;
-  Physics3RigidBodyUpdate(dt_s);
 
   for (U32 iteration = 0; iteration < c->iterations; iteration++) {
-    for (Collider3Internal* a_internal = c->collider_head; a_internal->next != NULL; a_internal = a_internal->next) {
+    Physics3RigidBodyUpdate(dt_s / c->iterations);
+    for (Collider3Internal* a_internal = c->collider_head; a_internal != NULL; a_internal = a_internal->next) {
       for (Collider3Internal* b_internal = a_internal->next; b_internal != NULL; b_internal = b_internal->next) {
         Collider3* a = &a_internal->collider;
         Collider3* b = &b_internal->collider;
+        DEBUG_ASSERT(a != b);
         if ((a->group | b->group) == 0) { continue; }
 
         // TODO: separate? acceleration structure? maybe just presort along one axis?
@@ -464,8 +490,8 @@ void Physics3RegisterResolver(U32 type_a, U32 type_b, Collision3Resolver_Fn* res
   // NOTE: Trip if the resolver has already been registered.
   for (Physics3ResolverEntry* entry = c->resolvers; entry != NULL; entry = entry->next) {
     if (entry->fn == resolver) {
-      DEBUG_ASSERT(!(entry->type_a == type_a && entry->type_b == type_b));
-      DEBUG_ASSERT(!(entry->type_a == type_b && entry->type_b == type_a));
+      DEBUG_ASSERT(!(entry->type_a == type_a && entry->type_b == type_b && entry->fn == resolver));
+      DEBUG_ASSERT(!(entry->type_a == type_b && entry->type_b == type_a && entry->fn == resolver));
     }
   }
 

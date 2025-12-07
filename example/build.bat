@@ -19,5 +19,5 @@ REM cl %FLAGS% collision_aabb_test.c /Fobuild/collision_aabb_test.obj /Febin/col
 REM cl %FLAGS% collision_circle_test.c /Fobuild/collision_circle_test.obj /Febin/collision_circle_test.exe /link %LIBS%
 REM cl %FLAGS% collision_convex_hull_test.c /Fobuild/collision_convex_hull_test.obj /Febin/collision_convex_hull_test.exe /link %LIBS%
 cl %FLAGS% physics_2d_test.c /Fobuild/physics_2d_test.obj /Febin/physics_2d_test.exe /link %LIBS%
-cl %FLAGS% physics_3d_test.c /Fobuild/physics_3d_test.obj /Febin/physics_3d_test.exe /link %LIBS%
-cl %FLAGS% gjk_debug.c /Fobuild/gjk_debug.obj /Febin/gjk_debug.exe /link %LIBS%
+cl %FLAGS% /DPROFILE physics_3d_test.c /Fobuild/physics_3d_test.obj /Febin/physics_3d_test.exe /link %LIBS%
+REM cl %FLAGS% gjk_debug.c /Fobuild/gjk_debug.obj /Febin/gjk_debug.exe /link %LIBS%

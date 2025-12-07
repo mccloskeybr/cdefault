@@ -5,6 +5,8 @@
 #include "cdefault_math.h"
 #include "cdefault_std.h"
 
+// TODO: feature parity w/ 3d physics
+
 // NOTE: The physics system revolves around colliders and collisions as the core data type.
 // Colliders can have arbitrary types / datums attached to them, rigid bodies are a first-class
 // supported example of this. Each datum must have the Collider2SubtypeHeader as its first field.
@@ -132,7 +134,7 @@ Collider2* Physics2RegisterColliderRect(V2 center, V2 size);
 Collider2* Physics2RegisterColliderConvexHull(V2* points, U32 points_size); // NOTE: points is copied. TODO: separate fn for w/ center?
 void Physics2DeregisterCollider(Collider2* collider); // NOTE: Must be called after all subtypes are deinitialized.
 void Collider2SetSubtype(Collider2* collider, Collider2SubtypeHeader* subtype);
-B32  Collider2RemoveSubtype(Collider2* colluder, U32 type);
+B32  Collider2RemoveSubtype(Collider2* collider, U32 type);
 Collider2SubtypeHeader* Collider2GetSubtype(Collider2* collider, U32 type);
 
 // TODO: material-specific rigid body setup functions (for e.g. restitution, friction coeffs)
@@ -316,23 +318,32 @@ static void Physics2RigidBodyResolver(Collision2* collisions, U32 collisions_siz
   Physics2Context* c = &_cdef_phys_2d_context;
   // NOTE: remove static / static collisions
   for (U32 i = 0; i < collisions_size; i++) {
-    RigidBody2* a_rigid_body = (RigidBody2*) Collider2GetSubtype(collisions[i].a, COLLIDER2_RIGID_BODY);
-    RigidBody2* b_rigid_body = (RigidBody2*) Collider2GetSubtype(collisions[i].b, COLLIDER2_RIGID_BODY);
+    Collision2* test = &collisions[i];
+    RigidBody2* a_rigid_body = (RigidBody2*) Collider2GetSubtype(test->a, COLLIDER2_RIGID_BODY);
+    RigidBody2* b_rigid_body = (RigidBody2*) Collider2GetSubtype(test->b, COLLIDER2_RIGID_BODY);
     if (a_rigid_body->type == RigidBody2Type_Static && b_rigid_body->type == RigidBody2Type_Static) {
       DA_SWAP_REMOVE_EX(collisions, collisions_size, i);
       i--;
+      continue;
+    }
+    // NOTE: remove collisions that are too small
+    if (test->manifold.penetration < c->rigid_body_penetration_slop) {
+      DA_SWAP_REMOVE_EX(collisions, collisions_size, i);
+      i--;
+      continue;
     }
   }
 
   for (U32 i = 0; i < collisions_size * c->rigid_body_iterations; i++) {
     // NOTE: find collision with max penetration
-    Collision2* max = &collisions[0];
+    U32 max_idx = 0;
     for (U32 j = 1; j < collisions_size; j++) {
-      Collision2* test = &collisions[j];
-      if (test->manifold.penetration > max->manifold.penetration) { max = test; }
+      if (collisions[j].manifold.penetration > collisions[max_idx].manifold.penetration) {
+        max_idx = j;
+      }
     }
+    Collision2* max = &collisions[max_idx];
     if (max->manifold.penetration <= c->rigid_body_penetration_slop) { break; }
-
     IntersectManifold2* manifold = &max->manifold;
     Collider2* a = max->a;
     Collider2* b = max->b;
@@ -385,6 +396,10 @@ static void Physics2RigidBodyResolver(Collision2* collisions, U32 collisions_siz
       j_denom += rb_perp_dot_i_norm * rb_perp_dot_i_norm * b_rigid_body->moment_inertia_inv;
       j_denom *= manifold->contact_points_size;
       j[i]  = j_num / j_denom;
+    }
+    if (j[0] == 0 && j[1] == 0) {
+      DA_SWAP_REMOVE_EX(collisions, collisions_size, max_idx);
+      continue;
     }
 
     // NOTE: apply impulse
@@ -562,8 +577,8 @@ void Physics2RegisterResolver(U32 type_a, U32 type_b, Collision2Resolver_Fn* res
   // NOTE: Trip if the resolver has already been registered.
   for (Physics2ResolverEntry* entry = c->resolvers; entry != NULL; entry = entry->next) {
     if (entry->fn == resolver) {
-      DEBUG_ASSERT(!(entry->type_a == type_a && entry->type_b == type_b));
-      DEBUG_ASSERT(!(entry->type_a == type_b && entry->type_b == type_a));
+      DEBUG_ASSERT(!(entry->type_a == type_a && entry->type_b == type_b && entry->fn == resolver));
+      DEBUG_ASSERT(!(entry->type_a == type_b && entry->type_b == type_a && entry->fn == resolver));
     }
   }
 
