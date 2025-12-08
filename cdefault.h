@@ -18,6 +18,7 @@
 #include "cdefault_sound.h"
 #include "cdefault_std.h"
 #include "cdefault_test.h"
+#include "cdefault_ui.h"
 
 #endif // CDEFAULT_H_
 
@@ -54,5 +55,7 @@
 #include "cdefault_std.h"
 #define CDEFAULT_TEST_IMPLEMENTATION
 #include "cdefault_test.h"
+#define CDEFAULT_UI_IMPLEMENTATION
+#include "cdefault_ui.h"
 
 #endif // CDEFAULT_IMPLEMENTATION

@@ -22,6 +22,7 @@ NOTE: Windows is explicitly supported. Linux is partially supported. I'll get ar
 *  `cdefault_sound.h`      - Audio file importer.
 *  `cdefault_std.h`        - Platform agnostic support for e.g. memory allocation (Arena), concurrency, strings, etc.
 *  `cdefault_test.h`       - Basic unit test framework.
+*  `cdefault_ui.h`         - Immediate mode UI library (mainly for debug views, that kind of thing).
 
 See `example/` for example integrations. Unit and visual / component tests are under `test/`.
 
@@ -39,3 +40,5 @@ Some modules have been influenced by the following:
 *  SDL3
 *  RAD debugger
 *  STB libraries
+*  Dear ImGui
+*  Clay

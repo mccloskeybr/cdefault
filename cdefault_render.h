@@ -109,14 +109,14 @@ void DrawSubImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F3
 void DrawSubImageRotV(U32 image_handle, V2 center, V2 size, F32 angle_rad, V2 min_uv, V2 max_uv);
 void DrawFontBmpCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 red, F32 green, F32 blue);
 void DrawFontBmpCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, V3 color);
-void DrawStringBmp(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 x, F32 y);
-void DrawStringBmpV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, V2 pos);
+void DrawStringBmp(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 x, F32 y, F32 r, F32 g, F32 b);
+void DrawStringBmpV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, V2 pos, V3 color);
 void DrawFontSdfCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 width, F32 height, F32 min_uv_x, F32 min_uv_y, F32 max_uv_x, F32 max_uv_y, F32 threshold, F32 smoothing, F32 red, F32 green, F32 blue);
 void DrawFontSdfCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 max_uv, F32 threshold, F32 smoothing, V3 color);
-void DrawStringSdf(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 x, F32 y);
-void DrawStringSdfV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, V2 pos);
-void DrawStringSdfEx(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 threshold, F32 smoothing, F32 x, F32 y);
-void DrawStringSdfExV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 threshold, F32 smoothing, V2 pos);
+void DrawStringSdf(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 x, F32 y, F32 r, F32 g, F32 b);
+void DrawStringSdfV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, V2 pos, V3 color);
+void DrawStringSdfEx(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 threshold, F32 smoothing, F32 x, F32 y, F32 r, F32 g, F32 b);
+void DrawStringSdfExV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 threshold, F32 smoothing, V2 pos, V3 color);
 
 // NOTE: 3D API
 // TODO: draw flat shapes
@@ -495,7 +495,7 @@ static B32 RendererInit(void) {
   LOG_INFO("[RENDER] Initializing OpenGL renderer.");
 
   // TODO: verify existence.
-  g->glEnable(GL_FRAMEBUFFER_SRGB);
+  // g->glEnable(GL_FRAMEBUFFER_SRGB);
   g->glEnable(GL_CULL_FACE);
   g->glEnable(GL_TEXTURE_2D);
   g->glEnable(GL_BLEND);
@@ -1434,41 +1434,43 @@ void DrawFontSdfCharacterV(U32 image_handle, V2 center, V2 size, V2 min_uv, V2 m
   DrawFontSdfCharacter(image_handle, center.x, center.y, size.x, size.y, min_uv.x, min_uv.y, max_uv.x, max_uv.y, threshold, smoothing, color.r, color.g, color.b);
 }
 
-void DrawStringBmp(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 x, F32 y) {
+void DrawStringBmp(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 x, F32 y, F32 r, F32 g, F32 b) {
   V2 pos = V2Assign(x, y);
-  DrawStringBmpV(str, atlas, atlas_handle, font_height, pos);
+  V3 color = V3Assign(r, g, b);
+  DrawStringBmpV(str, atlas, atlas_handle, font_height, pos, color);
 }
 
-void DrawStringBmpV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, V2 pos) {
+void DrawStringBmpV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, V2 pos, V3 color) {
   for (S32 i = 0; i < str.size; i++) {
     U8 curr = str.str[i];
     U8 next = i < str.size - 1 ? str.str[i + 1] : 0;
     V2 center, size, min_uv, max_uv;
     DEBUG_ASSERT(FontAtlasPlace(atlas, curr, next, font_height, &pos, &center, &size, &min_uv, &max_uv));
-    DrawFontBmpCharacterV(atlas_handle, center, size, min_uv, max_uv, V3_BLACK);
+    DrawFontBmpCharacterV(atlas_handle, center, size, min_uv, max_uv, color);
   }
 }
 
-void DrawStringSdf(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 x, F32 y) {
-  DrawStringSdfEx(str, atlas, atlas_handle, font_height, 0, 0, x, y);
+void DrawStringSdf(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 x, F32 y, F32 r, F32 g, F32 b) {
+  DrawStringSdfEx(str, atlas, atlas_handle, font_height, 0, 0, x, y, r, g, b);
 }
 
-void DrawStringSdfV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, V2 pos) {
-  DrawStringSdfExV(str, atlas, atlas_handle, font_height, 0, 0, pos);
+void DrawStringSdfV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, V2 pos, V3 color) {
+  DrawStringSdfExV(str, atlas, atlas_handle, font_height, 0, 0, pos, color);
 }
 
-void DrawStringSdfEx(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 threshold, F32 smoothing, F32 x, F32 y) {
+void DrawStringSdfEx(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 threshold, F32 smoothing, F32 x, F32 y, F32 r, F32 g, F32 b) {
   V2 pos = V2Assign(x, y);
-  DrawStringSdfExV(str, atlas, atlas_handle, font_height, threshold, smoothing, pos);
+  V3 color = V3Assign(r, g, b);
+  DrawStringSdfExV(str, atlas, atlas_handle, font_height, threshold, smoothing, pos, color);
 }
 
-void DrawStringSdfExV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 threshold, F32 smoothing, V2 pos) {
+void DrawStringSdfExV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 threshold, F32 smoothing, V2 pos, V3 color) {
   for (S32 i = 0; i < str.size; i++) {
     U8 curr = str.str[i];
     U8 next = i < str.size - 1 ? str.str[i + 1] : 0;
     V2 center, size, min_uv, max_uv;
     DEBUG_ASSERT(FontAtlasPlace(atlas, curr, next, font_height, &pos, &center, &size, &min_uv, &max_uv));
-    DrawFontSdfCharacterV(atlas_handle, center, size, min_uv, max_uv, threshold, smoothing, V3_BLACK);
+    DrawFontSdfCharacterV(atlas_handle, center, size, min_uv, max_uv, threshold, smoothing, color);
   }
 }
 

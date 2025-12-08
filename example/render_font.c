@@ -39,17 +39,17 @@ int main(void) {
       exit(0);
     }
 
-    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 64, 8, 264);
-    DrawStringBmp(alphabet, &bmp_atlas, bmp_atlas_handle, 64, 8, 200);
+    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 64, 8, 264, 0, 0, 0);
+    DrawStringBmp(alphabet, &bmp_atlas, bmp_atlas_handle, 64, 8, 200, 0, 0, 0);
 
-    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 32, 8, 150);
-    DrawStringBmp(alphabet, &bmp_atlas, bmp_atlas_handle, 32, 8, 118);
+    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 32, 8, 150, 0, 0, 0);
+    DrawStringBmp(alphabet, &bmp_atlas, bmp_atlas_handle, 32, 8, 118, 0, 0, 0);
 
-    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 20, 8, 85);
-    DrawStringBmp(alphabet, &bmp_atlas, bmp_atlas_handle, 20, 8, 65);
+    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 20, 8, 85, 0, 0, 0);
+    DrawStringBmp(alphabet, &bmp_atlas, bmp_atlas_handle, 20, 8, 65, 0, 0, 0);
 
-    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 16, 8, 40);
-    DrawStringBmp(alphabet, &bmp_atlas, bmp_atlas_handle, 16, 8, 24);
+    DrawStringSdf(alphabet, &sdf_atlas, sdf_atlas_handle, 16, 8, 40, 0, 0, 0);
+    DrawStringBmp(alphabet, &bmp_atlas, bmp_atlas_handle, 16, 8, 24, 0, 0, 0);
 
     WindowSwapBuffers();
     WindowFlushEvents();

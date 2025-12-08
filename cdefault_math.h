@@ -70,6 +70,7 @@ F32 F32Floor(F32 x);
 F32 F32Round(F32 x);
 F32 F32MapRange(F32 x, F32 a_min, F32 a_max, F32 b_min, F32 b_max);
 F32 F32Lerp(F32 x, F32 y, F32 t);
+B32 F32IsInteger(F32 x);
 
 B64 F64ApproxEq(F64 x, F64 y);
 F64 F64Abs(F64 x);
@@ -89,6 +90,7 @@ F64 F64Floor(F64 x);
 F64 F64Round(F64 x);
 F64 F64MapRange(F64 x, F64 a_min, F64 a_max, F64 b_min, F64 b_max);
 F64 F64Lerp(F64 x, F64 y, F64 t);
+B32 F64IsInteger(F64 x);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: V2
@@ -147,6 +149,7 @@ V2* V2Lerp(V2* dest, V2* x, V2* y, F32 t);
 V3  V3Assign(F32 x, F32 y, F32 z);
 V3  V3Splat(F32 c);
 V3  V3FromV2(V2* src, F32 z);
+V3  V3FromHex(U32 x);
 V3* V3AddF32(V3* dest, V3* x, F32 c);
 V3* V3SubF32(V3* dest, V3* x, F32 c);
 V3* V3MultF32(V3* dest, V3* x, F32 c);
@@ -314,6 +317,7 @@ F32 F32Floor(F32 x) { return floorf(x); }
 F32 F32Round(F32 x) { return F32Floor(x + 0.5f); }
 F32 F32MapRange(F32 x, F32 a_min, F32 a_max, F32 b_min, F32 b_max) { return b_min + ((x - a_min) / (a_max - a_min)) * (b_max - b_min); }
 F32 F32Lerp(F32 x, F32 y, F32 t) { return x + ((y - x) * t); }
+B32 F32IsInteger(F32 x) { return x == F32Floor(x); }
 
 B64 F64ApproxEq(F64 x, F64 y) { return F64Abs(x - y) < 0.00001; }
 F64 F64Abs(F64 x) { return fabs(x); }
@@ -333,6 +337,7 @@ F64 F64Floor(F64 x) { return floor(x); }
 F64 F64Round(F64 x) { return F64Floor(x + 0.5); }
 F64 F64MapRange(F64 x, F64 a_min, F64 a_max, F64 b_min, F64 b_max) { return b_min + ((x - a_min) / (a_max - a_min)) * (b_max - b_min); }
 F64 F64Lerp(F64 x, F64 y, F64 t) { return x + ((y - x) * t); }
+B32 F64IsInteger(F64 x) { return x == F64Floor(x); }
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: V2 implementation
@@ -499,6 +504,14 @@ V3 V3FromV2(V2* src, F32 z) {
   result.x = src->x;
   result.y = src->y;
   result.z = z;
+  return result;
+}
+
+V3 V3FromHex(U32 x) {
+  V3 result;
+  result.r = ((x >> 16) & 0xff) / 255.0f;
+  result.g = ((x >> 8)  & 0xff) / 255.0f;
+  result.b = ((x >> 0)  & 0xff) / 255.0f;
   return result;
 }
 

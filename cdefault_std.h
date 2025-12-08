@@ -128,6 +128,7 @@ typedef double   F64;
 #  define UNUSED(x) x
 #endif
 
+#define STRINGIFY(x) #x
 #define GLUE(a, b) a ## b
 #define FILENAME (strrchr(__FILE__, '/')  ? strrchr(__FILE__, '/')  + 1 : \
                  (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : \

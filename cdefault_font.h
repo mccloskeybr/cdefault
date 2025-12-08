@@ -6,6 +6,7 @@
 #include "cdefault_image.h"
 
 // TODO: better atlas fitting / packing
+// TODO: separate? arenas for image and atlas, since the texture can be released after gpu upload.
 // TODO: in relevant places, fall back on "no glyph present" glyph instead of erroring up.
 
 // NOTE: this is a font atlas generation library, which can be used for rendering TTF fonts. it is a relatively simple implementation and does no e.g. gridfitting.
