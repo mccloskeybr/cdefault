@@ -1399,7 +1399,7 @@ void DrawFontSdfCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 widt
   threshold = CLAMP(0.0f, threshold, 1.0f);
   smoothing = CLAMP(0.0f, smoothing, 1.0f);
   if (threshold == 0) { threshold = 0.5f; }
-  if (smoothing == 0) { smoothing = 0.15f; }
+  if (smoothing == 0) { smoothing = 0.2f; }
 
   V3 color  = { red, green, blue };
   V2 min_uv = { min_uv_x, min_uv_y };

@@ -133,6 +133,7 @@ B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, Image* bitmap, 
 // NOTE: codepoint_next is used for kerning; pass 0 if you don't care.
 B32 FontAtlasPlace(FontAtlas* atlas, U32 codepoint, U32 codepoint_next, F32 pixel_height,
                    V2* cursor, V2* center, V2* size, V2* uv_min, V2* uv_max);
+B32 FontAtlasMeasureString(FontAtlas* atlas, F32 font_height, String8 str, V2* size);
 
 FontCharSet* FontCharSetLatin();
 FontCharSet* FontCharSetConcat(FontCharSet* set, FontCharSet* to_concat);
@@ -1421,6 +1422,21 @@ B32 FontAtlasPlace(FontAtlas* atlas, U32 codepoint, U32 codepoint_next, F32 pixe
   if (kern != NULL) { advance += kern->advance; }
   cursor->x += advance * scale;
 
+  return true;
+}
+
+B32 FontAtlasMeasureString(FontAtlas* atlas, F32 font_height, String8 str, V2* size) {
+  V2 cursor = V2_ZEROES;
+  F32 max_height = 0;
+  for (S32 i = 0; i < str.size; i++) {
+    U8 curr = str.str[i];
+    U8 next = i < str.size - 1 ? str.str[i + 1] : 0;
+    V2 center, char_size, min_uv, max_uv;
+    if (!FontAtlasPlace(atlas, curr, next, font_height, &cursor, &center, &char_size, &min_uv, &max_uv)) { return false; }
+    max_height = MAX(max_height, char_size.y);
+  }
+  size->x = cursor.x;
+  size->y = max_height;
   return true;
 }
 

@@ -96,10 +96,13 @@ B32 F64IsInteger(F64 x);
 // NOTE: V2
 ///////////////////////////////////////////////////////////////////////////////
 
-#define V2_X_POS (V2) {+1,  0}
-#define V2_Y_POS (V2) { 0, +1}
-#define V2_X_NEG (V2) {-1,  0}
-#define V2_Y_NEG (V2) { 0, -1}
+#define V2_ZEROES (V2) { 0,  0 }
+#define V2_ONES   (V2) { 1,  1 }
+
+#define V2_X_POS  (V2) {+1,  0}
+#define V2_Y_POS  (V2) { 0, +1}
+#define V2_X_NEG  (V2) {-1,  0}
+#define V2_Y_NEG  (V2) { 0, -1}
 
 V2  V2Assign(F32 x, F32 y);
 V2  V2Splat(F32 c);

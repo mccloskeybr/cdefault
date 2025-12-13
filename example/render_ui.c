@@ -3,14 +3,15 @@
 
 #define WINDOW_WIDTH  1920
 #define WINDOW_HEIGHT 1080
-#define FONT_SIZE     20.0f
+#define FONT_SIZE     24.0f
 
 static FontAtlas font_atlas;
 static U32       font_handle;
 
-V2 MeasureText(String8 UNUSED(text)) {
-  // TODO
-  return V2Assign(0, 0);
+V2 MeasureText(String8 text) {
+  V2 result;
+  DEBUG_ASSERT(FontAtlasMeasureString(&font_atlas, FONT_SIZE, text, &result));
+  return result;
 }
 
 int main(void) {
@@ -27,9 +28,9 @@ int main(void) {
   Font  font;
   String8 font_file_data;
   Image font_atlas_image;
-  DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/verdana.ttf"), &font_file_data.str, &font_file_data.size));
+  DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/consola.ttf"), &font_file_data.str, &font_file_data.size));
   DEBUG_ASSERT(FontInit(&font, font_file_data.str, font_file_data.size));
-  DEBUG_ASSERT(FontAtlasBakeSdf(font_arena, &font, &font_atlas, &font_atlas_image, 100.0f, FONT_SIZE, 5.0f, FontCharSetLatin()));
+  DEBUG_ASSERT(FontAtlasBakeSdf(font_arena, &font, &font_atlas, &font_atlas_image, 100.0f, FONT_SIZE, 4.0f, FontCharSetLatin()));
   RendererRegisterImage(&font_handle, &font_atlas_image);
 
   V2 mouse_pos;
@@ -42,21 +43,21 @@ int main(void) {
     WindowGetMousePositionV(&mouse_pos);
     UiPointerStateUpdate(mouse_pos, WindowIsMouseButtonPressed(MouseButton_Left), WindowIsMouseButtonPressed(MouseButton_Right));
     UiBegin(dt_s);
-      UiWindowFitBegin(UIID(), V2Assign(50, 500), 0);
-        UiPanelVerticalBegin(UIID(), V2Assign(20, 20), 20, 0);
-          UiLabel(UIID(), Str8Lit("hello"), 0);
-          UiButton(UIID(), V2Assign(200, 50), 0);
-          if (UiButton(UIID(), V2Assign(100, 50), 0).clicked) {
+      UiWindowFitBegin(UIID(), V2Assign(50, 750));
+        UiPanelVerticalBegin(UIID(), V2Assign(20, 20), 20);
+          UiButtonLabel(UIID(), Str8Lit("hello"), V2Assign(100, FONT_SIZE));
+          UiButton(UIID(), V2Assign(200, 50));
+          if (UiButton(UIID(), V2Assign(100, 50)).clicked) {
             LOG_INFO("clicked");
           }
 
-          UiPanelHorizontalBegin(UIID(), V2Assign(0, 0), 5, 0);
-            UiButton(UIID(), V2Assign(50, 100), 0);
-            UiButton(UIID(), V2Assign(50, 50), 0);
+          UiPanelHorizontalBegin(UIID(), V2Assign(0, 0), 5);
+            UiButton(UIID(), V2Assign(50, 100));
+            UiButton(UIID(), V2Assign(50, 50));
           UiPanelEnd();
 
-          UiButton(UIID(), V2Assign(100, 50), 0);
-          UiButton(UIID(), V2Assign(100, 50), 0);
+          UiButton(UIID(), V2Assign(100, 50));
+          UiButton(UIID(), V2Assign(100, 50));
         UiPanelEnd();
       UiWindowEnd();
     UiDrawCommand* ui_draw_commands = UiEnd();
