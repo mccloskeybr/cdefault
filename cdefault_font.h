@@ -79,6 +79,8 @@ typedef struct FontAtlas FontAtlas;
 struct FontAtlas {
   // NOTE: Multiply scale_coeff by the desired render pixel height to get the relevant glyph scale factor.
   F32            scale_coeff;
+  F32            ascent;
+  F32            descent;
   // TODO: dynamic sizing? just use a list?
   AtlasChar*     char_map[256];
   GlyphKernInfo* kern_map[256];
@@ -109,7 +111,8 @@ struct Font {
   U32 kern_offset;
   U32 cmap_subtable_offset;
   U16 num_glyphs;
-  S16 char_height;
+  S16 ascent;
+  S16 descent;
   LocFormat loc_format;
 };
 
@@ -133,7 +136,8 @@ B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, Image* bitmap, 
 // NOTE: codepoint_next is used for kerning; pass 0 if you don't care.
 B32 FontAtlasPlace(FontAtlas* atlas, U32 codepoint, U32 codepoint_next, F32 pixel_height,
                    V2* cursor, V2* center, V2* size, V2* uv_min, V2* uv_max);
-B32 FontAtlasMeasureString(FontAtlas* atlas, F32 font_height, String8 str, V2* size);
+void FontAtlasGetAttributes(FontAtlas* atlas, F32 pixel_height, F32* ascent, F32* descent);
+B32 FontAtlasMeasureString(FontAtlas* atlas, F32 pixel_height, String8 str, V2* size);
 
 FontCharSet* FontCharSetLatin();
 FontCharSet* FontCharSetConcat(FontCharSet* set, FontCharSet* to_concat);
@@ -447,12 +451,11 @@ B32 FontInit(Font* font, U8* data, U32 data_size) {
   FONT_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U32)));
   FONT_TRY_PARSE(BinStreamPullU16BE(&s, &font->num_glyphs));
 
-  S16 ascent, descent;
   FONT_TRY_PARSE(BinStreamSeek(&s, font->hhea_offset));
   FONT_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U32)));
-  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &ascent));
-  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &descent));
-  font->char_height = ascent - descent;
+  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &font->ascent));
+  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &font->descent));
+  font->descent = F32Abs(font->descent);
 
   return true;
 }
@@ -1101,7 +1104,8 @@ B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, Image* bitma
   MEMORY_ZERO_STRUCT(bitmap);
   bitmap->format = ImageFormat_R;
 
-  F32 scale = pixel_height / font->char_height;
+  S16 font_size = font->ascent + font->descent;
+  F32 scale = pixel_height / font_size;
   if (scale <= 0) {
     LOG_ERROR("[FONT] Invalid scale: %0.5f determined from provided desired pixel height: %0.5f", scale, pixel_height);
     goto font_atlas_bake_bitmap_end;
@@ -1188,6 +1192,8 @@ B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, Image* bitma
 
   if (!FontAtlasBuildKernTable(arena, font, atlas, scale, char_set)) { goto font_atlas_bake_bitmap_end; }
   atlas->scale_coeff = 1.0f / pixel_height;
+  atlas->ascent      = font->ascent * scale;
+  atlas->descent     = font->descent * scale;
 
   success = true;
 font_atlas_bake_bitmap_end:
@@ -1209,12 +1215,13 @@ B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, Image* bitmap, 
   DEBUG_ASSERT(spread_factor >= 0);
   if (spread_factor == 0) { spread_factor = 4.0f; }
 
-  F32 bmp_scale = bmp_pixel_height / font->char_height;
+  S16 font_size = font->ascent + font->descent;
+  F32 bmp_scale = bmp_pixel_height / font_size;
   if (bmp_scale <= 0) {
     LOG_ERROR("[FONT] Invalid bitmap scale: %0.5f determined from provided desired pixel height: %0.5f", bmp_scale, bmp_pixel_height);
     goto font_atlas_bake_sdf_end;
   }
-  F32 sdf_scale = sdf_pixel_height / font->char_height;
+  F32 sdf_scale = sdf_pixel_height / font_size;
   if (sdf_scale <= 0) {
     LOG_ERROR("[FONT] Invalid SDF scale: %0.5f determined from provided desired pixel height: %0.5f", sdf_scale, sdf_pixel_height);
     goto font_atlas_bake_sdf_end;
@@ -1350,6 +1357,8 @@ B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, Image* bitmap, 
 
   if (!FontAtlasBuildKernTable(arena, font, atlas, sdf_scale, char_set)) { goto font_atlas_bake_sdf_end; }
   atlas->scale_coeff = 1.0f / sdf_pixel_height;
+  atlas->ascent      = font->ascent * sdf_scale;
+  atlas->descent     = font->descent * sdf_scale;
 
   success = true;
 font_atlas_bake_sdf_end:
@@ -1425,19 +1434,23 @@ B32 FontAtlasPlace(FontAtlas* atlas, U32 codepoint, U32 codepoint_next, F32 pixe
   return true;
 }
 
-B32 FontAtlasMeasureString(FontAtlas* atlas, F32 font_height, String8 str, V2* size) {
+B32 FontAtlasMeasureString(FontAtlas* atlas, F32 pixel_height, String8 str, V2* size) {
   V2 cursor = V2_ZEROES;
-  F32 max_height = 0;
   for (S32 i = 0; i < str.size; i++) {
     U8 curr = str.str[i];
     U8 next = i < str.size - 1 ? str.str[i + 1] : 0;
     V2 center, char_size, min_uv, max_uv;
-    if (!FontAtlasPlace(atlas, curr, next, font_height, &cursor, &center, &char_size, &min_uv, &max_uv)) { return false; }
-    max_height = MAX(max_height, char_size.y);
+    if (!FontAtlasPlace(atlas, curr, next, pixel_height, &cursor, &center, &char_size, &min_uv, &max_uv)) { return false; }
   }
   size->x = cursor.x;
-  size->y = max_height;
+  size->y = pixel_height;
   return true;
+}
+
+void FontAtlasGetAttributes(FontAtlas* atlas, F32 pixel_height, F32* ascent, F32* descent) {
+  F32 scale = pixel_height * atlas->scale_coeff;
+  if (ascent != NULL)  { *ascent   = atlas->ascent * scale;  }
+  if (descent != NULL) { *descent  = atlas->descent * scale; }
 }
 
 FontCharSet* FontCharSetConcat(FontCharSet* set, FontCharSet* to_concat) {

@@ -149,6 +149,24 @@ V2* V2Lerp(V2* dest, V2* x, V2* y, F32 t);
 #define V3_GREEN  (V3) {0, 1, 0}
 #define V3_BLUE   (V3) {0, 0, 1}
 
+#define V3_MOONFLY_BLACK        V3FromHex(0x080808)
+#define V3_MOONFLY_WHITE        V3FromHex(0xeeeeee)
+#define V3_MOONFLY_DARK_GRAY    V3FromHex(0x323437)
+#define V3_MOONFLY_GRAY         V3FromHex(0x9e9e9e)
+#define V3_MOONFLY_LIGHT_GRAY   V3FromHex(0xbdbdbd)
+#define V3_MOONFLY_BLUE         V3FromHex(0x80a0ff)
+#define V3_MOONFLY_LIGHT_BLUE   V3FromHex(0xb2ceee)
+#define V3_MOONFLY_RED          V3FromHex(0xff5d5d)
+#define V3_MOONFLY_LIGHT_RED    V3FromHex(0xff5189)
+#define V3_MOONFLY_GREEN        V3FromHex(0x8cc85f)
+#define V3_MOONFLY_LIGHT_GREEN  V3FromHex(0x36c692)
+#define V3_MOONFLY_YELLOW       V3FromHex(0xe3c78a)
+#define V3_MOONFLY_LIGHT_YELLOW V3FromHex(0xc6c684)
+#define V3_MOONFLY_PURPLE       V3FromHex(0xcf87e8)
+#define V3_MOONFLY_LIGHT_PURPLE V3FromHex(0xae81ff)
+#define V3_MOONFLY_CYAN         V3FromHex(0x79dac8)
+#define V3_MOONFLY_LIGHT_CYAN   V3FromHex(0x85dc85)
+
 V3  V3Assign(F32 x, F32 y, F32 z);
 V3  V3Splat(F32 c);
 V3  V3FromV2(V2* src, F32 z);
