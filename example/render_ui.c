@@ -6,22 +6,20 @@
 // #define FONT_SIZE     22.0f
 #define FONT_SIZE     18.0f
 
-static FontAtlas font_atlas;
-static U32       font_handle;
-
-void UiTextMeasure(String8 text, V2* size) {
-  DEBUG_ASSERT(FontAtlasMeasureString(&font_atlas, FONT_SIZE, text, size));
+void UiFontMeasureTextImpl(void* user_data, String8 text, V2* size) {
+  FontAtlas* font_atlas = (FontAtlas*) user_data;
+  DEBUG_ASSERT(FontAtlasMeasureString(font_atlas, FONT_SIZE, text, size));
 }
 
-void UiFontGetAttributes(F32* descent) {
-  FontAtlasGetAttributes(&font_atlas, FONT_SIZE, NULL, descent);
+void UiFontGetAttributesImpl(void* user_data, F32* descent) {
+  FontAtlas* font_atlas = (FontAtlas*) user_data;
+  FontAtlasGetAttributes(font_atlas, FONT_SIZE, NULL, descent);
 }
 
 int main(void) {
   TimeInit();
   DEBUG_ASSERT(WindowInit(WINDOW_WIDTH, WINDOW_HEIGHT, "ui example"));
   RendererDisableDepthTest();
-  UiInit(UiTextMeasure, UiFontGetAttributes);
 
   F32 dt_s = 0.0f;
   Stopwatch frame_stopwatch;
@@ -30,7 +28,9 @@ int main(void) {
   Arena* font_arena = ArenaAllocate();
   Font font;
   String8 font_file_data;
+  FontAtlas font_atlas;
   Image font_atlas_image;
+  U32 font_handle;
   DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/verdana.ttf"), &font_file_data.str, &font_file_data.size));
   DEBUG_ASSERT(FontInit(&font, font_file_data.str, font_file_data.size));
   DEBUG_ASSERT(FontAtlasBakeSdf(font_arena, &font, &font_atlas, &font_atlas_image, 64.0f, 32.0f, 6.0f, FontCharSetLatin()));
@@ -40,8 +40,12 @@ int main(void) {
   F32 test_f32 = 0.5f;
   S32 test_s32 = 5;
   F32 plot_values[50];
-
   V2 mouse_pos;
+
+  UiInit();
+  UiSetFontCallbacks(UiFontMeasureTextImpl, UiFontGetAttributesImpl);
+  UiSetFontUserData(&font_atlas);
+
   while (!WindowShouldClose()) {
     if (WindowIsKeyPressed(Key_Control) && WindowIsKeyJustPressed(Key_C)) {
       LOG_INFO("SIG_INT received, closing.");
@@ -53,7 +57,7 @@ int main(void) {
     }
 
     WindowGetMousePositionV(&mouse_pos);
-    UiPointerStateUpdate(mouse_pos, WindowIsMouseButtonPressed(MouseButton_Left), WindowIsMouseButtonPressed(MouseButton_Right));
+    UiSetPointerState(mouse_pos, WindowIsMouseButtonPressed(MouseButton_Left), WindowIsMouseButtonPressed(MouseButton_Right));
     UiBegin(dt_s);
       if (UiWindowFloatingBegin(UIID(), Str8Lit("widgets"), V2Assign(50, 900), V2Assign(0, 0)).open) {
         UiPanelVerticalBegin(UIID(), V2Assign(10, 10), 10);

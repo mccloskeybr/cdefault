@@ -7,8 +7,7 @@
 // TODO: text wrapping
 // TODO: more std widgets
 // TODO: builtin render & text measure if asked, using cdefault renderer & font libs
-// TODO: dirty flag on widgets, only recalculate size & pos of self and children if dirty is true
-// TODO: cache text measurements
+// TODO: dirty flag on widgets? only recalculate size & pos of self and children if dirty is true
 
 #define UIID_IMPL__(file, line, str) file ":" #line ":" str
 #define UIID_IMPL_(file, line, str)  UIID_IMPL__(file, line, str)
@@ -76,24 +75,23 @@ struct UiDrawCommand {
 };
 
 // NOTE: callbacks necessary to measure and place text.
-typedef void UiTextMeasure_Fn(String8 text, V2* size);
-typedef void UiFontGetAttributes_Fn(F32* descent);
+typedef void UiFontMeasureText_Fn(void* user_data, String8 text, V2* size);
+typedef void UiFontGetAttributes_Fn(void* user_data, F32* descent);
 
-// NOTE: initialize / deinitialize the framework. UiInit must be called before any other function.
-void UiInit(UiTextMeasure_Fn* ui_text_measure_fn, UiFontGetAttributes_Fn ui_font_get_attributes_fn);
+// NOTE: initialize / deinitialize the framework.
+void UiInit(); // NOTE: must be called before any other function.
 void UiDeinit();
 
-// NOTE: pass mouse data into the UI framework. this is required for UiInteractions to contain expected data.
-void UiPointerStateUpdate(V2 mouse_pos, B32 is_lmb_down, B32 is_rmb_down);
-// NOTE: get / update the style (colors, etc.) of UI widgets. ui_default_style (static / global) is used as the default.
-UiStyle* UiStyleGet();
-// NOTE: e.g. to determine if a click should potentially be delegated to the UI system or some other system.
-B32 UiContainsMouse();
+// NOTE: Query / update internal UI framework state.
+void UiSetPointerState(V2 mouse_pos, B32 is_lmb_down, B32 is_rmb_down); // NOTE: pass mouse data into the UI framework. this is required for UiInteractions to contain expected data.
+void UiSetFontUserData(void* user_data); // NOTE: sets data that is transparently passed to the font callbacks later.
+void UiSetFontCallbacks(UiFontMeasureText_Fn* ui_font_measure_text_fn, UiFontGetAttributes_Fn* ui_font_get_attributes_fn); // NOTE: required for text to be placed & measured properly.
+UiStyle* UiStyleGet(); // NOTE: get / update the style (colors, etc.) of UI widgets. ui_default_style (static / global) is used as the default.
+B32 UiContainsMouse(); // NOTE: e.g. to determine if a click should potentially be delegated to the UI system or some other system.
 
 // NOTE: begin and end calls for determining UI layout position, sizes, etc.
-// UiEnd returns a doubly-linked list of instructions for how to render the UI (which can be processed in-order).
-void UiBegin(F32 dt_s);
-UiDrawCommand* UiEnd();
+void UiBegin(F32 dt_s); // NOTE: Must be called before any widgets are placed.
+UiDrawCommand* UiEnd(); // NOTE: returns a doubly-linked list of instructions for how to render the UI (which can be processed in-order).
 
 // NOTE: Widgets with a size attribute can be set to 0 for default behavior (fit or grow depending on the widget).
 
@@ -180,6 +178,7 @@ enum UiWidgetOptions {
 
 // NOTE: max number of children any single widget may have
 #define UI_WIDGET_MAX_CHILDREN 64
+#define UI_TEXT_MEASUREMENT_CACHE_CASHOUT_SIZE MB(1)
 typedef struct UiWidget UiWidget;
 struct UiWidget {
   U32 id;
@@ -213,12 +212,20 @@ struct UiWidget {
   V3  graph_color;
 };
 
+typedef struct UiCachedTextMeasurement UiCachedTextMeasurement;
+struct UiCachedTextMeasurement {
+  U32 str8_hash;
+  V2 size;
+  UiCachedTextMeasurement* next;
+};
+
 typedef struct UiContext UiContext;
 struct UiContext {
   B32 is_initialized;
   Arena* command_arena;
   Arena* prev_widget_arena;
   Arena* widget_arena;
+  Arena* str8_hash_arena;
 
   U32 hot_id;
   U32 active_id;
@@ -227,8 +234,11 @@ struct UiContext {
   UiWidget* prev_root;
   UiWidget* widget_free_list;
   UiWidget* current_widget;
-  UiTextMeasure_Fn* ui_text_measure_fn;
+
+  void* font_user_data;
+  UiFontMeasureText_Fn* ui_font_measure_text_fn;
   UiFontGetAttributes_Fn* ui_font_get_attributes_fn;
+  UiCachedTextMeasurement* cached_text_measurements[256];
 
   F32 dt_s;
   V2 mouse_pos;
@@ -243,6 +253,55 @@ struct UiContext _ui_context;
 static UiContext* UiGetContext() {
   DEBUG_ASSERT(_ui_context.is_initialized);
   return &_ui_context;
+}
+
+static void UiFontTextMeasurementHashMapClear() {
+  UiContext* c = UiGetContext();
+  ArenaClear(c->str8_hash_arena);
+  MEMORY_ZERO_STATIC_ARRAY(c->cached_text_measurements);
+}
+
+static void UiFontMeasureText(String8 str, V2* size) {
+  UiContext* c = UiGetContext();
+  if (c->ui_font_measure_text_fn == NULL) {
+    *size = V2_ZEROES;
+    return;
+  }
+
+  // NOTE: string measurements are very frequent and can take a long time. many strings don't change between frames,
+  // so we store them in a hashmap to speed up future lookups.
+  U32 str_hash = Str8Hash(str);
+  U32 idx = str_hash % STATIC_ARRAY_SIZE(c->cached_text_measurements);
+  UiCachedTextMeasurement* node = NULL;
+  for (node = c->cached_text_measurements[idx]; node != NULL; node = node->next) {
+    if (node->str8_hash == str_hash) { break; }
+  }
+
+  if (node != NULL) {
+    *size = node->size;
+  } else {
+    // TODO: could do e.g. LRU but this is probably fine.
+    if (ArenaPos(c->str8_hash_arena) > UI_TEXT_MEASUREMENT_CACHE_CASHOUT_SIZE) {
+      LOG_WARN("[UI] UI text measurement cache size exceeds threshold, clearing.");
+      UiFontTextMeasurementHashMapClear();
+    }
+
+    c->ui_font_measure_text_fn(c->font_user_data, str, size);
+    node = ARENA_PUSH_STRUCT(c->str8_hash_arena, UiCachedTextMeasurement);
+    node->str8_hash = str_hash;
+    node->size = *size;
+    node->next = c->cached_text_measurements[idx];
+    c->cached_text_measurements[idx] = node;
+  }
+}
+
+static void UiFontGetAttributes(F32* descent) {
+  UiContext* c = UiGetContext();
+  if (c->ui_font_get_attributes_fn == NULL) {
+    *descent = 0;
+    return;
+  }
+  c->ui_font_get_attributes_fn(c->font_user_data, descent);
 }
 
 static S32 UiWidgetComparePriorityAsc(void* a, void* b) {
@@ -738,7 +797,7 @@ static void UiEnqueueDrawCommands(UiWidget* widget, UiDrawCommand** head, UiDraw
 
   if (widget->options & UiWidgetOptions_RenderText) {
     F32 font_descent;
-    c->ui_font_get_attributes_fn(&font_descent);
+    UiFontGetAttributes(&font_descent);
     command = ARENA_PUSH_STRUCT(c->command_arena, UiDrawCommand);
     DLL_PUSH_BACK(*head, *tail, command, prev, next);
     command->type = UiDrawCommand_Text;
@@ -753,22 +812,21 @@ static void UiEnqueueDrawCommands(UiWidget* widget, UiDrawCommand** head, UiDraw
   }
 }
 
-void UiInit(UiTextMeasure_Fn* ui_text_measure_fn, UiFontGetAttributes_Fn ui_font_get_attributes_fn) {
+void UiInit() {
   UiContext* c = &_ui_context;
   DEBUG_ASSERT(!c->is_initialized);
 
-  c->widget_arena = ArenaAllocate();
+  c->widget_arena      = ArenaAllocate();
   c->prev_widget_arena = ArenaAllocate();
-  c->command_arena = ArenaAllocate();
-  c->ui_text_measure_fn = ui_text_measure_fn;
-  c->ui_font_get_attributes_fn = ui_font_get_attributes_fn;
-  c->is_initialized = true;
+  c->command_arena     = ArenaAllocate();
+  c->str8_hash_arena   = ArenaAllocate();
+  c->is_initialized    = true;
 
   ui_default_style.anim_max_time        = 0.07f;
   ui_default_style.border_size          = 1.0f;
   ui_default_style.border_color         = V3_MOONFLY_DARK_GRAY;
   ui_default_style.background_color     = V3_MOONFLY_BLACK;
-  ui_default_style.foreground_color      = V3_MOONFLY_WHITE;
+  ui_default_style.foreground_color     = V3_MOONFLY_WHITE;
   ui_default_style.widget_color         = V3_MOONFLY_BLUE;
   ui_default_style.widget_color_bright  = V3_MOONFLY_LIGHT_BLUE;
   ui_default_style.widget_color_active  = V3_MOONFLY_LIGHT_RED;
@@ -782,10 +840,11 @@ void UiDeinit() {
   ArenaRelease(c->widget_arena);
   ArenaRelease(c->prev_widget_arena);
   ArenaRelease(c->command_arena);
+  ArenaRelease(c->str8_hash_arena);
   c->is_initialized = false;
 }
 
-void UiPointerStateUpdate(V2 mouse_pos, B32 is_lmb_down, B32 is_rmb_down) {
+void UiSetPointerState(V2 mouse_pos, B32 is_lmb_down, B32 is_rmb_down) {
   UiContext* c = UiGetContext();
   V2SubV2(&c->mouse_d_pos, &mouse_pos, &c->mouse_pos);
   c->mouse_pos = mouse_pos;
@@ -793,6 +852,19 @@ void UiPointerStateUpdate(V2 mouse_pos, B32 is_lmb_down, B32 is_rmb_down) {
   c->is_rmb_just_pressed = !c->is_rmb_down && is_rmb_down;
   c->is_lmb_down = is_lmb_down;
   c->is_rmb_down = is_rmb_down;
+}
+
+void UiSetFontUserData(void* user_data) {
+  UiContext* c = UiGetContext();
+  UiFontTextMeasurementHashMapClear();
+  c->font_user_data = user_data;
+}
+
+void UiSetFontCallbacks(UiFontMeasureText_Fn* ui_font_measure_text_fn, UiFontGetAttributes_Fn* ui_font_get_attributes_fn) {
+  UiContext* c = UiGetContext();
+  UiFontTextMeasurementHashMapClear();
+  c->ui_font_measure_text_fn = ui_font_measure_text_fn;
+  c->ui_font_get_attributes_fn = ui_font_get_attributes_fn;
 }
 
 UiStyle* UiStyleGet() {
@@ -1081,7 +1153,7 @@ UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, V2 size, F3
   for (U32 i = 0; i < options_size; i++) {
     String8 option = options[i];
     V2 option_size;
-    c->ui_text_measure_fn(option, &option_size);
+    UiFontMeasureText(option, &option_size);
     max_option_size.x = MAX(max_option_size.x, option_size.x);
     max_option_size.y = MAX(max_option_size.y, option_size.y);
   }
@@ -1124,7 +1196,7 @@ UiInteraction UiText(U32 id, String8 text, V2 size) {
   UiWidgetApplySizeDefaultFit(&options, size);
   UiWidget* text_widget = UiWidgetBegin(id, options);
   text_widget->text = text;
-  c->ui_text_measure_fn(text_widget->text, &text_widget->fit_size);
+  UiFontMeasureText(text_widget->text, &text_widget->fit_size);
   UiWidgetEnd();
   return UiWidgetGetInteraction(text_widget);
 }

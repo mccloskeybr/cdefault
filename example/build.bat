@@ -2,7 +2,7 @@
 cls
 
 set WARN=/W4 /wd4127 /wd4244 /wd4456 /wd4355 /wd4457 /wd4245 /wd4701 /wd4201
-set FLAGS=/Zo /Z7 /nologo %WARN%
+set FLAGS=/Zo /Z7 /nologo %WARN% /DPROFILE
 set LIBS=ole32.lib user32.lib opengl32.lib gdi32.lib
 
 echo Compiling:
