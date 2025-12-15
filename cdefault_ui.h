@@ -14,9 +14,9 @@
 #define UIID_IMPL_(file, line, str)  UIID_IMPL__(file, line, str)
 #define UIID_IMPL(str)               Str8Hash(Str8Lit(UIID_IMPL_(__FILE__, __LINE__, str)))
 
-#define UIID()      UIID_IMPL("")
-#define UIID_STR(s) UIID_IMPL(s)
-#define UIID_INT(i) UIID() + i
+#define UIID()      (UIID_IMPL(""))
+#define UIID_STR(s) (UIID_IMPL(s))
+#define UIID_INT(i) (UIID() + i)
 
 // NOTE: this struct is how you can respond to different events for each widget.
 typedef struct UiInteraction UiInteraction;
@@ -51,11 +51,17 @@ struct UiDrawCommand {
   UiDrawCommand* next;
 
   enum {
+    UiDrawCommand_Line,
     UiDrawCommand_Rect,
     UiDrawCommand_Text,
   } type;
 
   union {
+    struct {
+      V2 start;
+      V2 end;
+      V3 color;
+    } line;
     struct {
       V2 center;
       V2 size;
@@ -81,22 +87,23 @@ void UiDeinit();
 void UiPointerStateUpdate(V2 mouse_pos, B32 is_lmb_down, B32 is_rmb_down);
 // NOTE: get / update the style (colors, etc.) of UI widgets. ui_default_style (static / global) is used as the default.
 UiStyle* UiStyleGet();
+// NOTE: e.g. to determine if a click should potentially be delegated to the UI system or some other system.
+B32 UiContainsMouse();
 
 // NOTE: begin and end calls for determining UI layout position, sizes, etc.
 // UiEnd returns a doubly-linked list of instructions for how to render the UI (which can be processed in-order).
 void UiBegin(F32 dt_s);
 UiDrawCommand* UiEnd();
 
-// NOTE: UI Widget functions, invoke these within UiBegin and UiEnd to express the contents and layout of your UI.
-// NOTE: For widgets that allow a size to be specified, you may specify a dimension of 0 to fit to that widget's contents along the given axis.
+// NOTE: Widgets with a size attribute can be set to 0 for default behavior (fit or grow depending on the widget).
 
 // NOTE: Windows. Primarily how you specify the location of a container / group of UI widgets.
-// Windows cannot be defined as children of other windows.
+// NOTE: Windows cannot be defined as children of other windows.
 UiInteraction UiWindowFixedBegin(U32 id, String8 title, V2 pos, V2 size);
 UiInteraction UiWindowFloatingBegin(U32 id, String8 title, V2 pos, V2 size);
 void UiWindowEnd();
-
-// NOTE: Popups are specialized windows that can be defined within other windows. They are always rendered on top of everything else.
+// NOTE: Popups are specialized windows that can be defined within other windows.
+// They are always rendered on top of everything else.
 UiInteraction UiPopupBegin(U32 id, V2 pos, V2 size);
 void UiPopupEnd();
 
@@ -107,18 +114,22 @@ UiInteraction UiPanelBorderedVerticalBegin(U32 id, V2 pad, F32 child_gap);
 UiInteraction UiPanelBorderedHorizontalBegin(U32 id, V2 pad, F32 child_gap);
 void UiPanelEnd();
 
-// NOTE: draw a line across the direction axis of the container it's placed in.
+// NOTE: Layout / visual modifiers without a clickable component.
 UiInteraction UiSeparator(U32 id);
-// NOTE: insert a grow panel along the parent's direction axis.
 UiInteraction UiGrow(U32 id);
 
+// NOTE: Widgets. Must be defined within at least a top level window container.
+// NOTE: A size of 0 defaults to a grow scheme.
 UiInteraction UiButton(U32 id, String8 text, V2 size);
-UiInteraction UiButtonToggle(U32 id, String8 text, V2 size, B32* toggled);
+UiInteraction UiButtonToggle(U32 id, String8 text, B32* toggled, V2 size);
 UiInteraction UiButtonRadio(U32 id, String8* options, U32 options_size, V2 button_size, V2 child_gap);
-
-UiInteraction UiComboBox(U32 id, String8* options, U32 options_size);
-
-UiInteraction UiText(U32 id, String8 text);
+UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, V2 size);
+UiInteraction UiText(U32 id, String8 text, V2 size);
+UiInteraction UiSliderF32(U32 id, F32* value, F32 min, F32 max, F32 resolution, V2 size);
+UiInteraction UiSliderU32(U32 id, U32* value, U32 min, U32 max, F32 resolution, V2 size);
+UiInteraction UiSliderS32(U32 id, S32* value, S32 min, S32 max, F32 resolution, V2 size);
+UiInteraction UiPlotLines(U32 id, F32* values, U32 values_count, V2 size);
+UiInteraction UiPlotBar(U32 id, F32* values, U32 values_count, V2 size);
 
 #endif // CDEFAULT_UI_H_
 
@@ -151,11 +162,12 @@ enum UiWidgetOptions {
   UiWidgetOptions_AlignVertCenter     = BIT(12),
   UiWidgetOptions_AlignVertEnd        = BIT(13),
 
-  // NOTE: optional flags.
+  // NOTE: render options.
   UiWidgetOptions_RenderBorder        = BIT(14),
   UiWidgetOptions_RenderRect          = BIT(15),
   UiWidgetOptions_RenderText          = BIT(16),
-  UiWidgetOptions_RenderSlider        = BIT(17),
+  UiWidgetOptions_RenderGraphLine     = BIT(17),
+  UiWidgetOptions_RenderGraphBar      = BIT(18),
 };
 
 #define UiWidgetOptions_SizingFixed (UiWidgetOptions_SizingHorizFixed | UiWidgetOptions_SizingVertFixed)
@@ -175,29 +187,29 @@ struct UiWidget {
   UiWidget* children[UI_WIDGET_MAX_CHILDREN];
   U32 children_size;
 
-  // NOTE: widget configuration
   UiWidgetOptions options;
   String8 text;
   V2  pad;
   F32 child_gap;
   V2  pref_size;
   V3  text_color;
-  V3  rect_color;
+  V3  color;
   V3  border_color;
   F32 border_size;
-
-  // NOTE: calculated by framework.
-  U32 priority; // NOTE: for overlapping window precedence. in range (0, num_windows)
-  F32 slider_t;
+  U32 priority;
+  F32 slider_delta;
   V2  pos;
   V2  fit_size;
   V2  size;
   B32 is_animating;
-  V3  target_rect_color;
+  V3  target_color;
   F32 anim_time;
   B32 animation_lock;
   B32 open;
   U32 selected;
+  F32* graph_values;
+  U32 graph_values_count;
+  V3  graph_color;
 };
 
 typedef struct UiContext UiContext;
@@ -206,7 +218,6 @@ struct UiContext {
   Arena* command_arena;
   Arena* prev_widget_arena;
   Arena* widget_arena;
-  Arena* temp_arena;
 
   U32 hot_id;
   U32 active_id;
@@ -228,17 +239,28 @@ struct UiContext {
 };
 struct UiContext _ui_context;
 
+static UiContext* UiGetContext() {
+  DEBUG_ASSERT(_ui_context.is_initialized);
+  return &_ui_context;
+}
+
 static S32 UiWidgetComparePriorityAsc(void* a, void* b) {
   UiWidget* a_widget = *((UiWidget**) a);
   UiWidget* b_widget = *((UiWidget**) b);
   return (S32) a_widget->priority - (S32) b_widget->priority;
 }
 
-static void UiWidgetOptionsApplySizeConfig(UiWidgetOptions* options, V2 size) {
-  // NOTE: If a dim is specified as 0 along an axis, fit to child contents along that axis.
+static void UiWidgetApplySizeDefaultFit(UiWidgetOptions* options, V2 size) {
   if (size.x == 0) { *options |= UiWidgetOptions_SizingHorizFit;   }
   else             { *options |= UiWidgetOptions_SizingHorizFixed; }
   if (size.y == 0) { *options |= UiWidgetOptions_SizingVertFit;    }
+  else             { *options |= UiWidgetOptions_SizingVertFixed;  }
+}
+
+static void UiWidgetApplySizeDefaultGrow(UiWidgetOptions* options, V2 size) {
+  if (size.x == 0) { *options |= UiWidgetOptions_SizingHorizGrow;  }
+  else             { *options |= UiWidgetOptions_SizingHorizFixed; }
+  if (size.y == 0) { *options |= UiWidgetOptions_SizingVertGrow;   }
   else             { *options |= UiWidgetOptions_SizingVertFixed;  }
 }
 
@@ -292,8 +314,7 @@ static void UiWidgetUpdatePos(F32* pos, F32 delta, UiWidgetOptions direction) {
 }
 
 static UiWidget* UiWidgetAllocate() {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
   UiWidget* widget = ARENA_PUSH_STRUCT(c->widget_arena, UiWidget);
   MEMORY_ZERO_STRUCT(widget);
   return widget;
@@ -311,31 +332,29 @@ static UiWidget* UiWidgetFind(UiWidget* widget, U32 id) {
 }
 
 static void UiWidgetUpdateAnimation(UiWidget* widget) {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
   if (!widget->is_animating) { return; }
   F32 anim_max_time = c->style.anim_max_time;
   widget->anim_time += c->dt_s;
   if (widget->anim_time > anim_max_time) {
-    widget->rect_color     = widget->target_rect_color;
+    widget->color          = widget->target_color;
     widget->is_animating   = false;
     widget->animation_lock = false;
   } else {
-    V3Lerp(&widget->rect_color, &widget->rect_color, &widget->target_rect_color, MIN(widget->anim_time / anim_max_time, 1));
+    V3Lerp(&widget->color, &widget->color, &widget->target_color, MIN(widget->anim_time / anim_max_time, 1));
   }
 }
 
 static void UiWidgetAnimateTo(UiWidget* widget, V3 color, B32 lock) {
-  if (widget->animation_lock || V3Eq(&widget->target_rect_color, &color)) { return; }
-  widget->target_rect_color = color;
+  if (widget->animation_lock || V3Eq(&widget->target_color, &color)) { return; }
+  widget->target_color = color;
   widget->anim_time = 0;
   widget->is_animating = true;
   widget->animation_lock = lock;
 }
 
 static UiInteraction UiWidgetGetInteraction(UiWidget* widget) {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
 
   // NOTE: determine if the mouse is hovering, etc. by checking the mouse state against the given widget's state last frame.
   // we cannot evaluate the mouse state against the current state, as we don't calculate the final position and size of the
@@ -386,8 +405,7 @@ static B32 UiWidgetOptionsValidate(UiWidgetOptions options) {
 }
 
 static UiWidget* UiWidgetBegin(U32 id, UiWidgetOptions options) {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
   DEBUG_ASSERT(c->current_widget->children_size < UI_WIDGET_MAX_CHILDREN);
 
   UiWidget* new_widget = UiWidgetAllocate();
@@ -403,13 +421,14 @@ static UiWidget* UiWidgetBegin(U32 id, UiWidgetOptions options) {
   // NOTE: sync data from last frame
   new_widget->prev = UiWidgetFind(c->prev_root, id);
   if (new_widget->prev != NULL) {
+    new_widget->slider_delta      = new_widget->prev->slider_delta;
     new_widget->priority          = new_widget->prev->priority;
     new_widget->pos               = new_widget->prev->pos;
     new_widget->open              = new_widget->prev->open;
     new_widget->selected          = new_widget->prev->selected;
     new_widget->is_animating      = new_widget->prev->is_animating;
-    new_widget->rect_color        = new_widget->prev->rect_color;
-    new_widget->target_rect_color = new_widget->prev->target_rect_color;
+    new_widget->color        = new_widget->prev->color;
+    new_widget->target_color = new_widget->prev->target_color;
     new_widget->anim_time         = new_widget->prev->anim_time;
     new_widget->animation_lock    = new_widget->prev->animation_lock;
     UiWidgetUpdateAnimation(new_widget);
@@ -421,8 +440,7 @@ static UiWidget* UiWidgetBegin(U32 id, UiWidgetOptions options) {
 }
 
 static void UiWidgetEnd() {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
   c->current_widget = c->current_widget->parent;
 }
 
@@ -457,9 +475,6 @@ static void UiSizeWidgets(UiWidget* widget, UiWidgetOptions direction) {
 }
 
 static void UiGrowWidgets(UiWidget* widget, UiWidgetOptions direction) {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
-
   // NOTE: collect all children that can grow. they need to share the growth delta.
   // TODO: cache this on the widget?
   UiWidget* growable_children[UI_WIDGET_MAX_CHILDREN];
@@ -484,7 +499,7 @@ static void UiGrowWidgets(UiWidget* widget, UiWidgetOptions direction) {
       while (delta > 0) {
         // NOTE: find the 2 smallest sets of widgets.
         F32 smallest_size_dim = *UiWidgetGetDim(&growable_children[0]->size, direction);
-        F32 second_smallest_size_dim = 0;
+        F32 second_smallest_size_dim = F32_MAX;
         for (U32 i = 1; i < growable_children_size; i++) {
           UiWidget* child = growable_children[i];
           F32 child_size_dim = *UiWidgetGetDim(&child->size, direction);
@@ -495,8 +510,7 @@ static void UiGrowWidgets(UiWidget* widget, UiWidgetOptions direction) {
             second_smallest_size_dim = child_size_dim;
           }
         }
-        // NOTE: nothing more we can grow, give up.
-        if (smallest_size_dim == F32_MAX) { break; }
+        if (second_smallest_size_dim == F32_MAX) { second_smallest_size_dim = smallest_size_dim; }
 
         // NOTE: grow the smallest widgets so they're as big as the second smallest
         F32 size_delta = MIN(second_smallest_size_dim - smallest_size_dim, delta);
@@ -516,7 +530,7 @@ static void UiGrowWidgets(UiWidget* widget, UiWidgetOptions direction) {
       while (delta < 0) {
         // NOTE: find the 2 largest sets of widgets.
         F32 largest_size_dim = *UiWidgetGetDim(&growable_children[0]->size, direction);
-        F32 second_largest_size_dim = 0;
+        F32 second_largest_size_dim = F32_MIN;
         for (U32 i = 1; i < growable_children_size; i++) {
           UiWidget* child = growable_children[i];
           F32 child_size_dim = *UiWidgetGetDim(&child->size, direction);
@@ -527,8 +541,7 @@ static void UiGrowWidgets(UiWidget* widget, UiWidgetOptions direction) {
             second_largest_size_dim = child_size_dim;
           }
         }
-        // NOTE: nothing more we can shrink, give up.
-        if (F32ApproxEq(largest_size_dim, 0)) { break; }
+        if (second_largest_size_dim == F32_MIN) { second_largest_size_dim = largest_size_dim; }
 
         // NOTE: shrink the largest widgets so they're as big as the second largest
         F32 size_delta = MIN(largest_size_dim - second_largest_size_dim, -delta);
@@ -621,8 +634,7 @@ static void UiPositionWidgetsRoot(UiWidget* widget, UiWidgetOptions direction) {
 }
 
 static B32 UiMaybeUpdateHot(UiWidget* widget) {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
 
   // NOTE: correct coords, pos is top left.
   V2 m   = c->mouse_pos;
@@ -665,28 +677,62 @@ static void UiEnqueueDrawCommands(UiWidget* widget, UiDrawCommand** head, UiDraw
     command->rect.size     = widget->size;
     command->rect.size.x   -= widget->border_size * 2;
     command->rect.size.y   -= widget->border_size * 2;
-    command->rect.color    = widget->rect_color;
+    command->rect.color    = widget->color;
   }
 
-  // TODO: finish
-  if (widget->options & UiWidgetOptions_RenderSlider) {
-    command = ARENA_PUSH_STRUCT(c->command_arena, UiDrawCommand);
-    DLL_PUSH_BACK(*head, *tail, command, prev, next);
-    command->type = UiDrawCommand_Rect;
-    command->rect.center.x = widget->pos.x + widget->size.x / 2.0f;
-    command->rect.center.y = widget->pos.y - widget->size.y / 2.0f;
-    command->rect.size     = widget->size;
-    command->rect.size.y /= 4;
-    command->rect.color    = widget->rect_color;
+  if (widget->options & UiWidgetOptions_RenderGraphLine && widget->graph_values_count > 0) {
+    F32 y_min = F32_MAX;
+    F32 y_max = F32_MIN;
+    for (U32 i = 0; i < widget->graph_values_count; i++) {
+      y_min = MIN(y_min, widget->graph_values[i]);
+      y_max = MAX(y_max, widget->graph_values[i]);
+    }
+    F32 x_step = (widget->size.x - (widget->border_size * 2) - 2) / (widget->graph_values_count - 1);
+    F32 y_step = (widget->size.y - (widget->border_size * 2) - 2) / (y_max - y_min);
+    F32 x_pos = widget->pos.x + widget->border_size + 1;
+    F32 y_pos = widget->pos.y - widget->size.y + widget->border_size + 1;
+    for (U32 i = 0; i < widget->graph_values_count - 1; i++) {
+      F32 curr_value = widget->graph_values[i]     - y_min;
+      F32 next_value = widget->graph_values[i + 1] - y_min;
 
-    command = ARENA_PUSH_STRUCT(c->command_arena, UiDrawCommand);
-    DLL_PUSH_BACK(*head, *tail, command, prev, next);
-    command->type = UiDrawCommand_Rect;
-    command->rect.center.x = widget->pos.x + (widget->size.x * widget->slider_t);
-    command->rect.center.y = widget->pos.y - widget->size.y / 2.0f;
-    command->rect.size.x   = widget->size.x / 10;
-    command->rect.size.y   = widget->size.y;
-    command->rect.color    = widget->rect_color;
+      command = ARENA_PUSH_STRUCT(c->command_arena, UiDrawCommand);
+      DLL_PUSH_BACK(*head, *tail, command, prev, next);
+      command->type = UiDrawCommand_Line;
+      command->line.start.x = x_pos;
+      command->line.start.y = y_pos + (curr_value * y_step);
+      command->line.end.x   = x_pos + x_step;
+      command->line.end.y   = y_pos + (next_value * y_step);
+      command->line.color   = widget->graph_color;
+
+      x_pos += x_step;
+    }
+  }
+
+  if (widget->options & UiWidgetOptions_RenderGraphBar && widget->graph_values_count > 0) {
+    F32 y_min = F32_MAX;
+    F32 y_max = F32_MIN;
+    for (U32 i = 0; i < widget->graph_values_count; i++) {
+      y_min = MIN(y_min, widget->graph_values[i]);
+      y_max = MAX(y_max, widget->graph_values[i]);
+    }
+    F32 x_step = (widget->size.x - (widget->border_size * 2) - 2) / widget->graph_values_count;
+    F32 y_step = (widget->size.y - (widget->border_size * 2) - 2) / (y_max - y_min);
+    F32 x_pos = widget->pos.x + widget->border_size + 1;
+    F32 y_pos = widget->pos.y - widget->size.y + widget->border_size + 1;
+    for (U32 i = 0; i < widget->graph_values_count; i++) {
+      F32 curr_value = widget->graph_values[i] - y_min;
+
+      command = ARENA_PUSH_STRUCT(c->command_arena, UiDrawCommand);
+      DLL_PUSH_BACK(*head, *tail, command, prev, next);
+      command->type = UiDrawCommand_Rect;
+      command->rect.center.x = x_pos + (x_step / 2.0f);
+      command->rect.center.y = y_pos + (curr_value * y_step / 2.0f);
+      command->rect.size.x   = x_step;
+      command->rect.size.y   = curr_value * y_step;
+      command->rect.color    = widget->graph_color;
+
+      x_pos += x_step;
+    }
   }
 
   if (widget->options & UiWidgetOptions_RenderText) {
@@ -709,10 +755,10 @@ static void UiEnqueueDrawCommands(UiWidget* widget, UiDrawCommand** head, UiDraw
 void UiInit(UiTextMeasure_Fn* ui_text_measure_fn, UiFontGetAttributes_Fn ui_font_get_attributes_fn) {
   UiContext* c = &_ui_context;
   DEBUG_ASSERT(!c->is_initialized);
+
   c->widget_arena = ArenaAllocate();
   c->prev_widget_arena = ArenaAllocate();
   c->command_arena = ArenaAllocate();
-  c->temp_arena = ArenaAllocate();
   c->ui_text_measure_fn = ui_text_measure_fn;
   c->ui_font_get_attributes_fn = ui_font_get_attributes_fn;
   c->is_initialized = true;
@@ -731,16 +777,15 @@ void UiInit(UiTextMeasure_Fn* ui_text_measure_fn, UiFontGetAttributes_Fn ui_font
 void UiDeinit() {
   UiContext* c = &_ui_context;
   DEBUG_ASSERT(c->is_initialized);
+
   ArenaRelease(c->widget_arena);
   ArenaRelease(c->prev_widget_arena);
   ArenaRelease(c->command_arena);
-  ArenaRelease(c->temp_arena);
   c->is_initialized = false;
 }
 
 void UiPointerStateUpdate(V2 mouse_pos, B32 is_lmb_down, B32 is_rmb_down) {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
   V2SubV2(&c->mouse_d_pos, &mouse_pos, &c->mouse_pos);
   c->mouse_pos = mouse_pos;
   c->is_lmb_just_pressed = !c->is_lmb_down && is_lmb_down;
@@ -750,14 +795,17 @@ void UiPointerStateUpdate(V2 mouse_pos, B32 is_lmb_down, B32 is_rmb_down) {
 }
 
 UiStyle* UiStyleGet() {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
   return &c->style;
 }
 
+B32 UiContainsMouse() {
+  UiContext* c = UiGetContext();
+  return c->hot_id != 0 || c->active_id != 0;
+}
+
 void UiBegin(F32 dt_s) {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
   DEBUG_ASSERT(c->root == NULL);
   DEBUG_ASSERT(c->current_widget == NULL);
   c->root = UiWidgetAllocate();
@@ -767,8 +815,7 @@ void UiBegin(F32 dt_s) {
 }
 
 UiDrawCommand* UiEnd() {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
   DEBUG_ASSERT(c->current_widget == c->root);
 
   // NOTE: order windows by priority / draw precedence
@@ -813,11 +860,10 @@ UiDrawCommand* UiEnd() {
 }
 
 UiInteraction UiWindowFixedBegin(U32 id, String8 title, V2 pos, V2 size) {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
   DEBUG_ASSERT(c->current_widget == c->root);
   UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
-  UiWidgetOptionsApplySizeConfig(&options, size);
+  UiWidgetApplySizeDefaultFit(&options, size);
   UiWidget* window = UiWidgetBegin(id, options);
   if (window->prev == NULL) {
     window->pos = pos;
@@ -825,14 +871,14 @@ UiInteraction UiWindowFixedBegin(U32 id, String8 title, V2 pos, V2 size) {
     if (c->prev_root != NULL) { window->priority = c->prev_root->children_size; }
     else                      { window->priority = c->root->children_size;      }
   }
-  window->rect_color = c->style.background_color;
+  window->color = c->style.background_color;
   window->pref_size = size;
   UiInteraction result = UiWidgetGetInteraction(window);
   if (title.size > 0) {
     UiInteractionMerge(&result, UiPanelHorizontalBegin(UIID_INT(id), V2Assign(5, 5), 0));
-      UiInteractionMerge(&result, UiText(UIID_INT(id), title));
+      UiInteractionMerge(&result, UiText(UIID_INT(id), title, V2_ZEROES));
       UiInteractionMerge(&result, UiGrow(UIID_INT(id)));
-      UiInteractionMerge(&result, UiButtonToggle(UIID_INT(id), Str8Lit(""), V2Assign(20, 20), &window->open));
+      UiInteractionMerge(&result, UiButtonToggle(UIID_INT(id), Str8Lit(""), &window->open, V2Assign(20, 20)));
     UiPanelEnd();
     UiInteractionMerge(&result, UiSeparator(UIID_INT(id)));
   }
@@ -841,8 +887,7 @@ UiInteraction UiWindowFixedBegin(U32 id, String8 title, V2 pos, V2 size) {
 }
 
 UiInteraction UiWindowFloatingBegin(U32 id, String8 title, V2 pos, V2 size) {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
   UiInteraction result = UiWindowFixedBegin(id, title, pos, size);
   UiWidget* window = c->current_widget;
   if (result.dragged) { V2AddV2(&window->pos, &window->pos, &c->mouse_d_pos); }
@@ -850,28 +895,25 @@ UiInteraction UiWindowFloatingBegin(U32 id, String8 title, V2 pos, V2 size) {
 }
 
 void UiWindowEnd() {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
   UiWidgetEnd();
   DEBUG_ASSERT(c->current_widget == c->root);
 }
 
 UiInteraction UiPopupBegin(U32 id, V2 pos, V2 size) {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
   UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
-  UiWidgetOptionsApplySizeConfig(&options, size);
+  UiWidgetApplySizeDefaultFit(&options, size);
   UiWidget* popup = UiWidgetBegin(id, options);
   popup->pos = pos;
-  popup->rect_color = c->style.background_color;
+  popup->color = c->style.background_color;
   popup->pref_size = size;
   popup->priority = S32_MAX;
   return UiWidgetGetInteraction(popup);
 }
 
 void UiPopupEnd() {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
   UiWidget* popup = c->current_widget;
   UiWidgetEnd();
   UiWidget* parent = popup->parent;
@@ -892,32 +934,31 @@ void UiPopupEnd() {
 }
 
 static UiInteraction UiPanelEx(U32 id, V2 pad, F32 child_gap, UiWidgetOptions options) {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
   UiWidget* panel = UiWidgetBegin(id, options);
   panel->pad = pad;
   panel->child_gap = child_gap;
-  panel->rect_color = c->style.background_color;
+  panel->color = c->style.background_color;
   return UiWidgetGetInteraction(panel);
 }
 
 UiInteraction UiPanelVerticalBegin(U32 id, V2 pad, F32 child_gap) {
-  UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_SizingHorizFit | UiWidgetOptions_SizingVertGrow;
+  UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_SizingGrow;
   return UiPanelEx(id, pad, child_gap, options);
 }
 
 UiInteraction UiPanelHorizontalBegin(U32 id, V2 pad, F32 child_gap) {
-  UiWidgetOptions options = UiWidgetOptions_DirectionHorizontal | UiWidgetOptions_AlignCenter | UiWidgetOptions_SizingHorizGrow | UiWidgetOptions_SizingVertFit;
+  UiWidgetOptions options = UiWidgetOptions_DirectionHorizontal | UiWidgetOptions_AlignCenter | UiWidgetOptions_SizingGrow;
   return UiPanelEx(id, pad, child_gap, options);
 }
 
 UiInteraction UiPanelBorderedVerticalBegin(U32 id, V2 pad, F32 child_gap) {
-  UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_SizingHorizFit | UiWidgetOptions_SizingVertGrow | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
+  UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_SizingGrow | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
   return UiPanelEx(id, pad, child_gap, options);
 }
 
 UiInteraction UiPanelBorderedHorizontalBegin(U32 id, V2 pad, F32 child_gap) {
-  UiWidgetOptions options = UiWidgetOptions_DirectionHorizontal | UiWidgetOptions_AlignCenter | UiWidgetOptions_SizingHorizGrow | UiWidgetOptions_SizingVertFit | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
+  UiWidgetOptions options = UiWidgetOptions_DirectionHorizontal | UiWidgetOptions_AlignCenter | UiWidgetOptions_SizingGrow | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
   return UiPanelEx(id, pad, child_gap, options);
 }
 
@@ -926,23 +967,21 @@ void UiPanelEnd() {
 }
 
 UiInteraction UiSeparator(U32 id) {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
   UiWidgetOptions options = UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
   UiWidgetOptions parent_dir = UiWidgetGetDirOpt(c->current_widget);
   if      (parent_dir == UiWidgetOptions_DirectionVertical)   { options |= UiWidgetOptions_SizingHorizGrow  | UiWidgetOptions_SizingVertFixed; }
   else if (parent_dir == UiWidgetOptions_DirectionHorizontal) { options |= UiWidgetOptions_SizingHorizFixed | UiWidgetOptions_SizingVertGrow;  }
   else { UNREACHABLE(); }
   UiWidget* separator = UiWidgetBegin(id, options);
-  separator->rect_color = c->style.border_color;
+  separator->color = c->style.border_color;
   separator->pref_size = V2Assign(c->style.border_size, c->style.border_size);
   UiWidgetEnd();
   return UiWidgetGetInteraction(separator);
 }
 
 UiInteraction UiGrow(U32 id) {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
   UiWidgetOptions parent_dir = UiWidgetGetDirOpt(c->current_widget);
   UiInteraction result;
   if (parent_dir == UiWidgetOptions_DirectionVertical) { result = UiPanelVerticalBegin(id, V2_ZEROES, 0); }
@@ -952,15 +991,14 @@ UiInteraction UiGrow(U32 id) {
 }
 
 UiInteraction UiButton(U32 id, String8 text, V2 size) {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  UiContext* c = UiGetContext();
   UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
-  UiWidgetOptionsApplySizeConfig(&options, size);
+  UiWidgetApplySizeDefaultGrow(&options, size);
   UiWidget* button = UiWidgetBegin(id, options);
-  if (button->prev == NULL) { button->rect_color = c->style.button_default_color; }
+  if (button->prev == NULL) { button->color = c->style.button_default_color; }
   button->pref_size = size;
   UiInteraction interaction = UiWidgetGetInteraction(button);
-  UiInteractionMerge(&interaction, UiText(UIID_INT(id), text));
+  UiInteractionMerge(&interaction, UiText(UIID_INT(id), text, V2_ZEROES));
   if (interaction.clicked)      { UiWidgetAnimateTo(button, c->style.button_clicked_color, true); }
   else if (interaction.hovered) { UiWidgetAnimateTo(button, c->style.button_hovered_color, false); }
   else                          { UiWidgetAnimateTo(button, c->style.button_default_color, false); }
@@ -968,16 +1006,15 @@ UiInteraction UiButton(U32 id, String8 text, V2 size) {
   return interaction;
 }
 
-UiInteraction UiButtonToggle(U32 id, String8 text, V2 size, B32* toggled) {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+UiInteraction UiButtonToggle(U32 id, String8 text, B32* toggled, V2 size) {
+  UiContext* c = UiGetContext();
   UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
-  UiWidgetOptionsApplySizeConfig(&options, size);
+  UiWidgetApplySizeDefaultGrow(&options, size);
   UiWidget* button = UiWidgetBegin(id, options);
-  if (button->prev == NULL) { button->rect_color = c->style.button_default_color; }
+  if (button->prev == NULL) { button->color = c->style.button_default_color; }
   button->pref_size = size;
   UiInteraction interaction = UiWidgetGetInteraction(button);
-  UiInteractionMerge(&interaction, UiText(UIID_INT(id), text));
+  UiInteractionMerge(&interaction, UiText(UIID_INT(id), text, V2_ZEROES));
   if (interaction.clicked)      { *toggled = !*toggled; }
   if (*toggled)                 { UiWidgetAnimateTo(button, c->style.button_clicked_color, true); }
   else if (interaction.hovered) { UiWidgetAnimateTo(button, c->style.button_hovered_color, false); }
@@ -987,8 +1024,6 @@ UiInteraction UiButtonToggle(U32 id, String8 text, V2 size, B32* toggled) {
 }
 
 UiInteraction UiButtonRadio(U32 id, String8* options, U32 options_size, V2 button_size, V2 child_gap) {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
   UiWidgetOptions widget_options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_SizingFit | UiWidgetOptions_AlignStart;
   UiWidget* radio_group = UiWidgetBegin(id, widget_options);
   radio_group->child_gap = child_gap.y;
@@ -997,8 +1032,8 @@ UiInteraction UiButtonRadio(U32 id, String8* options, U32 options_size, V2 butto
   for (U32 i = 0; i < options_size; i++) {
     B32 selected = radio_group->selected == i;
     UiInteractionMerge(&result, UiPanelHorizontalBegin(UIID_INT(id + i), V2_ZEROES, child_gap.x));
-    UiInteractionMerge(&result, UiButtonToggle(UIID_INT(id + i), Str8Lit(""), button_size, &selected));
-    UiInteractionMerge(&result, UiText(UIID_INT(id + i), options[i]));
+    UiInteractionMerge(&result, UiButtonToggle(UIID_INT(id + i), Str8Lit(""), &selected, button_size));
+    UiInteractionMerge(&result, UiText(UIID_INT(id + i), options[i], V2_ZEROES));
     UiPanelEnd();
     if (selected) { radio_group->selected = i; }
   }
@@ -1007,17 +1042,17 @@ UiInteraction UiButtonRadio(U32 id, String8* options, U32 options_size, V2 butto
   return result;
 }
 
-UiInteraction UiComboBox(U32 id, String8* options, U32 options_size) {
-  UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
-  UiWidgetOptions widget_options = UiWidgetOptions_DirectionHorizontal | UiWidgetOptions_SizingFit | UiWidgetOptions_AlignCenter | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
+UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, V2 size) {
+  UiContext* c = UiGetContext();
+  UiWidgetOptions widget_options = UiWidgetOptions_DirectionHorizontal | UiWidgetOptions_AlignCenter | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
+  UiWidgetApplySizeDefaultGrow(&widget_options, size);
   UiWidget* combo_box = UiWidgetBegin(id, widget_options);
   combo_box->pad = V2Assign(5, 5);
   combo_box->child_gap = 5;
-  combo_box->rect_color = c->style.background_color;
+  combo_box->pref_size = size;
+  combo_box->color = c->style.background_color;
   UiInteraction result = UiWidgetGetInteraction(combo_box);
-  UiInteractionMerge(&result, UiText(UIID_INT(id), options[combo_box->selected]));
-
+  UiInteractionMerge(&result, UiText(UIID_INT(id), options[combo_box->selected], V2_ZEROES));
   V2 max_option_size = V2_ZEROES;
   for (U32 i = 0; i < options_size; i++) {
     String8 option = options[i];
@@ -1027,7 +1062,7 @@ UiInteraction UiComboBox(U32 id, String8* options, U32 options_size) {
     max_option_size.y = MAX(max_option_size.y, option_size.y);
   }
   combo_box->children[combo_box->children_size - 1]->fit_size = max_option_size;
-
+  UiInteractionMerge(&result, UiGrow(UIID_INT(id)));
   UiInteraction open_button = UiButton(UIID_INT(id), Str8Lit(""), V2Assign(20, 20));
   UiInteractionMerge(&result, open_button);
   if (result.clicked) { combo_box->open = !combo_box->open; }
@@ -1040,7 +1075,7 @@ UiInteraction UiComboBox(U32 id, String8* options, U32 options_size) {
     UiInteractionMerge(&result, UiPopupBegin(UIID_INT(id), popup_pos, popup_size));
     for (U32 i = 0; i < options_size; i++) {
       UiInteraction option_interaction = UiPanelHorizontalBegin(UIID_INT(id + i), V2_ZEROES, 0);
-      UiInteractionMerge(&option_interaction, UiText(UIID_INT(id + i), options[i]));
+      UiInteractionMerge(&option_interaction, UiText(UIID_INT(id + i), options[i], V2_ZEROES));
       UiPanelEnd();
       UiInteractionMerge(&result, option_interaction);
       if (option_interaction.clicked) {
@@ -1059,34 +1094,122 @@ UiInteraction UiComboBox(U32 id, String8* options, U32 options_size) {
   return result;
 }
 
-UiInteraction UiText(U32 id, String8 text) {
+UiInteraction UiText(U32 id, String8 text, V2 size) {
   UiContext* c = &_ui_context;
   DEBUG_ASSERT(c->is_initialized);
-  UiWidgetOptions options = UiWidgetOptions_SizingFit | UiWidgetOptions_RenderText;
+  UiWidgetOptions options = UiWidgetOptions_RenderText;
+  UiWidgetApplySizeDefaultFit(&options, size);
   UiWidget* text_widget = UiWidgetBegin(id, options);
-  text_widget->text = Str8Copy(c->widget_arena, text);
+  text_widget->text = text;
   c->ui_text_measure_fn(text_widget->text, &text_widget->fit_size);
   UiWidgetEnd();
   return UiWidgetGetInteraction(text_widget);
 }
 
-UiInteraction UiSliderF32(U32 id, F32* value, F32 min, F32 max) {
+static UiWidget* UiSliderBase(U32 id, V2 size) {
   UiContext* c = &_ui_context;
   DEBUG_ASSERT(c->is_initialized);
-  UiWidgetOptions options = UiWidgetOptions_SizingGrow | UiWidgetOptions_RenderSlider;
+  UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
+  UiWidgetApplySizeDefaultGrow(&options, size);
   UiWidget* slider = UiWidgetBegin(id, options);
-  // TODO: rename v
-  slider->rect_color = c->style.text_color;
+  if (slider->prev == NULL) { slider->color = c->style.button_default_color; }
+  slider->pref_size = size;
+  return slider;
+}
+
+UiInteraction UiSliderF32(U32 id, F32* value, F32 min, F32 max, F32 resolution, V2 size) {
+  UiContext* c = &_ui_context;
+  DEBUG_ASSERT(c->is_initialized);
+  UiWidget* slider = UiSliderBase(id, size);
   UiInteraction result = UiWidgetGetInteraction(slider);
-  *value = CLAMP(min, *value, max);
+  UiInteractionMerge(&result, UiText(UIID_INT(id), Str8Format(c->widget_arena, "%0.2f", *value), V2_ZEROES));
   if (result.dragged) {
-    // TODO: determine based on relative mouse position
-    if      (c->mouse_d_pos.x > 0) { *value += 0.01f; }
-    else if (c->mouse_d_pos.x < 0) { *value -= 0.01f; }
+    if      (c->mouse_d_pos.x > 0) { *value += resolution; }
+    else if (c->mouse_d_pos.x < 0) { *value -= resolution; }
   }
-  slider->slider_t = (*value - min) / (max - min);
+  *value = CLAMP(min, *value, max);
   UiWidgetEnd();
+  if (result.hovered || result.dragged) { UiWidgetAnimateTo(slider, c->style.button_hovered_color, false); }
+  else                                  { UiWidgetAnimateTo(slider, c->style.button_default_color, false); }
   return result;
+}
+
+UiInteraction UiSliderU32(U32 id, U32* value, U32 min, U32 max, F32 resolution, V2 size) {
+  UiContext* c = &_ui_context;
+  DEBUG_ASSERT(c->is_initialized);
+  UiWidget* slider = UiSliderBase(id, size);
+  UiInteraction result = UiWidgetGetInteraction(slider);
+  UiInteractionMerge(&result, UiText(UIID_INT(id), Str8Format(c->widget_arena, "%d", *value), V2_ZEROES));
+  if (result.dragged) {
+    if      (c->mouse_d_pos.x > 0) { slider->slider_delta += resolution; }
+    else if (c->mouse_d_pos.x < 0) { slider->slider_delta -= resolution; }
+    if (slider->slider_delta > 1) {
+      *value += 1;
+      slider->slider_delta -= 1;
+    } else if (slider->slider_delta < -1) {
+      *value -= 1;
+      slider->slider_delta += 1;
+    }
+  }
+  *value = CLAMP(min, *value, max);
+  UiWidgetEnd();
+  if (result.hovered || result.dragged) { UiWidgetAnimateTo(slider, c->style.button_hovered_color, false); }
+  else                                  { UiWidgetAnimateTo(slider, c->style.button_default_color, false); }
+  return result;
+}
+
+UiInteraction UiSliderS32(U32 id, S32* value, S32 min, S32 max, F32 resolution, V2 size) {
+  UiContext* c = &_ui_context;
+  DEBUG_ASSERT(c->is_initialized);
+  UiWidget* slider = UiSliderBase(id, size);
+  UiInteraction result = UiWidgetGetInteraction(slider);
+  UiInteractionMerge(&result, UiText(UIID_INT(id), Str8Format(c->widget_arena, "%d", *value), V2_ZEROES));
+  if (result.dragged) {
+    if      (c->mouse_d_pos.x > 0) { slider->slider_delta += resolution; }
+    else if (c->mouse_d_pos.x < 0) { slider->slider_delta -= resolution; }
+    if (slider->slider_delta > 1) {
+      *value += 1;
+      slider->slider_delta -= 1;
+    } else if (slider->slider_delta < -1) {
+      *value -= 1;
+      slider->slider_delta += 1;
+    }
+  }
+  *value = CLAMP(min, *value, max);
+  UiWidgetEnd();
+  if (result.hovered || result.dragged) { UiWidgetAnimateTo(slider, c->style.button_hovered_color, false); }
+  else                                  { UiWidgetAnimateTo(slider, c->style.button_default_color, false); }
+  return result;
+}
+
+UiInteraction UiPlotLines(U32 id, F32* values, U32 values_count, V2 size) {
+  UiContext* c = &_ui_context;
+  DEBUG_ASSERT(c->is_initialized);
+  UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect | UiWidgetOptions_RenderGraphLine;
+  UiWidgetApplySizeDefaultGrow(&options, size);
+  UiWidget* graph = UiWidgetBegin(id, options);
+  graph->pref_size = size;
+  graph->color = c->style.background_color;
+  graph->graph_color = c->style.text_color;
+  graph->graph_values = values;
+  graph->graph_values_count = values_count;
+  UiWidgetEnd();
+  return UiWidgetGetInteraction(graph);
+}
+
+UiInteraction UiPlotBar(U32 id, F32* values, U32 values_count, V2 size) {
+  UiContext* c = &_ui_context;
+  DEBUG_ASSERT(c->is_initialized);
+  UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect | UiWidgetOptions_RenderGraphBar;
+  UiWidgetApplySizeDefaultGrow(&options, size);
+  UiWidget* graph = UiWidgetBegin(id, options);
+  graph->pref_size = size;
+  graph->color = c->style.background_color;
+  graph->graph_color = c->style.text_color;
+  graph->graph_values = values;
+  graph->graph_values_count = values_count;
+  UiWidgetEnd();
+  return UiWidgetGetInteraction(graph);
 }
 
 #endif // CDEFAULT_UI_IMPLEMENTATION
