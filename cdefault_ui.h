@@ -36,10 +36,10 @@ struct UiStyle {
   F32 border_size;
   V3  border_color;
   V3  background_color;
-  V3  button_default_color;
-  V3  button_hovered_color;
-  V3  button_clicked_color;
-  V3  text_color;
+  V3  foreground_color;
+  V3  widget_color;
+  V3  widget_color_bright;
+  V3  widget_color_active;
 };
 static UiStyle ui_default_style;
 
@@ -116,6 +116,7 @@ void UiPanelEnd();
 
 // NOTE: Layout / visual modifiers without a clickable component.
 UiInteraction UiSeparator(U32 id);
+UiInteraction UiPad(U32 id, F32 size);
 UiInteraction UiGrow(U32 id);
 
 // NOTE: Widgets. Must be defined within at least a top level window container.
@@ -123,7 +124,7 @@ UiInteraction UiGrow(U32 id);
 UiInteraction UiButton(U32 id, String8 text, V2 size);
 UiInteraction UiButtonToggle(U32 id, String8 text, B32* toggled, V2 size);
 UiInteraction UiButtonRadio(U32 id, String8* options, U32 options_size, V2 button_size, V2 child_gap);
-UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, V2 size);
+UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, V2 size, F32 child_gap);
 UiInteraction UiText(U32 id, String8 text, V2 size);
 UiInteraction UiSliderF32(U32 id, F32* value, F32 min, F32 max, F32 resolution, V2 size);
 UiInteraction UiSliderU32(U32 id, U32* value, U32 min, U32 max, F32 resolution, V2 size);
@@ -414,7 +415,7 @@ static UiWidget* UiWidgetBegin(U32 id, UiWidgetOptions options) {
 
   DEBUG_ASSERT(UiWidgetOptionsValidate(options));
   new_widget->options      = options;
-  new_widget->text_color   = c->style.text_color;
+  new_widget->text_color   = c->style.foreground_color;
   new_widget->border_color = c->style.border_color;
   new_widget->border_size  = c->style.border_size;
 
@@ -767,10 +768,10 @@ void UiInit(UiTextMeasure_Fn* ui_text_measure_fn, UiFontGetAttributes_Fn ui_font
   ui_default_style.border_size          = 1.0f;
   ui_default_style.border_color         = V3_MOONFLY_DARK_GRAY;
   ui_default_style.background_color     = V3_MOONFLY_BLACK;
-  ui_default_style.button_default_color = V3_MOONFLY_BLUE;
-  ui_default_style.button_hovered_color = V3_MOONFLY_LIGHT_BLUE;
-  ui_default_style.button_clicked_color = V3_MOONFLY_LIGHT_RED;
-  ui_default_style.text_color           = V3_MOONFLY_WHITE;
+  ui_default_style.foreground_color      = V3_MOONFLY_WHITE;
+  ui_default_style.widget_color         = V3_MOONFLY_BLUE;
+  ui_default_style.widget_color_bright  = V3_MOONFLY_LIGHT_BLUE;
+  ui_default_style.widget_color_active  = V3_MOONFLY_LIGHT_RED;
   *UiStyleGet() = ui_default_style;
 }
 
@@ -980,6 +981,17 @@ UiInteraction UiSeparator(U32 id) {
   return UiWidgetGetInteraction(separator);
 }
 
+UiInteraction UiPad(U32 id, F32 size) {
+  UiContext* c = UiGetContext();
+  UiWidgetOptions parent_dir = UiWidgetGetDirOpt(c->current_widget);
+  UiWidgetOptions options = parent_dir | UiWidgetOptions_SizingFit | UiWidgetOptions_AlignCenter;
+  UiWidget* pad = UiWidgetBegin(id, options);
+  if (parent_dir == UiWidgetOptions_DirectionVertical) { pad->fit_size.y = size; }
+  else { pad->fit_size.x = size; }
+  UiWidgetEnd();
+  return UiWidgetGetInteraction(pad);
+}
+
 UiInteraction UiGrow(U32 id) {
   UiContext* c = UiGetContext();
   UiWidgetOptions parent_dir = UiWidgetGetDirOpt(c->current_widget);
@@ -995,13 +1007,13 @@ UiInteraction UiButton(U32 id, String8 text, V2 size) {
   UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
   UiWidgetApplySizeDefaultGrow(&options, size);
   UiWidget* button = UiWidgetBegin(id, options);
-  if (button->prev == NULL) { button->color = c->style.button_default_color; }
+  if (button->prev == NULL) { button->color = c->style.widget_color; }
   button->pref_size = size;
   UiInteraction interaction = UiWidgetGetInteraction(button);
   UiInteractionMerge(&interaction, UiText(UIID_INT(id), text, V2_ZEROES));
-  if (interaction.clicked)      { UiWidgetAnimateTo(button, c->style.button_clicked_color, true); }
-  else if (interaction.hovered) { UiWidgetAnimateTo(button, c->style.button_hovered_color, false); }
-  else                          { UiWidgetAnimateTo(button, c->style.button_default_color, false); }
+  if (interaction.clicked)      { UiWidgetAnimateTo(button, c->style.widget_color_active, true);  }
+  else if (interaction.hovered) { UiWidgetAnimateTo(button, c->style.widget_color_bright, false); }
+  else                          { UiWidgetAnimateTo(button, c->style.widget_color, false);        }
   UiWidgetEnd();
   return interaction;
 }
@@ -1011,14 +1023,14 @@ UiInteraction UiButtonToggle(U32 id, String8 text, B32* toggled, V2 size) {
   UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
   UiWidgetApplySizeDefaultGrow(&options, size);
   UiWidget* button = UiWidgetBegin(id, options);
-  if (button->prev == NULL) { button->color = c->style.button_default_color; }
+  if (button->prev == NULL) { button->color = c->style.widget_color; }
   button->pref_size = size;
   UiInteraction interaction = UiWidgetGetInteraction(button);
   UiInteractionMerge(&interaction, UiText(UIID_INT(id), text, V2_ZEROES));
   if (interaction.clicked)      { *toggled = !*toggled; }
-  if (*toggled)                 { UiWidgetAnimateTo(button, c->style.button_clicked_color, true); }
-  else if (interaction.hovered) { UiWidgetAnimateTo(button, c->style.button_hovered_color, false); }
-  else                          { UiWidgetAnimateTo(button, c->style.button_default_color, false); }
+  if (*toggled)                 { UiWidgetAnimateTo(button, c->style.widget_color_active, true);  }
+  else if (interaction.hovered) { UiWidgetAnimateTo(button, c->style.widget_color_bright, false); }
+  else                          { UiWidgetAnimateTo(button, c->style.widget_color, false);        }
   UiWidgetEnd();
   return interaction;
 }
@@ -1031,28 +1043,40 @@ UiInteraction UiButtonRadio(U32 id, String8* options, U32 options_size, V2 butto
   MEMORY_ZERO_STRUCT(&result);
   for (U32 i = 0; i < options_size; i++) {
     B32 selected = radio_group->selected == i;
-    UiInteractionMerge(&result, UiPanelHorizontalBegin(UIID_INT(id + i), V2_ZEROES, child_gap.x));
-    UiInteractionMerge(&result, UiButtonToggle(UIID_INT(id + i), Str8Lit(""), &selected, button_size));
-    UiInteractionMerge(&result, UiText(UIID_INT(id + i), options[i], V2_ZEROES));
+    UiInteraction option_interaction = UiPanelHorizontalBegin(UIID_INT(id + i), V2_ZEROES, child_gap.x);
+    UiInteractionMerge(&option_interaction, UiButtonToggle(UIID_INT(id + i), Str8Lit(""), &selected, button_size));
+    UiInteractionMerge(&option_interaction, UiGrow(UIID_INT(id + i)));
+    UiInteractionMerge(&option_interaction, UiText(UIID_INT(id + i), options[i], V2_ZEROES));
     UiPanelEnd();
-    if (selected) { radio_group->selected = i; }
+    if (option_interaction.clicked) { radio_group->selected = i; }
+    UiInteractionMerge(&result, option_interaction);
   }
   UiWidgetEnd();
   result.selected = radio_group->selected;
   return result;
 }
 
-UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, V2 size) {
+UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, V2 size, F32 child_gap) {
   UiContext* c = UiGetContext();
   UiWidgetOptions widget_options = UiWidgetOptions_DirectionHorizontal | UiWidgetOptions_AlignCenter | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
   UiWidgetApplySizeDefaultGrow(&widget_options, size);
   UiWidget* combo_box = UiWidgetBegin(id, widget_options);
-  combo_box->pad = V2Assign(5, 5);
-  combo_box->child_gap = 5;
   combo_box->pref_size = size;
   combo_box->color = c->style.background_color;
   UiInteraction result = UiWidgetGetInteraction(combo_box);
-  UiInteractionMerge(&result, UiText(UIID_INT(id), options[combo_box->selected], V2_ZEROES));
+
+  // NOTE: ensure the open button is square by basing off y dim.
+  F32 button_size = 0;
+  if (combo_box->prev != NULL) { button_size = combo_box->prev->size.y; }
+
+  UiInteractionMerge(&result, UiPanelHorizontalBegin(UIID_INT(id), V2Assign(5, 5), 5));
+  U32 text_id = UIID_INT(id);
+  UiInteractionMerge(&result, UiText(text_id, options[combo_box->selected], V2_ZEROES));
+  UiInteractionMerge(&result, UiGrow(UIID_INT(id)));
+  UiPanelEnd();
+  UiInteractionMerge(&result, UiButton(UIID_INT(id), Str8Lit(""), V2Assign(button_size, button_size)));
+
+  // NOTE: ensure consistent sizing by setting the text widget's size to the largest option's size.
   V2 max_option_size = V2_ZEROES;
   for (U32 i = 0; i < options_size; i++) {
     String8 option = options[i];
@@ -1061,10 +1085,9 @@ UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, V2 size) {
     max_option_size.x = MAX(max_option_size.x, option_size.x);
     max_option_size.y = MAX(max_option_size.y, option_size.y);
   }
-  combo_box->children[combo_box->children_size - 1]->fit_size = max_option_size;
-  UiInteractionMerge(&result, UiGrow(UIID_INT(id)));
-  UiInteraction open_button = UiButton(UIID_INT(id), Str8Lit(""), V2Assign(20, 20));
-  UiInteractionMerge(&result, open_button);
+  UiWidget* text_widget = UiWidgetFind(c->root, text_id);
+  text_widget->fit_size = max_option_size;
+
   if (result.clicked) { combo_box->open = !combo_box->open; }
   if (combo_box->open) {
     V2 popup_pos, popup_size;
@@ -1073,6 +1096,7 @@ UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, V2 size) {
     popup_size.x = combo_box->prev->size.x;
     popup_size.y = 0;
     UiInteractionMerge(&result, UiPopupBegin(UIID_INT(id), popup_pos, popup_size));
+    UiInteractionMerge(&result, UiPanelVerticalBegin(UIID(), V2Assign(child_gap, child_gap), child_gap));
     for (U32 i = 0; i < options_size; i++) {
       UiInteraction option_interaction = UiPanelHorizontalBegin(UIID_INT(id + i), V2_ZEROES, 0);
       UiInteractionMerge(&option_interaction, UiText(UIID_INT(id + i), options[i], V2_ZEROES));
@@ -1083,10 +1107,9 @@ UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, V2 size) {
         combo_box->open = false;
         break;
       }
-      if (i != options_size - 1) {
-        UiInteractionMerge(&result, UiSeparator(UIID_INT(id + i)));
-      }
+      // if (i != options_size - 1) { UiInteractionMerge(&result, UiSeparator(UIID_INT(id + i))); }
     }
+    UiPanelEnd();
     UiPopupEnd();
   }
   if (!result.hovered) { combo_box->open = false; }
@@ -1112,7 +1135,7 @@ static UiWidget* UiSliderBase(U32 id, V2 size) {
   UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
   UiWidgetApplySizeDefaultGrow(&options, size);
   UiWidget* slider = UiWidgetBegin(id, options);
-  if (slider->prev == NULL) { slider->color = c->style.button_default_color; }
+  if (slider->prev == NULL) { slider->color = c->style.widget_color; }
   slider->pref_size = size;
   return slider;
 }
@@ -1129,8 +1152,8 @@ UiInteraction UiSliderF32(U32 id, F32* value, F32 min, F32 max, F32 resolution, 
   }
   *value = CLAMP(min, *value, max);
   UiWidgetEnd();
-  if (result.hovered || result.dragged) { UiWidgetAnimateTo(slider, c->style.button_hovered_color, false); }
-  else                                  { UiWidgetAnimateTo(slider, c->style.button_default_color, false); }
+  if (result.hovered || result.dragged) { UiWidgetAnimateTo(slider, c->style.widget_color_bright, false); }
+  else                                  { UiWidgetAnimateTo(slider, c->style.widget_color, false);        }
   return result;
 }
 
@@ -1153,8 +1176,8 @@ UiInteraction UiSliderU32(U32 id, U32* value, U32 min, U32 max, F32 resolution, 
   }
   *value = CLAMP(min, *value, max);
   UiWidgetEnd();
-  if (result.hovered || result.dragged) { UiWidgetAnimateTo(slider, c->style.button_hovered_color, false); }
-  else                                  { UiWidgetAnimateTo(slider, c->style.button_default_color, false); }
+  if (result.hovered || result.dragged) { UiWidgetAnimateTo(slider, c->style.widget_color_bright, false); }
+  else                                  { UiWidgetAnimateTo(slider, c->style.widget_color, false);        }
   return result;
 }
 
@@ -1177,8 +1200,8 @@ UiInteraction UiSliderS32(U32 id, S32* value, S32 min, S32 max, F32 resolution, 
   }
   *value = CLAMP(min, *value, max);
   UiWidgetEnd();
-  if (result.hovered || result.dragged) { UiWidgetAnimateTo(slider, c->style.button_hovered_color, false); }
-  else                                  { UiWidgetAnimateTo(slider, c->style.button_default_color, false); }
+  if (result.hovered || result.dragged) { UiWidgetAnimateTo(slider, c->style.widget_color_bright, false); }
+  else                                  { UiWidgetAnimateTo(slider, c->style.widget_color, false);        }
   return result;
 }
 
@@ -1190,7 +1213,7 @@ UiInteraction UiPlotLines(U32 id, F32* values, U32 values_count, V2 size) {
   UiWidget* graph = UiWidgetBegin(id, options);
   graph->pref_size = size;
   graph->color = c->style.background_color;
-  graph->graph_color = c->style.text_color;
+  graph->graph_color = c->style.foreground_color;
   graph->graph_values = values;
   graph->graph_values_count = values_count;
   UiWidgetEnd();
@@ -1205,7 +1228,7 @@ UiInteraction UiPlotBar(U32 id, F32* values, U32 values_count, V2 size) {
   UiWidget* graph = UiWidgetBegin(id, options);
   graph->pref_size = size;
   graph->color = c->style.background_color;
-  graph->graph_color = c->style.text_color;
+  graph->graph_color = c->style.foreground_color;
   graph->graph_values = values;
   graph->graph_values_count = values_count;
   UiWidgetEnd();

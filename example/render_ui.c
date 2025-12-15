@@ -3,7 +3,8 @@
 
 #define WINDOW_WIDTH  1920
 #define WINDOW_HEIGHT 1080
-#define FONT_SIZE     22.0f
+// #define FONT_SIZE     22.0f
+#define FONT_SIZE     18.0f
 
 static FontAtlas font_atlas;
 static U32       font_handle;
@@ -30,9 +31,9 @@ int main(void) {
   Font font;
   String8 font_file_data;
   Image font_atlas_image;
-  DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/consola.ttf"), &font_file_data.str, &font_file_data.size));
+  DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/verdana.ttf"), &font_file_data.str, &font_file_data.size));
   DEBUG_ASSERT(FontInit(&font, font_file_data.str, font_file_data.size));
-  DEBUG_ASSERT(FontAtlasBakeSdf(font_arena, &font, &font_atlas, &font_atlas_image, 100.0f, FONT_SIZE, 4.0f, FontCharSetLatin()));
+  DEBUG_ASSERT(FontAtlasBakeSdf(font_arena, &font, &font_atlas, &font_atlas_image, 64.0f, 32.0f, 6.0f, FontCharSetLatin()));
   RendererRegisterImage(&font_handle, &font_atlas_image);
 
   B32 test_b32 = false;
@@ -54,21 +55,14 @@ int main(void) {
     WindowGetMousePositionV(&mouse_pos);
     UiPointerStateUpdate(mouse_pos, WindowIsMouseButtonPressed(MouseButton_Left), WindowIsMouseButtonPressed(MouseButton_Right));
     UiBegin(dt_s);
-      if (UiWindowFloatingBegin(UIID(), Str8Lit("window 1"), V2Assign(50, 750), V2Assign(0, 0)).open) {
+      if (UiWindowFloatingBegin(UIID(), Str8Lit("widgets"), V2Assign(50, 900), V2Assign(0, 0)).open) {
         UiPanelVerticalBegin(UIID(), V2Assign(10, 10), 10);
 
           UiPanelHorizontalBegin(UIID(), V2_ZEROES, 0);
             UiText(UIID(), Str8Lit("button:"), V2_ZEROES);
             UiGrow(UIID());
             UiButton(UIID(), Str8Lit("button"), V2Assign(200, 50));
-            if (UiButtonToggle(UIID(), Str8Lit("toggle button"), &test_b32, V2Assign(200, 50)).hovered) {
-              V2 hover_pos;
-              V2 offset = V2Assign(5, -5);
-              V2AddV2(&hover_pos, &mouse_pos, &offset);
-              UiPopupBegin(UIID(), hover_pos, V2Assign(0, 0));
-                UiText(UIID(), Str8Lit("popup!"), V2_ZEROES);
-              UiPopupEnd();
-            }
+            UiButtonToggle(UIID(), Str8Lit("toggle button"), &test_b32, V2Assign(200, 50));
           UiPanelEnd();
 
           UiPanelHorizontalBegin(UIID(), V2_ZEROES, 0);
@@ -79,7 +73,7 @@ int main(void) {
               Str8Lit("super long option 2"),
               Str8Lit("option 3"),
             };
-            UiComboBox(UIID(), combo_options, STATIC_ARRAY_SIZE(combo_options), V2_ZEROES);
+            UiComboBox(UIID(), combo_options, STATIC_ARRAY_SIZE(combo_options), V2_ZEROES, 5);
           UiPanelEnd();
 
           UiPanelHorizontalBegin(UIID(), V2_ZEROES, 0);
@@ -90,7 +84,7 @@ int main(void) {
               Str8Lit("radio 2"),
               Str8Lit("radio 3"),
             };
-            UiButtonRadio(UIID(), radio_options, STATIC_ARRAY_SIZE(radio_options), V2Assign(25, 25), V2Assign(0, 0));
+            UiButtonRadio(UIID(), radio_options, STATIC_ARRAY_SIZE(radio_options), V2Assign(25, 25), V2Assign(10, 0));
           UiPanelEnd();
 
           UiPanelHorizontalBegin(UIID(), V2_ZEROES, 0);
@@ -102,12 +96,20 @@ int main(void) {
             UiPanelEnd();
           UiPanelEnd();
 
-          UiPanelHorizontalBegin(UIID(), V2_ZEROES, 0);
-            UiText(UIID(), Str8Lit("plot:"), V2_ZEROES);
-            UiGrow(UIID());
-            UiPlotBar(UIID(), plot_values, STATIC_ARRAY_SIZE(plot_values), V2Assign(500, 100));
-          UiPanelEnd();
+        UiPanelEnd();
+      }
+      UiWindowEnd();
 
+      if (UiWindowFloatingBegin(UIID(), Str8Lit("plots"), V2Assign(600, 900), V2_ZEROES).open) {
+        UiPanelVerticalBegin(UIID(), V2Assign(10, 10), 10);
+          if (UiPlotLines(UIID(), plot_values, STATIC_ARRAY_SIZE(plot_values), V2Assign(500, 100)).hovered) {
+              V2 hover_pos;
+              V2AddV2(&hover_pos, &mouse_pos, &(V2) { 5, 5 });
+              UiPopupBegin(UIID(), hover_pos, V2_ZEROES);
+                UiText(UIID(), Str8Lit("popup!"), V2_ZEROES);
+              UiPopupEnd();
+            }
+          UiPlotBar(UIID(), plot_values, STATIC_ARRAY_SIZE(plot_values), V2Assign(500, 100));
         UiPanelEnd();
       }
       UiWindowEnd();
