@@ -58,7 +58,7 @@ void RendererRegisterImage(U32* image_handle, Image* image);
 void RendererRegisterMesh(U32* mesh_handle, U32 image_handle, V3* points, V3* normals, V2* uvs, U32 vertices_size, U32* indices, U32 indices_size);
 void RendererReleaseImage(U32 image_handle);
 void RendererReleaseMesh(U32 mesh_handle);
-void RendererEnableScissorTest(S32 x, S32 y, S32 width, S32 height);
+void RendererEnableScissorTest(S32 center_x, S32 center_y, S32 width, S32 height);
 void RendererDisableScissorTest(void);
 void RendererEnableDepthTest(void);
 void RendererDisableDepthTest(void);
@@ -998,10 +998,10 @@ void RendererReleaseMesh(U32 mesh_handle) {
   SLL_STACK_PUSH(r->meshes_free_list, mesh, next);
 }
 
-void RendererEnableScissorTest(S32 x, S32 y, S32 width, S32 height) {
+void RendererEnableScissorTest(S32 center_x, S32 center_y, S32 width, S32 height) {
   OpenGLAPI* g = &_ogl;
+  g->glScissor(center_x - (width / 2.0f), center_y - (height / 2.0f), width, height);
   g->glEnable(GL_SCISSOR_TEST);
-  g->glScissor(x, y, width, height);
 }
 
 void RendererDisableScissorTest(void) {
@@ -1940,6 +1940,7 @@ void WIN_WindowFlushEvents() {
       LOG_ERROR("Failed to find mouse point relative to the screen.");
     }
   }
+  window->m_scroll_sign = 0;
 
   MSG msg;
   while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {

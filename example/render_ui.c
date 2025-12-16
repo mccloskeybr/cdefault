@@ -57,7 +57,7 @@ int main(void) {
     }
 
     WindowGetMousePositionV(&mouse_pos);
-    UiSetPointerState(mouse_pos, WindowIsMouseButtonPressed(MouseButton_Left), WindowIsMouseButtonPressed(MouseButton_Right));
+    UiSetPointerState(mouse_pos, WindowGetMouseScrollSign(), WindowIsMouseButtonPressed(MouseButton_Left), WindowIsMouseButtonPressed(MouseButton_Right));
     UiBegin(dt_s);
       if (UiWindowFloatingBegin(UIID(), Str8Lit("widgets"), V2Assign(50, 900), V2Assign(0, 0)).open) {
         UiPanelVerticalBegin(UIID(), V2Assign(10, 10), 10);
@@ -120,9 +120,11 @@ int main(void) {
     UiDrawCommand* ui_draw_commands = UiEnd();
     for (UiDrawCommand* cmd = ui_draw_commands; cmd != NULL; cmd = cmd->next) {
       switch (cmd->type) {
-        case UiDrawCommand_Line: { DrawLineV(cmd->line.start, cmd->line.end, 1, cmd->rect.color);                                         } break;
-        case UiDrawCommand_Rect: { DrawRectangleV(cmd->rect.center, cmd->rect.size, cmd->rect.color);                                     } break;
-        case UiDrawCommand_Text: { DrawStringSdfV(cmd->text.string, &font_atlas, font_handle, FONT_SIZE, cmd->text.pos, cmd->text.color); } break;
+        case UiDrawCommand_Line:           { DrawLineV(cmd->line.start, cmd->line.end, 1, cmd->rect.color);                                                     } break;
+        case UiDrawCommand_Rect:           { DrawRectangleV(cmd->rect.center, cmd->rect.size, cmd->rect.color);                                                 } break;
+        case UiDrawCommand_Text:           { DrawStringSdfV(cmd->text.string, &font_atlas, font_handle, FONT_SIZE, cmd->text.pos, cmd->text.color);             } break;
+        case UiDrawCommand_ScissorEnable:  { RendererEnableScissorTest(cmd->scissor_enable.center.x, cmd->scissor_enable.center.y, cmd->scissor_enable.size.x, cmd->scissor_enable.size.y); } break;
+        case UiDrawCommand_ScissorDisable: { RendererDisableScissorTest(); } break;
         default: UNIMPLEMENTED();
       }
     }
