@@ -111,11 +111,24 @@ void UiWindowEnd();
 UiInteraction UiPopupBegin(U32 id, V2 pos, V2 size);
 void UiPopupEnd();
 
+typedef enum UiPanelDirection UiPanelDirection;
+enum UiPanelDirection {
+  UiPanelDirection_Vertical,
+  UiPanelDirection_Horizontal,
+};
+
+typedef enum UiPanelSize UiPanelSize;
+enum UiPanelSize {
+  UiPanelSize_Fit,
+  UiPanelSize_Grow,
+};
+
 // NOTE: Panels. Useful for adding padding between UI widgets within some parent container.
-UiInteraction UiPanelVerticalBegin(U32 id, V2 edge_pad, F32 child_pad);
-UiInteraction UiPanelHorizontalBegin(U32 id, V2 edge_pad, F32 child_pad);
-UiInteraction UiPanelBorderedVerticalBegin(U32 id, V2 pad, F32 child_gap);
-UiInteraction UiPanelBorderedHorizontalBegin(U32 id, V2 pad, F32 child_gap);
+UiInteraction UiPanelBegin(U32 id, UiPanelDirection direction, UiPanelSize main_axis_size, UiPanelSize cross_axis_size, B32 bordered, B32 scrollable, V2 pad, F32 child_gap);
+UiInteraction UiPanelVerticalBegin(U32 id, V2 pad, F32 child_gap);
+UiInteraction UiPanelHorizontalBegin(U32 id, V2 pad, F32 child_gap);
+UiInteraction UiPanelVerticalBorderedBegin(U32 id, V2 pad, F32 child_gap);
+UiInteraction UiPanelHorizontalBorderedBegin(U32 id, V2 pad, F32 child_gap);
 void UiPanelEnd();
 
 // NOTE: Layout / visual modifiers without a clickable component.
@@ -156,24 +169,28 @@ enum UiWidgetOptions {
   UiWidgetOptions_SizingVertFixed      = BIT(5),
   UiWidgetOptions_SizingVertGrow       = BIT(6),
   UiWidgetOptions_SizingVertFit        = BIT(7),
-  UiWidgetOptions_SizingVertScrollable = BIT(8),
+
+  // TODO: instead of having attributes for align, imply them with Grow?
+  // NOTE: exactly one of these must be specified for container widgets.
+  UiWidgetOptions_AlignHorizStart      = BIT(8),
+  UiWidgetOptions_AlignHorizCenter     = BIT(9),
+  UiWidgetOptions_AlignHorizEnd        = BIT(10),
 
   // NOTE: exactly one of these must be specified for container widgets.
-  UiWidgetOptions_AlignHorizStart      = BIT(9),
-  UiWidgetOptions_AlignHorizCenter     = BIT(10),
-  UiWidgetOptions_AlignHorizEnd        = BIT(11),
+  UiWidgetOptions_AlignVertStart       = BIT(11),
+  UiWidgetOptions_AlignVertCenter      = BIT(12),
+  UiWidgetOptions_AlignVertEnd         = BIT(13),
 
-  // NOTE: exactly one of these must be specified for container widgets.
-  UiWidgetOptions_AlignVertStart       = BIT(12),
-  UiWidgetOptions_AlignVertCenter      = BIT(13),
-  UiWidgetOptions_AlignVertEnd         = BIT(14),
+  // NOTE: rendering options.
+  UiWidgetOptions_RenderBorder         = BIT(14),
+  UiWidgetOptions_RenderRect           = BIT(15),
+  UiWidgetOptions_RenderText           = BIT(16),
+  UiWidgetOptions_RenderGraphLine      = BIT(17),
+  UiWidgetOptions_RenderGraphBar       = BIT(18),
 
-  // NOTE: optional, control rendering.
-  UiWidgetOptions_RenderBorder         = BIT(15),
-  UiWidgetOptions_RenderRect           = BIT(16),
-  UiWidgetOptions_RenderText           = BIT(17),
-  UiWidgetOptions_RenderGraphLine      = BIT(18),
-  UiWidgetOptions_RenderGraphBar       = BIT(19),
+  // NOTE: optional sizing options.
+  UiWidgetOptions_Resizable            = BIT(19),
+  UiWidgetOptions_Scrollable           = BIT(20),
 };
 
 #define UiWidgetOptions_SizingFixed (UiWidgetOptions_SizingHorizFixed | UiWidgetOptions_SizingVertFixed)
@@ -348,8 +365,8 @@ static UiWidgetOptions UiWidgetGetDirOpt(UiWidget* widget) {
 static UiWidgetOptions UiWidgetGetSizeOpt(UiWidget* widget, UiWidgetOptions direction) {
   UiWidgetOptions result;
   switch (direction) {
-    case UiWidgetOptions_DirectionHorizontal: { result = widget->options & (UiWidgetOptions_SizingHorizFixed | UiWidgetOptions_SizingHorizGrow | UiWidgetOptions_SizingHorizFit);                                       } break;
-    case UiWidgetOptions_DirectionVertical:   { result = widget->options & (UiWidgetOptions_SizingVertFixed  | UiWidgetOptions_SizingVertGrow  | UiWidgetOptions_SizingVertFit | UiWidgetOptions_SizingVertScrollable); } break;
+    case UiWidgetOptions_DirectionHorizontal: { result = widget->options & (UiWidgetOptions_SizingHorizFixed | UiWidgetOptions_SizingHorizGrow | UiWidgetOptions_SizingHorizFit); } break;
+    case UiWidgetOptions_DirectionVertical:   { result = widget->options & (UiWidgetOptions_SizingVertFixed  | UiWidgetOptions_SizingVertGrow  | UiWidgetOptions_SizingVertFit);  } break;
     default: { UNREACHABLE(); return 0; }
   }
   // NOTE: all widgets must have size options defined for each axis.
@@ -471,8 +488,7 @@ static B32 UiWidgetOptionsValidate(UiWidgetOptions options) {
   B32 size_vert_fixed      = options & UiWidgetOptions_SizingVertFixed;
   B32 size_vert_grow       = options & UiWidgetOptions_SizingVertGrow;
   B32 size_vert_fit        = options & UiWidgetOptions_SizingVertFit;
-  B32 size_vert_scrollable = options & UiWidgetOptions_SizingVertScrollable;
-  U32 size_vert_count = UI_CAST(size_vert_fixed) + UI_CAST(size_vert_grow) + UI_CAST(size_vert_fit) + UI_CAST(size_vert_scrollable);
+  U32 size_vert_count = UI_CAST(size_vert_fixed) + UI_CAST(size_vert_grow) + UI_CAST(size_vert_fit);
   DEBUG_ASSERT(size_vert_count == 1);
 
   // TODO: validate alignment also
@@ -496,7 +512,7 @@ static UiWidget* UiWidgetBegin(U32 id, UiWidgetOptions options) {
   new_widget->border_size  = c->style.border_size;
 
   // NOTE: sync data from last frame
-  new_widget->prev = UiWidgetFind(c->prev_root, id);
+  new_widget->prev = UiWidgetFind(c->prev_root, id);;
   if (new_widget->prev != NULL) {
     new_widget->scroll_offset     = new_widget->prev->scroll_offset;
     new_widget->slider_delta      = new_widget->prev->slider_delta;
@@ -505,8 +521,8 @@ static UiWidget* UiWidgetBegin(U32 id, UiWidgetOptions options) {
     new_widget->open              = new_widget->prev->open;
     new_widget->selected          = new_widget->prev->selected;
     new_widget->is_animating      = new_widget->prev->is_animating;
-    new_widget->color        = new_widget->prev->color;
-    new_widget->target_color = new_widget->prev->target_color;
+    new_widget->color             = new_widget->prev->color;
+    new_widget->target_color      = new_widget->prev->target_color;
     new_widget->anim_time         = new_widget->prev->anim_time;
     new_widget->animation_lock    = new_widget->prev->animation_lock;
     UiWidgetUpdateAnimation(new_widget);
@@ -519,6 +535,29 @@ static UiWidget* UiWidgetBegin(U32 id, UiWidgetOptions options) {
 
 static void UiWidgetEnd() {
   UiContext* c = UiGetContext();
+  UiWidget* widget = c->current_widget;
+
+  // NOTE: make widgets resizable by overwriting their size mode to be fixed and feed-forwarding the size from last frame.
+  if ((widget->options & UiWidgetOptions_Resizable) && widget->prev != NULL) {
+    DEBUG_ASSERT(UiWidgetGetDirOpt(widget) == UiWidgetOptions_DirectionVertical);
+    widget->options &= ~(UiWidgetOptions_SizingFixed | UiWidgetOptions_SizingGrow | UiWidgetOptions_SizingFit);
+    widget->options |= UiWidgetOptions_SizingFixed;
+    V2 size = widget->prev->size;
+
+    UiGrow(UIID_INT(widget->id));
+    UiPanelBegin(UIID_INT(widget->id), UiPanelDirection_Horizontal, UiPanelSize_Grow, UiPanelSize_Fit, false, true, V2_ZEROES, 0);
+    UiGrow(UIID_INT(widget->id));
+    if (UiButton(UIID_INT(widget->id), Str8Lit(""), V2Assign(10, 10)).dragged) {
+      V2 d_size = V2Assign(c->mouse_d_pos.x, -c->mouse_d_pos.y);
+      V2AddV2(&size, &size, &d_size);
+    }
+    UiPanelEnd();
+
+    // TODO: should be allowed to go below fit_size. compensate by fixing the shrink size at widget fit size.
+    widget->pref_size.x = MAX(size.x, widget->prev->fit_size.x);
+    widget->pref_size.y = MAX(size.y, widget->prev->fit_size.y);
+  }
+
   c->current_widget = c->current_widget->parent;
 }
 
@@ -541,17 +580,10 @@ static void UiSizeWidgets(UiWidget* widget, UiWidgetOptions direction) {
   F32 widget_pref_size_dim = *UiWidgetGetDim(&widget->pref_size, direction);
   F32* widget_size_dim = UiWidgetGetDim(&widget->size, direction);
   UiWidgetOptions widget_size_opt = UiWidgetGetSizeOpt(widget, direction);
-  // TODO: if scrollable, it should probably be fixed rather than fit?
-  // likely need to determine the initial size then switch to fixed, something like that.
-  if (widget_size_opt & (UiWidgetOptions_SizingFit | UiWidgetOptions_SizingVertScrollable)) {
-    *widget_size_dim = *widget_fit_size_dim;
-  } else if (widget_size_opt & UiWidgetOptions_SizingGrow)  {
-    *widget_size_dim = MAX(*widget_fit_size_dim, widget_pref_size_dim);
-  } else if (widget_size_opt & UiWidgetOptions_SizingFixed) {
-    *widget_size_dim = widget_pref_size_dim;
-  } else {
-    UNREACHABLE();
-  }
+  if (widget_size_opt & UiWidgetOptions_SizingFit)        { *widget_size_dim = *widget_fit_size_dim; }
+  else if (widget_size_opt & UiWidgetOptions_SizingGrow)  { *widget_size_dim = MAX(*widget_fit_size_dim, widget_pref_size_dim); }
+  else if (widget_size_opt & UiWidgetOptions_SizingFixed) { *widget_size_dim = widget_pref_size_dim; }
+  else { UNREACHABLE(); }
 
   // NOTE: now, apply final size to parent
   F32* parent_fit_size_dim  = UiWidgetGetDim(&parent->fit_size, direction);
@@ -581,7 +613,7 @@ static void UiGrowWidgets(UiWidget* widget, UiWidgetOptions direction) {
 
       // NOTE: there is space to share, grow
       // TODO: merge with shrink logic
-      while (delta > 0) {
+      while (delta > 1e-5) {
         // NOTE: find the 2 smallest sets of widgets.
         F32 smallest_size_dim = *UiWidgetGetDim(&growable_children[0]->size, direction);
         F32 second_smallest_size_dim = F32_MAX;
@@ -612,7 +644,8 @@ static void UiGrowWidgets(UiWidget* widget, UiWidgetOptions direction) {
 
       // NOTE: there is not enough space, shrink
       // TODO: merge with grow logic
-      while (delta < 0) {
+      // TODO: prevent shrinking below the fit size
+      while (delta < -1e-5) {
         // NOTE: find the 2 largest sets of widgets.
         F32 largest_size_dim = *UiWidgetGetDim(&growable_children[0]->size, direction);
         F32 second_largest_size_dim = F32_MIN;
@@ -740,7 +773,7 @@ static void UiMaybeUpdateHot(UiWidget* widget, UiWidget** active_window, UiWidge
       UiMaybeUpdateHot(widget->children[i], active_window, deepest_scrollable);
     }
     // NOTE: find the deepmost scrollable from bottom up, don't overwrite if already found.
-    if (*deepest_scrollable == NULL && (widget->options & UiWidgetOptions_SizingVertScrollable)) {
+    if (*deepest_scrollable == NULL && (widget->options & UiWidgetOptions_Scrollable)) {
       *deepest_scrollable = widget;
     }
     // NOTE: the window will always be the topmost widget, so clobber when going back up.
@@ -753,7 +786,7 @@ static void UiEnqueueDrawCommands(UiWidget* widget, UiDrawCommand** head, UiDraw
   UiDrawCommand* command;
 
   V2 scissor_min, scissor_max;
-  if (widget->options & UiWidgetOptions_SizingVertScrollable) {
+  if (widget->options & UiWidgetOptions_Scrollable) {
     scissor_min.x = MAX(widget->pos.x, c->current_scissor_min.x);
     scissor_min.y = MAX(widget->pos.y - widget->size.y, c->current_scissor_min.y);
     scissor_max.x = MIN(widget->pos.x + widget->size.x, c->current_scissor_max.x);
@@ -862,7 +895,7 @@ static void UiEnqueueDrawCommands(UiWidget* widget, UiDrawCommand** head, UiDraw
   for (U32 i = 0; i < widget->children_size; i++) {
     UiEnqueueDrawCommands(widget->children[i], head, tail);
 
-    if (widget->options & UiWidgetOptions_SizingVertScrollable && !(V2Eq(&c->current_scissor_min, &scissor_min) && V2Eq(&c->current_scissor_max, &scissor_max))) {
+    if (widget->options & UiWidgetOptions_Scrollable && !(V2Eq(&c->current_scissor_min, &scissor_min) && V2Eq(&c->current_scissor_max, &scissor_max))) {
       c->current_scissor_min = scissor_min;
       c->current_scissor_max = scissor_max;
       command = ARENA_PUSH_STRUCT(c->command_arena, UiDrawCommand);
@@ -875,7 +908,7 @@ static void UiEnqueueDrawCommands(UiWidget* widget, UiDrawCommand** head, UiDraw
     }
   }
 
-  if (widget->options & UiWidgetOptions_SizingVertScrollable) {
+  if (widget->options & UiWidgetOptions_Scrollable) {
     c->current_scissor_min = V2Assign(F32_MIN, F32_MIN);
     c->current_scissor_max = V2Assign(F32_MAX, F32_MAX);
     command = ARENA_PUSH_STRUCT(c->command_arena, UiDrawCommand);
@@ -978,6 +1011,8 @@ UiDrawCommand* UiEnd() {
   for (U32 i = 0; i < c->root->children_size; i++) {
     c->current_scissor_min = V2Assign(F32_MIN, F32_MIN);
     c->current_scissor_max = V2Assign(F32_MAX, F32_MAX);
+    UiWidget* current_hot_root_widget    = NULL;
+    UiWidget* current_deepest_scrollable = NULL;
 
     UiWidget* root = c->root->children[i];
     root->priority = i; // NOTE: fix priority so in range (0, num windows)
@@ -987,9 +1022,13 @@ UiDrawCommand* UiEnd() {
     UiGrowWidgets(root, UiWidgetOptions_DirectionVertical);
     UiPositionWidgetsRoot(root, UiWidgetOptions_DirectionHorizontal);
     UiPositionWidgetsRoot(root, UiWidgetOptions_DirectionVertical);
-    UiMaybeUpdateHot(root, &hot_root_widget, &deepest_scrollable);
+    UiMaybeUpdateHot(root, &current_hot_root_widget, &current_deepest_scrollable);
     UiEnqueueDrawCommands(root, &commands_head, &commands_tail);
     RendererDisableScissorTest();
+
+    // NOTE: since windows are sorted by priority, clobbering ensures that only the highest prio window wins here.
+    if (current_hot_root_widget != NULL)    { hot_root_widget = current_hot_root_widget;       }
+    if (current_deepest_scrollable != NULL) { deepest_scrollable = current_deepest_scrollable; }
   }
 
   // NOTE: update active widget if just clicked
@@ -1016,19 +1055,10 @@ UiDrawCommand* UiEnd() {
   return commands_head;
 }
 
-static UiInteraction UiPanelBeginEx(U32 id, V2 pad, F32 child_gap, UiWidgetOptions options) {
-  UiContext* c = UiGetContext();
-  UiWidget* panel = UiWidgetBegin(id, options);
-  panel->pad = pad;
-  panel->child_gap = child_gap;
-  panel->color = c->style.background_color;
-  return UiWidgetGetInteraction(panel);
-}
-
 UiInteraction UiWindowFixedBegin(U32 id, String8 title, V2 pos, V2 size) {
   UiContext* c = UiGetContext();
   DEBUG_ASSERT(c->current_widget == c->root);
-  UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
+  UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect | UiWidgetOptions_Resizable;
   UiWidgetApplySizeDefaultFit(&options, size);
   UiWidget* window = UiWidgetBegin(id, options);
   if (window->prev == NULL) {
@@ -1037,21 +1067,23 @@ UiInteraction UiWindowFixedBegin(U32 id, String8 title, V2 pos, V2 size) {
     if (c->prev_root != NULL) { window->priority = c->prev_root->children_size; }
     else                      { window->priority = c->root->children_size;      }
   }
-  window->color = c->style.background_color;
   window->pref_size = size;
+  window->color = c->style.background_color;
   UiInteraction result = UiWidgetGetInteraction(window);
   if (title.size > 0) {
-    UiInteractionMerge(&result, UiPanelHorizontalBegin(UIID_INT(id), V2Assign(5, 5), 0));
+    UiInteractionMerge(&result, UiPanelBegin(UIID_INT(id), UiPanelDirection_Horizontal, UiPanelSize_Grow, UiPanelSize_Fit, false, true, V2Assign(5, 5), 0));
       UiInteractionMerge(&result, UiText(UIID_INT(id), title, V2_ZEROES));
       UiInteractionMerge(&result, UiGrow(UIID_INT(id)));
       UiInteractionMerge(&result, UiButtonToggle(UIID_INT(id), Str8Lit(""), &window->open, V2Assign(20, 20)));
     UiPanelEnd();
     UiInteractionMerge(&result, UiSeparator(UIID_INT(id)));
+
+    // NOTE: hide the resize window option when the window is closed
+    // TODO: can reintroduce this if the resize widget becomes more discreet, which would be ideal
+    if (!window->open) { window->options &= ~UiWidgetOptions_Resizable; }
   }
 
-  // TODO: this should probably be implemented differently.
-  U32 special_panel_options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_SizingVertScrollable | UiWidgetOptions_SizingHorizGrow;
-  UiPanelBeginEx(UIID_INT(id), V2_ZEROES, 0, special_panel_options);
+  UiPanelBegin(UIID_INT(id), UiPanelDirection_Vertical, UiPanelSize_Fit, UiPanelSize_Grow, false, true, V2_ZEROES, 0);
   result.open = window->open;
   return result;
 }
@@ -1104,24 +1136,63 @@ void UiPopupEnd() {
   }
 }
 
+UiInteraction UiPanelBegin(U32 id, UiPanelDirection direction, UiPanelSize main_axis_size, UiPanelSize cross_axis_size, B32 bordered, B32 scrollable, V2 pad, F32 child_gap) {
+  U32 options = 0;
+  switch (direction) {
+    case UiPanelDirection_Vertical: {
+      options |= UiWidgetOptions_DirectionVertical;
+      switch (main_axis_size) {
+        case UiPanelSize_Grow: { options |= UiWidgetOptions_SizingVertGrow;  } break;
+        case UiPanelSize_Fit:  { options |= UiWidgetOptions_SizingVertFit;   } break;
+        default: UNREACHABLE();
+      }
+      switch (cross_axis_size) {
+        case UiPanelSize_Grow: { options |= UiWidgetOptions_SizingHorizGrow; } break;
+        case UiPanelSize_Fit:  { options |= UiWidgetOptions_SizingHorizFit;  } break;
+        default: UNREACHABLE();
+      }
+    } break;
+    case UiPanelDirection_Horizontal: {
+      options |= UiWidgetOptions_DirectionHorizontal;
+      switch (main_axis_size) {
+        case UiPanelSize_Grow: { options |= UiWidgetOptions_SizingHorizGrow; } break;
+        case UiPanelSize_Fit:  { options |= UiWidgetOptions_SizingHorizFit;  } break;
+        default: UNREACHABLE();
+      }
+      switch (cross_axis_size) {
+        case UiPanelSize_Grow: { options |= UiWidgetOptions_SizingVertGrow;  } break;
+        case UiPanelSize_Fit:  { options |= UiWidgetOptions_SizingVertFit;   } break;
+        default: UNREACHABLE();
+      }
+    } break;
+    default: UNREACHABLE();
+  }
+  if (bordered)   { options |= UiWidgetOptions_RenderBorder; }
+  if (scrollable) { options |= UiWidgetOptions_Scrollable;   }
+  options |= UiWidgetOptions_AlignCenter;
+
+  UiContext* c = UiGetContext();
+  UiWidget* panel = UiWidgetBegin(id, options);
+  panel->pad = pad;
+  panel->child_gap = child_gap;
+  panel->color = c->style.background_color;
+  return UiWidgetGetInteraction(panel);
+}
+
 UiInteraction UiPanelVerticalBegin(U32 id, V2 pad, F32 child_gap) {
-  UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_SizingGrow;
-  return UiPanelBeginEx(id, pad, child_gap, options);
+  return UiPanelBegin(id, UiPanelDirection_Vertical, UiPanelSize_Grow, UiPanelSize_Grow, false, false, pad, child_gap);
 }
 
 UiInteraction UiPanelHorizontalBegin(U32 id, V2 pad, F32 child_gap) {
-  UiWidgetOptions options = UiWidgetOptions_DirectionHorizontal | UiWidgetOptions_AlignCenter | UiWidgetOptions_SizingGrow;
-  return UiPanelBeginEx(id, pad, child_gap, options);
+  return UiPanelBegin(id, UiPanelDirection_Horizontal, UiPanelSize_Grow, UiPanelSize_Grow, false, false, pad, child_gap);
 }
 
-UiInteraction UiPanelBorderedVerticalBegin(U32 id, V2 pad, F32 child_gap) {
-  UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_SizingGrow | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
-  return UiPanelBeginEx(id, pad, child_gap, options);
+UiInteraction UiPanelVerticalBorderedBegin(U32 id, V2 pad, F32 child_gap) {
+  return UiPanelBegin(id, UiPanelDirection_Vertical, UiPanelSize_Grow, UiPanelSize_Grow, true, false, pad, child_gap);
 }
 
-UiInteraction UiPanelBorderedHorizontalBegin(U32 id, V2 pad, F32 child_gap) {
-  UiWidgetOptions options = UiWidgetOptions_DirectionHorizontal | UiWidgetOptions_AlignCenter | UiWidgetOptions_SizingGrow | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect;
-  return UiPanelBeginEx(id, pad, child_gap, options);
+UiInteraction UiPanelHorizontalBorderedBegin(U32 id, V2 pad, F32 child_gap) {
+  return UiPanelBegin(id, UiPanelDirection_Horizontal, UiPanelSize_Grow, UiPanelSize_Grow, true, false, pad, child_gap);
 }
 
 void UiPanelEnd() {
