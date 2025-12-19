@@ -58,7 +58,7 @@ void RendererRegisterImage(U32* image_handle, Image* image);
 void RendererRegisterMesh(U32* mesh_handle, U32 image_handle, V3* points, V3* normals, V2* uvs, U32 vertices_size, U32* indices, U32 indices_size);
 void RendererReleaseImage(U32 image_handle);
 void RendererReleaseMesh(U32 mesh_handle);
-void RendererEnableScissorTest(S32 center_x, S32 center_y, S32 width, S32 height);
+void RendererEnableScissorTest(V2 min, V2 max);
 void RendererDisableScissorTest(void);
 void RendererEnableDepthTest(void);
 void RendererDisableDepthTest(void);
@@ -998,9 +998,9 @@ void RendererReleaseMesh(U32 mesh_handle) {
   SLL_STACK_PUSH(r->meshes_free_list, mesh, next);
 }
 
-void RendererEnableScissorTest(S32 center_x, S32 center_y, S32 width, S32 height) {
+void RendererEnableScissorTest(V2 min, V2 max) {
   OpenGLAPI* g = &_ogl;
-  g->glScissor(center_x - (width / 2.0f), center_y - (height / 2.0f), width, height);
+  g->glScissor((S32) F32Floor(min.x), (S32) F32Floor(min.y), (S32) F32Ceil(max.x - min.x), (S32) F32Ceil(max.y - min.y));
   g->glEnable(GL_SCISSOR_TEST);
 }
 
