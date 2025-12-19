@@ -554,8 +554,10 @@ static void UiWidgetEnd() {
     UiPanelEnd();
 
     // TODO: should be allowed to go below fit_size. compensate by fixing the shrink size at widget fit size.
-    widget->pref_size.x = MAX(size.x, widget->prev->fit_size.x);
-    widget->pref_size.y = MAX(size.y, widget->prev->fit_size.y);
+    // widget->pref_size.x = MAX(size.x, widget->prev->fit_size.x);
+    // widget->pref_size.y = MAX(size.y, widget->prev->fit_size.y);
+    widget->pref_size.x = MAX(size.x, 20);
+    widget->pref_size.y = MAX(size.y, 20);
   }
 
   c->current_widget = c->current_widget->parent;
@@ -583,6 +585,7 @@ static void UiSizeWidgets(UiWidget* widget, UiWidgetOptions direction) {
   if (widget_size_opt & UiWidgetOptions_SizingFit)        { *widget_size_dim = *widget_fit_size_dim; }
   else if (widget_size_opt & UiWidgetOptions_SizingGrow)  { *widget_size_dim = MAX(*widget_fit_size_dim, widget_pref_size_dim); }
   else if (widget_size_opt & UiWidgetOptions_SizingFixed) { *widget_size_dim = widget_pref_size_dim; }
+  // else if (widget_size_opt & UiWidgetOptions_SizingFixed) { *widget_size_dim = MAX(*widget_fit_size_dim, widget_pref_size_dim); }
   else { UNREACHABLE(); }
 
   // NOTE: now, apply final size to parent
@@ -612,7 +615,6 @@ static void UiGrowWidgets(UiWidget* widget, UiWidgetOptions direction) {
       F32 delta               = widget_size_dim - widget_fit_size_dim;
 
       // NOTE: there is space to share, grow
-      // TODO: merge with shrink logic
       while (delta > 1e-5) {
         // NOTE: find the 2 smallest sets of widgets.
         F32 smallest_size_dim = *UiWidgetGetDim(&growable_children[0]->size, direction);
@@ -643,27 +645,50 @@ static void UiGrowWidgets(UiWidget* widget, UiWidgetOptions direction) {
       }
 
       // NOTE: there is not enough space, shrink
-      // TODO: merge with grow logic
-      // TODO: prevent shrinking below the fit size
+      // NOTE: there is an added complexity for shrinking, we want to prevent shrinking widgets below their fit size
       while (delta < -1e-5) {
         // NOTE: find the 2 largest sets of widgets.
-        F32 largest_size_dim = *UiWidgetGetDim(&growable_children[0]->size, direction);
+        F32 largest_size_dim = F32_MIN;
         F32 second_largest_size_dim = F32_MIN;
-        for (U32 i = 1; i < growable_children_size; i++) {
+        F32 max_shrink_delta = F32_MAX;
+        for (U32 i = 0; i < growable_children_size; i++) {
           UiWidget* child = growable_children[i];
+
           F32 child_size_dim = *UiWidgetGetDim(&child->size, direction);
-          if (child_size_dim > largest_size_dim) {
+          F32 child_fit_size_dim = *UiWidgetGetDim(&child->size, direction);
+          // NOTE: don't shrink elements that are already at their fit size
+          if (child_size_dim == child_fit_size_dim) { continue; }
+
+          if (child_size_dim >= largest_size_dim) {
             second_largest_size_dim = largest_size_dim;
             largest_size_dim = child_size_dim;
+            max_shrink_delta = MIN(max_shrink_delta, child_size_dim - child_fit_size_dim);
           } else if (child_size_dim > second_largest_size_dim) {
             second_largest_size_dim = child_size_dim;
           }
         }
+        // NOTE: no widgets have room to shrink, give up
+        if (largest_size_dim == F32_MIN)        { break; }
         if (second_largest_size_dim == F32_MIN) { second_largest_size_dim = largest_size_dim; }
+        DEBUG_ASSERT(max_shrink_delta > 0 && max_shrink_delta != F32_MAX);
+
+        // NOTE: collect count widgets of target size that we actually can shrink
+        U32 target_shrink_widgets_size = 0;
+        for (U32 i = 0; i < growable_children_size; i++) {
+          UiWidget* child = growable_children[i];
+          F32 child_size_dim = *UiWidgetGetDim(&child->size, direction);
+          F32 child_fit_size_dim = *UiWidgetGetDim(&child->size, direction);
+          if (child_size_dim == largest_size_dim && child_size_dim > child_fit_size_dim) {
+            target_shrink_widgets_size++;
+          }
+        }
 
         // NOTE: shrink the largest widgets so they're as big as the second largest
         F32 size_delta = MIN(largest_size_dim - second_largest_size_dim, -delta);
-        if (F32ApproxEq(size_delta, 0)) { size_delta = -delta / growable_children_size; }
+        // NOTE: but only so far as the maximum shrink distance for widgets of that size
+        size_delta = MIN(size_delta, max_shrink_delta);
+        if (F32ApproxEq(size_delta, 0)) { size_delta = -delta / target_shrink_widgets_size; }
+
         for (U32 i = 0; i < growable_children_size; i++) {
           UiWidget* child = growable_children[i];
           F32* child_size_dim = UiWidgetGetDim(&child->size, direction);
@@ -1058,7 +1083,7 @@ UiDrawCommand* UiEnd() {
 UiInteraction UiWindowFixedBegin(U32 id, String8 title, V2 pos, V2 size) {
   UiContext* c = UiGetContext();
   DEBUG_ASSERT(c->current_widget == c->root);
-  UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignCenter | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect | UiWidgetOptions_Resizable;
+  UiWidgetOptions options = UiWidgetOptions_DirectionVertical | UiWidgetOptions_AlignStart | UiWidgetOptions_RenderBorder | UiWidgetOptions_RenderRect | UiWidgetOptions_Resizable;
   UiWidgetApplySizeDefaultFit(&options, size);
   UiWidget* window = UiWidgetBegin(id, options);
   if (window->prev == NULL) {
@@ -1071,6 +1096,7 @@ UiInteraction UiWindowFixedBegin(U32 id, String8 title, V2 pos, V2 size) {
   window->color = c->style.background_color;
   UiInteraction result = UiWidgetGetInteraction(window);
   if (title.size > 0) {
+    B32 open_old = window->open;
     UiInteractionMerge(&result, UiPanelBegin(UIID_INT(id), UiPanelDirection_Horizontal, UiPanelSize_Grow, UiPanelSize_Fit, false, true, V2Assign(5, 5), 0));
       UiInteractionMerge(&result, UiText(UIID_INT(id), title, V2_ZEROES));
       UiInteractionMerge(&result, UiGrow(UIID_INT(id)));
@@ -1080,7 +1106,7 @@ UiInteraction UiWindowFixedBegin(U32 id, String8 title, V2 pos, V2 size) {
 
     // NOTE: hide the resize window option when the window is closed
     // TODO: can reintroduce this if the resize widget becomes more discreet, which would be ideal
-    if (!window->open) { window->options &= ~UiWidgetOptions_Resizable; }
+    if (!window->open || window->open != open_old) { window->options &= ~UiWidgetOptions_Resizable; }
   }
 
   UiPanelBegin(UIID_INT(id), UiPanelDirection_Vertical, UiPanelSize_Fit, UiPanelSize_Grow, false, true, V2_ZEROES, 0);
@@ -1242,7 +1268,7 @@ UiInteraction UiButton(U32 id, String8 text, V2 size) {
   if (button->prev == NULL) { button->color = c->style.widget_color; }
   button->pref_size = size;
   UiInteraction interaction = UiWidgetGetInteraction(button);
-  UiInteractionMerge(&interaction, UiText(UIID_INT(id), text, V2_ZEROES));
+  if (text.size > 0) { UiInteractionMerge(&interaction, UiText(UIID_INT(id), text, V2_ZEROES)); }
   if (interaction.clicked)      { UiWidgetAnimateTo(button, c->style.widget_color_active, true);  }
   else if (interaction.hovered) { UiWidgetAnimateTo(button, c->style.widget_color_bright, false); }
   else                          { UiWidgetAnimateTo(button, c->style.widget_color, false);        }
