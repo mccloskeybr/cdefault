@@ -2,6 +2,7 @@
 #define CDEFAULT_JSON_H_
 
 #include "cdefault_std.h"
+#include "cdefault_io.h"
 
 // TODO: truncate string when logging / better error messages?
 // TODO: metaprogramming for struct -> json serialization / deserialization?
@@ -33,7 +34,7 @@
 // typedef struct MyStruct MyStruct;
 // struct MyStruct { F32 x, y; }
 //
-// JsonValue JsonValueMyStruct(Arena* arena, MyStruct my_struct) {
+// JsonValue JsonValuePushMyStruct(Arena* arena, MyStruct my_struct) {
 //   JsonValue result = JsonValueObjectEmpty();
 //   JsonObjectPushNumber(arena, &result.object, Str8Lit("x"), my_struct.x);
 //   JsonObjectPushNumber(arena, &result.object, Str8Lit("y"), my_struct.y);
@@ -48,7 +49,7 @@
 // }
 //
 // To read:  DEBUG_ASSERT(JsonValueGetMyStruct(JsonObjectGet(json_object, Str8Lit("my_key")), &my_struct));
-// To write: JsonObjectPushValue(arena, &json_object, Str8Lit("my_key"), JsonValueMyStruct(arena, my_struct));
+// To write: JsonObjectPushValue(arena, &json_object, Str8Lit("my_key"), JsonValuePushMyStruct(arena, my_struct));
 
 typedef enum JsonValueKind JsonValueKind;
 enum JsonValueKind {
@@ -99,6 +100,7 @@ struct JsonObjectNode {
 
 // NOTE: The contents of json_str are expected to outlive the json object!
 B32  JsonParse(Arena* arena, JsonObject* object, String8 json_str);
+B32  JsonParseFromFile(Arena* arena, JsonObject* object, String8 file_path);
 void JsonToString(Arena* arena, JsonObject object, String8* json_str, B32 pretty);
 
 JsonValue JsonValueString(String8 string);
@@ -348,6 +350,13 @@ json_object_parse_end:
 B32 JsonParse(Arena* arena, JsonObject* object, String8 json_str) {
   String8 json_str_copy = json_str;
   return JsonObjectParse(arena, object, &json_str, &json_str_copy);
+}
+
+B32 JsonParseFromFile(Arena* arena, JsonObject* object, String8 file_path) {
+  String8 file_data;
+  if (!FileReadAll(arena, file_path, &file_data.str, &file_data.size)) { return false; }
+  if (!JsonParse(arena, object, file_data))                            { return false; }
+  return true;
 }
 
 static void JsonValueAppendToStr8List(Arena* arena, JsonValue* value, String8List* json_str_list, B32 pretty, S32 indent) {

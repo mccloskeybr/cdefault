@@ -16,17 +16,15 @@
 //
 // e.g.
 //
-// String8 file_data;
-// DEBUG_ASSERT(FileReadAll(arena, Str8Lit("C:/Windows/Fonts/consola.ttf"), &file_data.str, &file_data.size));
-// Font font;
-// DEBUG_ASSERT(FontInit(&font, file_data.str, file_data.size));
-//
+// String8 font_file = Str8Lit("C:/Windows/Fonts/consola.ttf");
 // F32 raster_height = 100.0f;
 // F32 sdf_height    = 32.0f;
 //
+// Arena*    atlas_arena = ArenaAllocate();
+// Arena*    bmp_arena   = ArenaAllocate();
 // FontAtlas sdf_atlas;
 // Image     sdf_atlas_image;
-// DEBUG_ASSERT(FontAtlasBakeSdf(arena, &font, &sdf_atlas, &sdf_atlas_image, raster_height, sdf_height, FontCharSetLatin()));
+// DEBUG_ASSERT(FontAtlasBakeSdfFromFile(atlas_arena, bmp_arena, &sdf_atlas, &sdf_atlas_image, raster_height, sdf_height, FontCharSetLatin(), font_file));
 //
 // ... now go off to write the bitmap to disk, or render using it, whatever, man.
 
@@ -116,6 +114,12 @@ struct Font {
   LocFormat loc_format;
 };
 
+// NOTE: Can pass 0 for tuning parameters to use reasonable defaults.
+//
+// NOTE: Quick functions to bake atlases with less boilerplate.
+B32 FontAtlasBakeBitmapFromFile(Arena* atlas_arena, Arena* bitmap_arena, FontAtlas* atlas, Image* bitmap, F32 pixel_height, FontCharSet* char_set, String8 file_path);
+B32 FontAtlasBakeSdfFromFile(Arena* atlas_arena, Arena* bitmap_arena, FontAtlas* atlas, Image* bitmap, F32 bmp_pixel_height, F32 sdf_pixel_height, F32 spread_factor, FontCharSet* char_set, String8 file_path);
+
 // NOTE: A Font must be initialized successfully before it can be used by any other function.
 // A reference to the TTF data is stored, so it must outlive the Font object.
 B32 FontInit(Font* font, U8* data, U32 data_size);
@@ -123,14 +127,14 @@ B32 FontInit(Font* font, U8* data, U32 data_size);
 // NOTE: bakes a regular raster of each glyph to an atlas. does *not* perform any anti-aliasing on the edges.
 // should only be used for sufficiently large fonts. using an sdf atlas will almost always be better than using this.
 // pixel_height dictates the height (and, consequently, resolution) of each glyph in the bitmap.
-B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, Image* bitmap, F32 pixel_height, FontCharSet* char_set);
+B32 FontAtlasBakeBitmap(Arena* atlas_arena, Arena* bitmap_arena, Font* font, FontAtlas* atlas, Image* bitmap, F32 pixel_height, FontCharSet* char_set);
 
 // NOTE: bakes an SDF atlas bitmap, which can be used with a shader to do a decent job of rendering glyphs at arbitrary resolutions.
 // this is done by rasterizing each glyph to a bitmap first, then, for each pixel in the sdf bitmap, compute & save the distance to the nearest edge.
 // bmp_pixel_height dictates the resolution of the intermediary glyph bitmap raster -- a higher value will be more expensive to compute, but will result in more accurate distance calculations for each sdf texel. 100 is a reasonable default.
 // sdf_pixel_height dictates the resolution of the final sdf bitmap. a higher value leads to more accurate glyph renders, especially at higher resolutions. 32 is a reasonable default.
 // spread_factor dictates the look-around radius when finding the closest edge for each sdf pixel. higher values will lead to a more accurate distance gradient, but is more expensive to compute and may look bad (blurry) for small sdf characters. 8, 16 are reasonable defaults.
-B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, Image* bitmap, F32 bmp_pixel_height, F32 sdf_pixel_height, F32 spread_factor, FontCharSet* char_set);
+B32 FontAtlasBakeSdf(Arena* atlas_arena, Arena* bitmap_arena, Font* font, FontAtlas* atlas, Image* bitmap, F32 bmp_pixel_height, F32 sdf_pixel_height, F32 spread_factor, FontCharSet* char_set);
 
 // NOTE: Function to retrieve data from the atlas when placing characters. Advances the provided cursor and returns relevant information for rendering.
 // NOTE: codepoint_next is used for kerning; pass 0 if you don't care.
@@ -346,6 +350,34 @@ static B32 FontAtlasBuildKernTable(Arena* arena, Font* font, FontAtlas* atlas, F
   return true;
 }
 #undef FONT_TRY_PARSE
+
+B32 FontAtlasBakeBitmapFromFile(Arena* atlas_arena, Arena* bitmap_arena, FontAtlas* atlas, Image* bitmap, F32 pixel_height, FontCharSet* char_set, String8 file_path) {
+  B32 success = false;
+  Arena* file_arena = ArenaAllocate();
+  String8 ttf_data;
+  if (!FileReadAll(file_arena, file_path, &ttf_data.str, &ttf_data.size)) { goto font_atlas_bake_bitmap_from_file_exit; }
+  Font font;
+  if (!FontInit(&font, ttf_data.str, ttf_data.size)) { goto font_atlas_bake_bitmap_from_file_exit; }
+  if (!FontAtlasBakeBitmap(atlas_arena, bitmap_arena, &font, atlas, bitmap, pixel_height, char_set)) { goto font_atlas_bake_bitmap_from_file_exit; }
+  success = true;
+font_atlas_bake_bitmap_from_file_exit:
+  ArenaRelease(file_arena);
+  return success;
+}
+
+B32 FontAtlasBakeSdfFromFile(Arena* atlas_arena, Arena* bitmap_arena, FontAtlas* atlas, Image* bitmap, F32 bmp_pixel_height, F32 sdf_pixel_height, F32 spread_factor, FontCharSet* char_set, String8 file_path) {
+  B32 success = false;
+  Arena* file_arena = ArenaAllocate();
+  String8 ttf_data;
+  if (!FileReadAll(file_arena, file_path, &ttf_data.str, &ttf_data.size)) { goto font_atlas_bake_sdf_from_file_exit; }
+  Font font;
+  if (!FontInit(&font, ttf_data.str, ttf_data.size)) { goto font_atlas_bake_sdf_from_file_exit; }
+  if (!FontAtlasBakeSdf(atlas_arena, bitmap_arena, &font, atlas, bitmap, bmp_pixel_height, sdf_pixel_height, spread_factor, char_set)) { goto font_atlas_bake_sdf_from_file_exit; }
+  success = true;
+font_atlas_bake_sdf_from_file_exit:
+  ArenaRelease(file_arena);
+  return success;
+}
 
 #define FONT_TRY_PARSE(eval) if (!eval) { FONT_LOG_OUT_OF_CHARS(); return false; }
 B32 FontInit(Font* font, U8* data, U32 data_size) {
@@ -1095,9 +1127,10 @@ B32 FontGlyphShapeRasterize(GlyphShape* glyph_shape, U8** bmp, U32 bmp_width, U3
   return true;
 }
 
-B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, Image* bitmap, F32 pixel_height, FontCharSet* char_set) {
+B32 FontAtlasBakeBitmap(Arena* atlas_arena, Arena* bitmap_arena, Font* font, FontAtlas* atlas, Image* bitmap, F32 pixel_height, FontCharSet* char_set) {
   B32 success  = false;
-  U64 base_pos = ArenaPos(arena);
+  U64 atlas_arena_base_pos = ArenaPos(atlas_arena);
+  U64 image_arena_base_pos = ArenaPos(bitmap_arena);
   Arena* temp_arena = ArenaAllocate();
 
   MEMORY_ZERO_STRUCT(atlas);
@@ -1115,7 +1148,7 @@ B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, Image* bitma
   if (!FontSuggestAtlasSize(font, char_set, scale, &bitmap->width, &bitmap->height, pad * 2, pad * 2)) {
     goto font_atlas_bake_bitmap_end;
   }
-  bitmap->data = ARENA_PUSH_ARRAY(arena, U8, bitmap->width * bitmap->height);
+  bitmap->data = ARENA_PUSH_ARRAY(bitmap_arena, U8, bitmap->width * bitmap->height);
   MEMORY_ZERO(bitmap->data, sizeof(U8) * bitmap->width * bitmap->height);
 
   // NOTE: bake glyph bitmap
@@ -1174,7 +1207,7 @@ B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, Image* bitma
       U16 bitmap_max_y = bitmap_y + scaled_glyph_height;
       DEBUG_ASSERT(FontGlyphShapeRasterize(&glyph_shape, &bitmap->data, bitmap->width, bitmap->height, bitmap_min_x, bitmap_min_y, bitmap_max_x, bitmap_max_y));
 
-      AtlasChar* atlas_char = ARENA_PUSH_STRUCT(arena, AtlasChar);
+      AtlasChar* atlas_char = ARENA_PUSH_STRUCT(atlas_arena, AtlasChar);
       atlas_char->advance   = ((F32) advance) * scale;
       V2MultF32(&atlas_char->offset, &glyph_shape.min, scale);
       atlas_char->size.x    = bitmap_max_x - bitmap_min_x;
@@ -1190,7 +1223,7 @@ B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, Image* bitma
     }
   }
 
-  if (!FontAtlasBuildKernTable(arena, font, atlas, scale, char_set)) { goto font_atlas_bake_bitmap_end; }
+  if (!FontAtlasBuildKernTable(atlas_arena, font, atlas, scale, char_set)) { goto font_atlas_bake_bitmap_end; }
   atlas->scale_coeff = 1.0f / pixel_height;
   atlas->ascent      = font->ascent * scale;
   atlas->descent     = font->descent * scale;
@@ -1198,19 +1231,29 @@ B32 FontAtlasBakeBitmap(Arena* arena, Font* font, FontAtlas* atlas, Image* bitma
   success = true;
 font_atlas_bake_bitmap_end:
   ArenaRelease(temp_arena);
-  if (!success) { ArenaPopTo(arena, base_pos); }
+  if (!success) {
+    ArenaPopTo(atlas_arena, atlas_arena_base_pos);
+    ArenaPopTo(bitmap_arena, image_arena_base_pos);
+  }
   return success;
 }
 
 // https://steamcdn-a.akamaihd.net/apps/valve/2007/SIGGRAPH2007_AlphaTestedMagnification.pdf
-B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, Image* bitmap, F32 bmp_pixel_height, F32 sdf_pixel_height, F32 spread_factor, FontCharSet* char_set) {
+B32 FontAtlasBakeSdf(Arena* atlas_arena, Arena* bitmap_arena, Font* font, FontAtlas* atlas, Image* bitmap, F32 bmp_pixel_height, F32 sdf_pixel_height, F32 spread_factor, FontCharSet* char_set) {
   B32 success = false;
   Arena* temp_arena = ArenaAllocate();
-  U64 base_pos = ArenaPos(arena);
+  U64 atlas_arena_base_pos = ArenaPos(atlas_arena);
+  U64 image_arena_base_pos = ArenaPos(bitmap_arena);
 
   MEMORY_ZERO_STRUCT(atlas);
   MEMORY_ZERO_STRUCT(bitmap);
   bitmap->format = ImageFormat_R;
+
+  DEBUG_ASSERT(bmp_pixel_height >= 0);
+  if (bmp_pixel_height == 0) { bmp_pixel_height = 64.0f; }
+
+  DEBUG_ASSERT(sdf_pixel_height >= 0);
+  if (sdf_pixel_height == 0) { sdf_pixel_height = 32.0f; }
 
   DEBUG_ASSERT(spread_factor >= 0);
   if (spread_factor == 0) { spread_factor = 4.0f; }
@@ -1235,7 +1278,7 @@ B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, Image* bitmap, 
   if (!FontSuggestAtlasSize(font, char_set, sdf_scale, &bitmap->width, &bitmap->height, 2.0f * sdf_pad.x, 2.0f * sdf_pad.y)) {
     goto font_atlas_bake_sdf_end;
   }
-  bitmap->data = ARENA_PUSH_ARRAY(arena, U8, bitmap->width * bitmap->height);
+  bitmap->data = ARENA_PUSH_ARRAY(bitmap_arena, U8, bitmap->width * bitmap->height);
   MEMORY_ZERO(bitmap->data, sizeof(U8) * bitmap->width * bitmap->height);
 
   U32 sdf_y = sdf_pad.y;
@@ -1337,7 +1380,7 @@ B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, Image* bitmap, 
         }
       }
 
-      AtlasChar* atlas_char = ARENA_PUSH_STRUCT(arena, AtlasChar);
+      AtlasChar* atlas_char = ARENA_PUSH_STRUCT(atlas_arena, AtlasChar);
       atlas_char->advance  = ((F32) advance) * sdf_scale;
       V2MultF32(&atlas_char->offset, &glyph_shape.min, sdf_scale);
       V2SubV2(&atlas_char->offset, &atlas_char->offset, &sdf_pad);
@@ -1355,14 +1398,17 @@ B32 FontAtlasBakeSdf(Arena* arena, Font* font, FontAtlas* atlas, Image* bitmap, 
     }
   }
 
-  if (!FontAtlasBuildKernTable(arena, font, atlas, sdf_scale, char_set)) { goto font_atlas_bake_sdf_end; }
+  if (!FontAtlasBuildKernTable(atlas_arena, font, atlas, sdf_scale, char_set)) { goto font_atlas_bake_sdf_end; }
   atlas->scale_coeff = 1.0f / sdf_pixel_height;
   atlas->ascent      = font->ascent * sdf_scale;
   atlas->descent     = font->descent * sdf_scale;
 
   success = true;
 font_atlas_bake_sdf_end:
-  if (!success) { ArenaPopTo(arena, base_pos); }
+  if (!success) {
+    ArenaPopTo(atlas_arena, atlas_arena_base_pos);
+    ArenaPopTo(bitmap_arena, image_arena_base_pos);
+  }
   ArenaRelease(temp_arena);
   return success;
 }

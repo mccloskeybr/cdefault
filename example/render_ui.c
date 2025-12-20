@@ -3,8 +3,7 @@
 
 #define WINDOW_WIDTH  1920
 #define WINDOW_HEIGHT 1080
-// #define FONT_SIZE     22.0f
-#define FONT_SIZE     18.0f
+#define FONT_SIZE     16.0f
 
 void UiFontMeasureTextImpl(void* user_data, String8 text, V2* size) {
   FontAtlas* font_atlas = (FontAtlas*) user_data;
@@ -25,28 +24,29 @@ int main(void) {
   Stopwatch frame_stopwatch;
   StopwatchInit(&frame_stopwatch);
 
-  Arena* font_arena = ArenaAllocate();
-  Font font;
-  String8 font_file_data;
+  Arena* atlas_arena = ArenaAllocate();
+  Arena* bmp_arena   = ArenaAllocate();
   FontAtlas font_atlas;
   Image font_atlas_image;
+  DEBUG_ASSERT(FontAtlasBakeSdfFromFile(atlas_arena, bmp_arena, &font_atlas, &font_atlas_image, 0, 0, 6.0f, FontCharSetLatin(), Str8Lit("c:/windows/fonts/verdana.ttf")));
+
   U32 font_handle;
-  DEBUG_ASSERT(FileReadAll(font_arena, Str8Lit("c:/windows/fonts/verdana.ttf"), &font_file_data.str, &font_file_data.size));
-  DEBUG_ASSERT(FontInit(&font, font_file_data.str, font_file_data.size));
-  DEBUG_ASSERT(FontAtlasBakeSdf(font_arena, &font, &font_atlas, &font_atlas_image, 64.0f, 32.0f, 6.0f, FontCharSetLatin()));
   RendererRegisterImage(&font_handle, &font_atlas_image);
+  ArenaRelease(bmp_arena);
 
   B32 test_b32 = false;
   F32 test_f32 = 0.5f;
   S32 test_s32 = 5;
   F32 plot_values[50];
-  V2 mouse_pos;
 
   UiInit();
   UiSetFontCallbacks(UiFontMeasureTextImpl, UiFontGetAttributesImpl);
   UiSetFontUserData(&font_atlas);
 
+  Arena* temp_arena = ArenaAllocate();
   while (!WindowShouldClose()) {
+    ArenaClear(temp_arena);
+
     if (WindowIsKeyPressed(Key_Control) && WindowIsKeyJustPressed(Key_C)) {
       LOG_INFO("SIG_INT received, closing.");
       exit(0);
@@ -56,9 +56,15 @@ int main(void) {
       plot_values[i] = F32Sin(TimeSecondsSinceStart() + i);
     }
 
+    V2 mouse_pos;
     WindowGetMousePositionV(&mouse_pos);
     UiSetPointerState(mouse_pos, WindowGetMouseScrollSign(), WindowIsMouseButtonPressed(MouseButton_Left), WindowIsMouseButtonPressed(MouseButton_Right));
+
     UiBegin(dt_s);
+      UiPopupBegin(UIID(), V2Assign(10, WINDOW_HEIGHT - 50), V2Assign(0, 0), false);
+        UiText(UIID(), Str8Format(temp_arena, "FPS: %0.2f", 1/dt_s), V2_ZEROES);
+      UiPopupEnd();
+
       if (UiWindowFloatingBegin(UIID(), Str8Lit("widgets"), V2Assign(50, 900), V2Assign(0, 0), true).open) {
         UiPanelVerticalBegin(UIID(), V2Assign(10, 10), 10);
 
@@ -118,6 +124,7 @@ int main(void) {
       }
       UiWindowEnd();
     UiDrawCommand* ui_draw_commands = UiEnd();
+
     for (UiDrawCommand* cmd = ui_draw_commands; cmd != NULL; cmd = cmd->next) {
       switch (cmd->type) {
         case UiDrawCommand_Line:           { DrawLineV(cmd->line.start, cmd->line.end, 1, cmd->rect.color);                                         } break;
@@ -131,9 +138,8 @@ int main(void) {
 
     dt_s = StopwatchReadSeconds(&frame_stopwatch);
     StopwatchReset(&frame_stopwatch);
-
-    WindowSwapBuffers();
     WindowFlushEvents();
+    WindowSwapBuffers();
   }
 
   return 0;

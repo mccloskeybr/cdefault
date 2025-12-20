@@ -9,15 +9,34 @@
 // TODO: builtin render & text measure if asked, using cdefault renderer & font libs
 // TODO: dirty flag on widgets? only recalculate size & pos of self and children if dirty is true
 
-#define UIID_IMPL__(file, line, str) file ":" #line ":" str
-#define UIID_IMPL_(file, line, str)  UIID_IMPL__(file, line, str)
-#define UIID_IMPL(str)               Str8Hash(Str8Lit(UIID_IMPL_(__FILE__, __LINE__, str)))
+// NOTE: Basic immediate-mode UI library, a-la Dear ImGui, Clay, nuklear, etc. Allows you to define UIs in a procedural,
+// easy to compose directly in C way. Mainly intended for quick debug views to investigate / modify data in realtime.
+// Supports features like dynamic layout schemes (fit, grow, exact), various widgets (text, button, graphs, etc.),
+// window scrolling & resizing, on hover & on click animations, etc. Designed to be decoupled from most cdefault modules.
+//
+// Example:
+#if 0
+UiBegin(dt_s);
+  if (UiWindowFloatingBegin(UIID(), Str8Lit("my window"), V2Assign(10, 10), V2Assign(0, 0), true).open) {
+    UiPanelHorizontalBegin(UIID(), V2_ZEROES, 0);
+      UiText(UIID(), Str8Lit("my big beautiful button:"), V2_ZEROES);
+      UiGrow(UIID());
+      if (UiButton(UIID(), Str8Lit("click me"), V2Assign(200, 200)).clicked) {
+        LOG_INFO("the button was clicked!");
+      }
+    UiPanelEnd();
+  UiWindowEnd();
+UiDrawCommand* commands = UiEnd();
+#endif
 
-#define UIID()      (UIID_IMPL(""))
-#define UIID_STR(s) (UIID_IMPL(s))
-#define UIID_INT(i) (UIID() + i)
+// NOTE: The UI system keeps track of widget state, for position, bounds checking, animations, etc. To do
+// this between frames, some sort of identifier is required to uniquely identify each widget. These macros
+// can be used to generate these ids.
+#define UIID()      (UIID_IMPL("")) // Default option.
+#define UIID_STR(s) (UIID_IMPL(s))  // If you want to name your widgets, this is useful.
+#define UIID_INT(i) (UIID() + i)    // Useful if defining widgets in reusable function, or in a loop.
 
-// NOTE: this struct is how you can respond to different events for each widget.
+// NOTE: This struct is how you can respond to different events for each widget.
 typedef struct UiInteraction UiInteraction;
 struct UiInteraction {
   B8  hovered;
@@ -28,10 +47,10 @@ struct UiInteraction {
   U32 selected;
 };
 
-// NOTE: create & pass this struct to modify the colors, etc. of various UI components.
+// NOTE: Create & pass this struct to modify the colors, etc. of various UI components.
 typedef struct UiStyle UiStyle;
 struct UiStyle {
-  F32 anim_max_time;
+  F32 anim_max_time; // NOTE: set to 0 to disable animations.
   F32 border_size;
   V3  border_color;
   V3  background_color;
@@ -80,11 +99,11 @@ struct UiDrawCommand {
   };
 };
 
-// NOTE: callbacks necessary to measure and place text.
+// NOTE: Callbacks necessary to measure and place text.
 typedef void UiFontMeasureText_Fn(void* user_data, String8 text, V2* size);
 typedef void UiFontGetAttributes_Fn(void* user_data, F32* descent);
 
-// NOTE: initialize / deinitialize the framework.
+// NOTE: Initialize / deinitialize the framework.
 void UiInit(); // NOTE: must be called before any other function.
 void UiDeinit();
 
@@ -92,11 +111,11 @@ void UiDeinit();
 void UiSetPointerState(V2 mouse_pos, F32 mouse_scroll, B32 is_lmb_down, B32 is_rmb_down); // NOTE: pass mouse data into the UI framework. this is required for UiInteractions to contain expected data.
 void UiSetFontUserData(void* user_data); // NOTE: sets data that is transparently passed to the font callbacks later.
 void UiSetFontCallbacks(UiFontMeasureText_Fn* ui_font_measure_text_fn, UiFontGetAttributes_Fn* ui_font_get_attributes_fn); // NOTE: required for text to be placed & measured properly.
-UiStyle* UiStyleGet(); // NOTE: get / update the style (colors, etc.) of UI widgets.
+UiStyle* UiGetStyle(); // NOTE: get / update the style (colors, etc.) of UI widgets.
 B32 UiContainsMouse(); // NOTE: e.g. to determine if a click should potentially be delegated to the UI system or some other system.
 
 // NOTE: begin and end calls for determining UI layout position, sizes, etc.
-void UiBegin(F32 dt_s); // NOTE: Must be called before any widgets are placed.
+void UiBegin(F32 dt_s); // NOTE: Must be called before any widgets are placed. Delta time is passed for animations.
 UiDrawCommand* UiEnd(); // NOTE: returns a doubly-linked list of instructions for how to render the UI (which can be processed in-order).
 
 // NOTE: Widgets with a size attribute can be set to 0 for default behavior (fit or grow depending on the widget).
@@ -149,10 +168,18 @@ UiInteraction UiSliderS32(U32 id, S32* value, S32 min, S32 max, F32 resolution, 
 UiInteraction UiPlotLines(U32 id, F32* values, U32 values_count, V2 size);
 UiInteraction UiPlotBar(U32 id, F32* values, U32 values_count, V2 size);
 
+#define UIID_IMPL__(file, line, str) file ":" #line ":" str
+#define UIID_IMPL_(file, line, str)  UIID_IMPL__(file, line, str)
+#define UIID_IMPL(str)               Str8Hash(Str8Lit(UIID_IMPL_(__FILE__, __LINE__, str)))
+
 #endif // CDEFAULT_UI_H_
 
 #ifdef CDEFAULT_UI_IMPLEMENTATION
 #undef CDEFAULT_UI_IMPLEMENTATION
+
+// https://www.rfleury.com/p/ui-series-table-of-contents
+// https://www.youtube.com/watch?v=by9lQvpvMIc
+// https://github.com/ocornut/imgui
 
 typedef enum UiWidgetOptions UiWidgetOptions;
 enum UiWidgetOptions {
@@ -423,7 +450,7 @@ static void UiWidgetUpdateAnimation(UiWidget* widget) {
   if (!widget->is_animating) { return; }
   F32 anim_max_time = c->style.anim_max_time;
   widget->anim_time += c->dt_s;
-  if (widget->anim_time > anim_max_time) {
+  if (widget->anim_time >= anim_max_time) {
     widget->color          = widget->target_color;
     widget->is_animating   = false;
     widget->animation_lock = false;
@@ -898,7 +925,7 @@ static void UiEnqueueDrawCommands(UiWidget* widget, UiDrawCommand** head, UiDraw
 
 void UiInit() {
   UiContext* c = &_ui_context;
-  DEBUG_ASSERT(!c->is_initialized);
+  if (c->is_initialized) { return; }
 
   c->widget_arena      = ArenaAllocate();
   c->prev_widget_arena = ArenaAllocate();
@@ -906,7 +933,7 @@ void UiInit() {
   c->str8_hash_arena   = ArenaAllocate();
   c->is_initialized    = true;
 
-  UiStyle* default_style = UiStyleGet();
+  UiStyle* default_style = UiGetStyle();
   default_style->anim_max_time       = 0.07f;
   default_style->border_size         = 1.0f;
   default_style->border_color        = V3_MOONFLY_DARK_GRAY;
@@ -920,7 +947,7 @@ void UiInit() {
 
 void UiDeinit() {
   UiContext* c = &_ui_context;
-  DEBUG_ASSERT(c->is_initialized);
+  if (!c->is_initialized) { return; }
 
   UiFontTextMeasurementHashMapClear();
   ArenaRelease(c->widget_arena);
@@ -954,7 +981,7 @@ void UiSetFontCallbacks(UiFontMeasureText_Fn* ui_font_measure_text_fn, UiFontGet
   c->ui_font_get_attributes_fn = ui_font_get_attributes_fn;
 }
 
-UiStyle* UiStyleGet() {
+UiStyle* UiGetStyle() {
   UiContext* c = UiGetContext();
   return &c->style;
 }

@@ -56,6 +56,7 @@
 #define CDEFAULT_TEST_IMPLEMENTATION
 #include "cdefault_test.h"
 #define CDEFAULT_UI_IMPLEMENTATION
+#define CDEFAULT_UI_ENABLE_DEFAULT_BACKEND
 #include "cdefault_ui.h"
 
 #endif // CDEFAULT_IMPLEMENTATION

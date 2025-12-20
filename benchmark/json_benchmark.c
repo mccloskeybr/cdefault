@@ -1,14 +1,8 @@
 #define PROFILE_REGISTRY(PROFILE_METRIC) \
   PROFILE_METRIC(JSON_LOAD)
 
-#define CDEFAULT_STD_IMPLEMENTATION
-#include "../cdefault_std.h"
-#define CDEFAULT_IO_IMPLEMENTATION
-#include "../cdefault_io.h"
-#define CDEFAULT_JSON_IMPLEMENTATION
-#include "../cdefault_json.h"
-#define CDEFAULT_PROFILE_IMPLEMENTATION
-#include "../cdefault_profile.h"
+#define CDEFAULT_IMPLEMENTATION
+#include "../cdefault.h"
 
 #define WARMUP_RUNS    10
 #define BENCHMARK_RUNS 500
@@ -17,7 +11,7 @@ int main(void) {
   DirSetCurrentToExeDir();
   String8 file_buffer;
   Arena* file_arena = ArenaAllocate();
-  DEBUG_ASSERT(FileReadAll(file_arena, (U8*) "../data/test_json.json", &file_buffer.str, &file_buffer.size));
+  DEBUG_ASSERT(FileReadAll(file_arena, Str8Lit("../data/test_json.json"), &file_buffer.str, &file_buffer.size));
 
   Arena* json_arena = ArenaAllocate();
   U64 base = ArenaPos(json_arena);
