@@ -4,6 +4,7 @@
 #include "cdefault_std.h"
 #include "cdefault_math.h"
 
+// TODO: for widget caching, use a hash map instead of referencing the old frame's tree
 // TODO: text wrapping
 // TODO: more std widgets
 // TODO: builtin render & text measure if asked, using cdefault renderer & font libs
@@ -227,17 +228,21 @@ enum UiWidgetOptions {
 #define UiWidgetOptions_AlignCenter (UiWidgetOptions_AlignHorizCenter | UiWidgetOptions_AlignVertCenter)
 #define UiWidgetOptions_AlignEnd    (UiWidgetOptions_AlignHorizEnd    | UiWidgetOptions_AlignVertEnd)
 
-#define UI_WIDGET_MAX_CHILDREN 64
+#define UI_WIDGET_MAX_NUM_CHILDREN 64
 #define UI_TEXT_MEASUREMENT_CACHE_CASHOUT_SIZE MB(1)
 
 // NOTE: max number of children any single widget may have
 typedef struct UiWidget UiWidget;
 struct UiWidget {
   U32 id;
-  UiWidget* prev;
+  UiWidget* cached;
   UiWidget* parent;
-  UiWidget* children[UI_WIDGET_MAX_CHILDREN];
-  U32 children_size;
+  UiWidget* children_head;
+  UiWidget* children_tail;
+  U32       children_size;
+  UiWidget* sibling_next;
+  UiWidget* sibling_prev;
+
   UiWidgetOptions options;
   U32 priority;
 
@@ -434,12 +439,26 @@ static UiWidget* UiWidgetAllocate() {
   return widget;
 }
 
+static void UiWidgetAddChild(UiWidget* parent, UiWidget* child) {
+  DEBUG_ASSERT(parent->children_size < UI_WIDGET_MAX_NUM_CHILDREN);
+  DLL_PUSH_BACK(parent->children_head, parent->children_tail, child, sibling_prev, sibling_next);
+  parent->children_size++;
+  child->parent = parent;
+}
+
+static void UiWidgetRemoveParent(UiWidget* child) {
+  UiWidget* parent = child->parent;
+  DLL_REMOVE(parent->children_head, parent->children_tail, child, sibling_prev, sibling_next);
+  parent->children_size--;
+  child->parent = NULL;
+}
+
 // TODO: better cache?
 static UiWidget* UiWidgetFind(UiWidget* widget, U32 id) {
-  if (widget == NULL) { return NULL; }
+  if (widget == NULL)   { return NULL; }
   if (widget->id == id) { return widget; }
-  for (U32 i = 0; i < widget->children_size; i++) {
-    UiWidget* maybe_hit = UiWidgetFind(widget->children[i], id);
+  for (UiWidget* child = widget->children_head; child != NULL; child = child->sibling_next) {
+    UiWidget* maybe_hit = UiWidgetFind(child, id);
     if (maybe_hit != NULL) { return maybe_hit; }
   }
   return NULL;
@@ -467,7 +486,7 @@ static void UiWidgetAnimateTo(UiWidget* widget, V3 color, B32 lock) {
   widget->animation_lock = lock;
 }
 
-static void UiWidgetAnimate(UiWidget* widget, UiInteraction* interaction) {
+static void UiWidgetMaybeAnimate(UiWidget* widget, UiInteraction* interaction) {
   UiContext* c = UiGetContext();
   if (interaction->dragged || interaction->clicked) {
     UiWidgetAnimateTo(widget, c->style.widget_color_active, true);
@@ -506,33 +525,31 @@ static void UiInteractionMerge(UiInteraction* dest, UiInteraction src) {
 
 static UiWidget* UiWidgetBegin(U32 id, UiWidgetOptions options) {
   UiContext* c = UiGetContext();
-  DEBUG_ASSERT(c->current_widget->children_size < UI_WIDGET_MAX_CHILDREN);
 
   UiWidget* new_widget = UiWidgetAllocate();
   new_widget->id       = id;
-  new_widget->parent   = c->current_widget;
   new_widget->options  = options;
+  UiWidgetAddChild(c->current_widget, new_widget);
 
   // NOTE: sync data from last frame
-  new_widget->prev = UiWidgetFind(c->prev_root, id);;
-  if (new_widget->prev != NULL) {
-    new_widget->scroll_offset  = new_widget->prev->scroll_offset;
-    new_widget->slider_value   = new_widget->prev->slider_value;
-    new_widget->priority       = new_widget->prev->priority;
-    new_widget->pos            = new_widget->prev->pos;
-    new_widget->open           = new_widget->prev->open;
-    new_widget->selected       = new_widget->prev->selected;
-    new_widget->is_animating   = new_widget->prev->is_animating;
-    new_widget->color          = new_widget->prev->color;
-    new_widget->target_color   = new_widget->prev->target_color;
-    new_widget->anim_time      = new_widget->prev->anim_time;
-    new_widget->animation_lock = new_widget->prev->animation_lock;
+  new_widget->cached = UiWidgetFind(c->prev_root, id);;
+  if (new_widget->cached != NULL) {
+    new_widget->scroll_offset  = new_widget->cached->scroll_offset;
+    new_widget->slider_value   = new_widget->cached->slider_value;
+    new_widget->priority       = new_widget->cached->priority;
+    new_widget->pos            = new_widget->cached->pos;
+    new_widget->open           = new_widget->cached->open;
+    new_widget->selected       = new_widget->cached->selected;
+    new_widget->is_animating   = new_widget->cached->is_animating;
+    new_widget->color          = new_widget->cached->color;
+    new_widget->target_color   = new_widget->cached->target_color;
+    new_widget->anim_time      = new_widget->cached->anim_time;
+    new_widget->animation_lock = new_widget->cached->animation_lock;
     UiWidgetUpdateAnimation(new_widget);
   } else {
     new_widget->color = c->style.widget_color;
   }
 
-  c->current_widget->children[c->current_widget->children_size++] = new_widget;
   c->current_widget = new_widget;
   return c->current_widget;
 }
@@ -548,8 +565,8 @@ static void UiWidgetEnd() {
 
 static void UiWidgetsSize(UiWidget* widget, UiWidgetOptions direction) {
   // NOTE: size starting at the bottom and moving up.
-  for (U32 i = 0; i < widget->children_size; i++) {
-    UiWidgetsSize(widget->children[i], direction);
+  for (UiWidget* child = widget->children_head; child != NULL; child = child->sibling_next) {
+    UiWidgetsSize(child, direction);
   }
 
   UiWidget* parent = widget->parent;
@@ -579,11 +596,11 @@ static void UiWidgetsSize(UiWidget* widget, UiWidgetOptions direction) {
 static void UiWidgetsGrow(UiWidget* widget, UiWidgetOptions direction) {
   // NOTE: collect all children that can grow. they need to share the growth delta.
   // TODO: cache this on the widget?
-  UiWidget* growable_children[UI_WIDGET_MAX_CHILDREN];
+  UiWidget* growable_children[UI_WIDGET_MAX_NUM_CHILDREN];
   U32 growable_children_size = 0;
-  for (U32 i = 0; i < widget->children_size; i++) {
-    UiWidget* child = widget->children[i];
+  for (UiWidget* child = widget->children_head; child != NULL; child = child->sibling_next) {
     if (UiWidgetGetSizeOpt(child, direction) & UiWidgetOptions_SizingGrow) {
+      DEBUG_ASSERT(growable_children_size < STATIC_ARRAY_SIZE(growable_children));
       growable_children[growable_children_size++] = child;
     }
   }
@@ -690,16 +707,16 @@ static void UiWidgetsGrow(UiWidget* widget, UiWidgetOptions direction) {
     }
   }
 
-  for (U32 i = 0; i < widget->children_size; i++) {
-    UiWidgetsGrow(widget->children[i], direction);
+  for (UiWidget* child = widget->children_head; child != NULL; child = child->sibling_next) {
+    UiWidgetsGrow(child, direction);
   }
 }
 
 // TODO: this only works for single level scrollables, need to update it to work for nested scrollables
 static void UiWidgetsClampScrollOffset(UiWidget* widget) {
   UiContext* c = UiGetContext();
-  for (U32 i = 0; i < widget->children_size; i++) {
-    UiWidgetsClampScrollOffset(widget->children[i]);
+  for (UiWidget* child = widget->children_head; child != NULL; child = child->sibling_next) {
+    UiWidgetsClampScrollOffset(child);
   }
   if (!(widget->options & UiWidgetOptions_Scrollable)) { return; }
   DEBUG_ASSERT(widget->parent != c->root);
@@ -729,11 +746,10 @@ static void UiWidgetsPosition(UiWidget* widget, UiWidgetOptions direction) {
       UiWidgetUpdatePos(&pos, widget_pad_dim, direction);
     } else {
       F32 content_size_dim = 0;
-      for (U32 i = 0; i < widget->children_size; i++) {
-        UiWidget* child = widget->children[i];
+      for (UiWidget* child = widget->children_head; child != NULL; child = child->sibling_next) {
         F32 child_size_dim = *UiWidgetGetDim(&child->size, direction);
         content_size_dim += child_size_dim;
-        if (i != widget->children_size - 1) { content_size_dim += widget->child_gap; }
+        if (child->sibling_next != NULL) { content_size_dim += widget->child_gap; }
       }
       if (widget_align_dim & UiWidgetOptions_AlignCenter)   { UiWidgetUpdatePos(&pos, (widget_size_dim / 2.0f) - (content_size_dim / 2.0f), direction); }
       else if (widget_align_dim & UiWidgetOptions_AlignEnd) { UiWidgetUpdatePos(&pos, widget_size_dim - content_size_dim - widget_pad_dim, direction);  }
@@ -742,8 +758,7 @@ static void UiWidgetsPosition(UiWidget* widget, UiWidgetOptions direction) {
   }
 
   // NOTE: position this nodes children relative to itself
-  for (U32 i = 0; i < widget->children_size; i++) {
-    UiWidget* child = widget->children[i];
+  for (UiWidget* child = widget->children_head; child != NULL; child = child->sibling_next) {
     F32 child_pos = pos;
 
     // NOTE: apply alignment across the widget's direction
@@ -782,7 +797,9 @@ static void UiMaybeUpdateHot(UiWidget* widget, UiWidget** active_window, UiWidge
   max.x += widget->size.x;
   if (min.x <= m.x && m.x <= max.x && min.y <= m.y && m.y <= max.y) {
     c->hover_id = widget->id;
-    for (U32 i = 0; i < widget->children_size; i++) { UiMaybeUpdateHot(widget->children[i], active_window, deepest_scrollable); }
+    for (UiWidget* child = widget->children_head; child != NULL; child = child->sibling_next) {
+      UiMaybeUpdateHot(child, active_window, deepest_scrollable);
+    }
 
     // NOTE: find the deepmost scrollable from bottom up, don't overwrite if already found.
     if (*deepest_scrollable == NULL && (widget->options & UiWidgetOptions_Scrollable)) { *deepest_scrollable = widget; }
@@ -905,8 +922,8 @@ static void UiEnqueueDrawCommands(UiWidget* widget, UiDrawCommand** head, UiDraw
     command->text.color = c->style.text_color;
   }
 
-  for (U32 i = 0; i < widget->children_size; i++) {
-    UiEnqueueDrawCommands(widget->children[i], head, tail, scissor_min, scissor_max);
+  for (UiWidget* child = widget->children_head; child != NULL; child = child->sibling_next) {
+    UiEnqueueDrawCommands(child, head, tail, scissor_min, scissor_max);
 
     // NOTE: reapply scissor as child widget may have modified it.
     if (scissor) {
@@ -1006,7 +1023,13 @@ UiDrawCommand* UiEnd() {
   DEBUG_ASSERT(c->current_widget == c->root);
 
   // NOTE: order windows by priority / draw precedence
-  SORT(UiWidget*, c->root->children, c->root->children_size, UiWidgetComparePriorityAsc);
+  // could sort inside the DLL, but the number of windows on screen will never be large enough to matter.
+  UiWidget* windows[UI_WIDGET_MAX_NUM_CHILDREN];
+  U32 windows_size = 0;
+  for (UiWidget* window = c->root->children_head; window != NULL; window = window->sibling_next) {
+    windows[windows_size++] = window;
+  }
+  SORT(UiWidget*, windows, windows_size, UiWidgetComparePriorityAsc);
 
   // NOTE: perform passes over all windows (to position, size, enqueue draw cmds)
   c->hover_id = 0;
@@ -1015,21 +1038,21 @@ UiDrawCommand* UiEnd() {
   UiDrawCommand* commands_tail = NULL;
   UiWidget* hot_root_widget    = NULL;
   UiWidget* deepest_scrollable = NULL;
-  for (U32 i = 0; i < c->root->children_size; i++) {
-    UiWidget* root = c->root->children[i];
-    root->priority = i; // NOTE: fix priority so in range (0, num windows)
-    UiWidgetsSize(root, UiWidgetOptions_DirectionHorizontal);
-    UiWidgetsSize(root, UiWidgetOptions_DirectionVertical);
-    UiWidgetsGrow(root, UiWidgetOptions_DirectionHorizontal);
-    UiWidgetsGrow(root, UiWidgetOptions_DirectionVertical);
-    UiWidgetsClampScrollOffset(root); // NOTE: do every frame to respond to arbitrary resize events
-    UiWidgetsPosition(root, UiWidgetOptions_DirectionHorizontal);
-    UiWidgetsPosition(root, UiWidgetOptions_DirectionVertical);
-    UiEnqueueDrawCommands(root, &commands_head, &commands_tail, V2Assign(F32_MIN, F32_MIN), V2Assign(F32_MAX, F32_MAX));
+  for (U32 i = 0; i < windows_size; i++) {
+    UiWidget* window = windows[i];
+    window->priority = i; // NOTE: fix priority so in range (0, num windows)
+    UiWidgetsSize(window, UiWidgetOptions_DirectionHorizontal);
+    UiWidgetsSize(window, UiWidgetOptions_DirectionVertical);
+    UiWidgetsGrow(window, UiWidgetOptions_DirectionHorizontal);
+    UiWidgetsGrow(window, UiWidgetOptions_DirectionVertical);
+    UiWidgetsClampScrollOffset(window); // NOTE: do every frame to respond to arbitrary resize events
+    UiWidgetsPosition(window, UiWidgetOptions_DirectionHorizontal);
+    UiWidgetsPosition(window, UiWidgetOptions_DirectionVertical);
+    UiEnqueueDrawCommands(window, &commands_head, &commands_tail, V2Assign(F32_MIN, F32_MIN), V2Assign(F32_MAX, F32_MAX));
 
     UiWidget* current_hot_root_widget    = NULL;
     UiWidget* current_deepest_scrollable = NULL;
-    UiMaybeUpdateHot(root, &current_hot_root_widget, &current_deepest_scrollable);
+    UiMaybeUpdateHot(window, &current_hot_root_widget, &current_deepest_scrollable);
     // NOTE: since windows are sorted by priority, clobbering ensures that only the highest prio window wins here.
     if (current_hot_root_widget != NULL)    { hot_root_widget = current_hot_root_widget;       }
     if (current_deepest_scrollable != NULL) { deepest_scrollable = current_deepest_scrollable; }
@@ -1066,7 +1089,7 @@ UiInteraction UiWindowFixedBegin(U32 id, String8 title, V2 pos, V2 size, B32 res
   if (resizable) { options |= UiWidgetOptions_Resizable; }
   UiWidgetApplySizeDefaultFit(&options, size);
   UiWidget* window = UiWidgetBegin(id, options);
-  if (window->prev == NULL) {
+  if (window->cached == NULL) {
     window->pos = pos;
     window->open = true;
     window->priority = S32_MAX;
@@ -1108,14 +1131,14 @@ void UiWindowEnd() {
   UiWidgetEnd();
   DEBUG_ASSERT(c->current_widget == c->root);
 
-  if ((window->options & UiWidgetOptions_Resizable) && window->prev != NULL) {
+  if ((window->options & UiWidgetOptions_Resizable) && window->cached != NULL) {
     window->options &= ~(UiWidgetOptions_SizingFixed | UiWidgetOptions_SizingGrow | UiWidgetOptions_SizingFit);
     window->options |= UiWidgetOptions_SizingFixed;
-    V2 size = window->prev->size;
+    V2 size = window->cached->size;
 
     V2 resize_pos;
-    resize_pos.x = window->prev->pos.x + window->prev->size.x;
-    resize_pos.y = window->prev->pos.y - window->prev->size.y;
+    resize_pos.x = window->cached->pos.x + window->cached->size.x;
+    resize_pos.y = window->cached->pos.y - window->cached->size.y;
     U32 popup_id = UIID_INT(window->id);
     if (UiPopupBegin(popup_id, resize_pos, V2Assign(20, 20), false).dragged) {
       window->priority = S32_MAX;
@@ -1149,19 +1172,10 @@ void UiPopupEnd() {
   UiWidget* popup = c->current_widget;
   UiWidgetEnd();
   UiWidget* parent = popup->parent;
+  // NOTE: popups are windows, and windows should be children of the root widget
   if (parent != c->root) {
-    // NOTE: popups are windows, move them to be children of the root widget.
-    B32 removed_popup_from_non_root_parent = false;
-    for (U32 i = 0; i < parent->children_size; i++) {
-      if (parent->children[i] == popup) {
-        DA_SHIFT_REMOVE_EX(parent->children, parent->children_size, i);
-        removed_popup_from_non_root_parent = true;
-        break;
-      }
-    }
-    DEBUG_ASSERT(removed_popup_from_non_root_parent);
-    popup->parent = c->root;
-    c->root->children[c->root->children_size++] = popup;
+    UiWidgetRemoveParent(popup);
+    UiWidgetAddChild(c->root, popup);
   }
 }
 
@@ -1274,7 +1288,7 @@ UiInteraction UiButton(U32 id, String8 text, V2 size) {
   button->pref_size = size;
   UiInteraction interaction = UiWidgetGetInteraction(button);
   if (text.size > 0) { UiInteractionMerge(&interaction, UiText(UIID_INT(id), text, V2_ZEROES)); }
-  UiWidgetAnimate(button, &interaction);
+  UiWidgetMaybeAnimate(button, &interaction);
   UiWidgetEnd();
   return interaction;
 }
@@ -1292,7 +1306,7 @@ UiInteraction UiButtonToggle(U32 id, String8 text, B32* toggled, V2 size) {
   UiInteractionMerge(&interaction, UiText(UIID_INT(id), text, V2_ZEROES));
   if (interaction.clicked) { *toggled = !*toggled; }
 
-  UiWidgetAnimate(button, &interaction);
+  UiWidgetMaybeAnimate(button, &interaction);
   if (*toggled) { UiWidgetAnimateTo(button, c->style.widget_color_active, true);  }
 
   UiWidgetEnd();
@@ -1336,7 +1350,7 @@ UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, V2 size, F3
 
   // NOTE: ensure the open button is square by basing off y dim.
   F32 button_size = 0;
-  if (combo_box->prev != NULL) { button_size = combo_box->prev->size.y; }
+  if (combo_box->cached != NULL) { button_size = combo_box->cached->size.y; }
 
   UiInteractionMerge(&result, UiPanelHorizontalBegin(UIID_INT(id), V2Assign(5, 5), 5));
   U32 text_id = UIID_INT(id);
@@ -1360,9 +1374,9 @@ UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, V2 size, F3
   if (result.clicked) { combo_box->open = !combo_box->open; }
   if (combo_box->open) {
     V2 popup_pos, popup_size;
-    popup_pos.x  = combo_box->prev->pos.x;
-    popup_pos.y  = combo_box->prev->pos.y - combo_box->prev->size.y + c->style.border_size;
-    popup_size.x = combo_box->prev->size.x;
+    popup_pos.x  = combo_box->cached->pos.x;
+    popup_pos.y  = combo_box->cached->pos.y - combo_box->cached->size.y + c->style.border_size;
+    popup_size.x = combo_box->cached->size.x;
     popup_size.y = 0;
     UiInteractionMerge(&result, UiPopupBegin(UIID_INT(id), popup_pos, popup_size, true));
     UiInteractionMerge(&result, UiPanelVerticalBegin(UIID(), V2Assign(child_gap, child_gap), child_gap));
@@ -1412,7 +1426,7 @@ static UiWidget* UiSliderBegin(U32 id, V2 size, F32 resolution, String8 label, U
     if      (c->mouse_d_pos.x > 0) { slider->slider_value += resolution; }
     else if (c->mouse_d_pos.x < 0) { slider->slider_value -= resolution; }
   }
-  UiWidgetAnimate(slider, interaction);
+  UiWidgetMaybeAnimate(slider, interaction);
   return slider;
 }
 
