@@ -66,7 +66,7 @@ enum ImageBmpVersion {
 
 // https://en.wikipedia.org/wiki/BMP_file_format
 // https://www.fileformat.info/format/bmp/egff.htm
-#define IMAGE_TRY_PARSE(eval) if (!eval) { IMAGE_LOG_OUT_OF_CHARS(); return false; }
+#define IMAGE_TRY_PARSE(eval) if (!eval) { IMAGE_LOG_OUT_OF_CHARS(); goto image_load_bmp_exit; }
 B32 ImageLoadBmp(Arena* arena, Image* image, ImageFormat format, U8* file_data, U32 file_data_size) {
   B32 success = false;
   Arena* temp_arena = ArenaAllocate();
@@ -76,7 +76,7 @@ B32 ImageLoadBmp(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
   BinStreamInit(&h, file_data, file_data_size);
   String8 tag;
   IMAGE_TRY_PARSE(BinStreamPullStr8(&h, 2, &tag));
-  if (!Str8Eq(tag, Str8Lit("BM"))) { return false; }
+  if (!Str8Eq(tag, Str8Lit("BM"))) { goto image_load_bmp_exit; }
   IMAGE_TRY_PARSE(BinStreamSkip(&h, 8, sizeof(U8)));
   U32 palette_offset = 14; // NOTE: +14 for the data we just processed above.
 
