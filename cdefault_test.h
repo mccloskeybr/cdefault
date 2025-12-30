@@ -105,23 +105,15 @@ void _RunTest(String8 test_file, String8 test_name, Test_Fn* test_fn) {
   test_fn();
   if (c->failed) {
     c->num_fail++;
-
-    String8ListNode* test_result = ARENA_PUSH_STRUCT(c->arena, String8ListNode);
-    test_result->string = Str8Format(c->arena, "[" ANSI_COLOR_RED "FAIL" ANSI_COLOR_RESET "] : %.*s:%.*s\n", test_file.size, test_file.str, test_name.size, test_name.str);
-    Str8ListAppend(&c->report, test_result);
-
-    String8ListNode* error_entry = ARENA_PUSH_STRUCT(c->arena, String8ListNode);
-    error_entry->string = Str8Format(c->arena, "\t%s:%d - %.*s\n", c->file, c->line, c->error_message.size, c->error_message.str);
-    Str8ListAppend(&c->report, error_entry);
+    Str8ListAppend(c->arena, &c->report, Str8Format(c->arena, "[" ANSI_COLOR_RED "FAIL" ANSI_COLOR_RESET "] : %.*s:%.*s\n", test_file.size, test_file.str, test_name.size, test_name.str));
+    Str8ListAppend(c->arena, &c->report, Str8Format(c->arena, "\t%s:%d - %.*s\n", c->file, c->line, c->error_message.size, c->error_message.str));
     c->failed = false;
 
   } else {
     c->num_pass++;
 
 #ifndef CDEFAULT_TEST_PASS_SUPPRESS
-    String8ListNode* test_result = ARENA_PUSH_STRUCT(c->arena, String8ListNode);
-    test_result->string = Str8Format(c->arena, "[" ANSI_COLOR_GREEN "PASS" ANSI_COLOR_RESET "] : %.*s:%.*s\n", test_file.size, test_file.str, test_name.size, test_name.str);
-    Str8ListAppend(&c->report, test_result);
+    Str8ListAppend(c->arena, &c->report, Str8Format(c->arena, "[" ANSI_COLOR_GREEN "PASS" ANSI_COLOR_RESET "] : %.*s:%.*s\n", test_file.size, test_file.str, test_name.size, test_name.str));
 #endif
   }
 }
@@ -129,10 +121,7 @@ void _RunTest(String8 test_file, String8 test_name, Test_Fn* test_fn) {
 void LogTestReport() {
   TestContext* c = &_cdef_test_context;
 
-  String8ListNode* report_suffix = ARENA_PUSH_STRUCT(c->arena, String8ListNode);
-  report_suffix->string = Str8Format(c->arena, "Passed: " ANSI_COLOR_GREEN "%d" ANSI_COLOR_RESET ", Failed: " ANSI_COLOR_RED "%d\n" ANSI_COLOR_RESET, c->num_pass, c->num_fail);
-  Str8ListAppend(&c->report, report_suffix);
-
+  Str8ListAppend(c->arena, &c->report, Str8Format(c->arena, "Passed: " ANSI_COLOR_GREEN "%d" ANSI_COLOR_RESET ", Failed: " ANSI_COLOR_RED "%d\n" ANSI_COLOR_RESET, c->num_pass, c->num_fail));
   String8 report = Str8ListJoin(c->arena, &c->report);
   LOG_NO_PREFIX("%.*s", report.size, report.str);
 }

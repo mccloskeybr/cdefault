@@ -10,7 +10,7 @@
 #include "cdefault_io.h"
 #include "cdefault_json.h"
 #include "cdefault_math.h"
-#include "cdefault_mesh.h"
+#include "cdefault_model.h"
 #include "cdefault_physics_2d.h"
 #include "cdefault_physics_3d.h"
 #include "cdefault_profile.h"
@@ -39,8 +39,8 @@
 #include "cdefault_json.h"
 #define CDEFAULT_MATH_IMPLEMENTATION
 #include "cdefault_math.h"
-#define CDEFAULT_MESH_IMPLEMENTATION
-#include "cdefault_mesh.h"
+#define CDEFAULT_MODEL_IMPLEMENTATION
+#include "cdefault_model.h"
 #define CDEFAULT_PHYSICS2_IMPLEMENTATION
 #include "cdefault_physics_2d.h"
 #define CDEFAULT_PHYSICS3_IMPLEMENTATION

@@ -759,8 +759,8 @@ String8 _Str8Format(Arena* arena, U8* fmt, ...);
 #define Str8Format(a, fmt, ...) _Str8Format(a, (U8*) fmt, ##__VA_ARGS__)
 
 U32     Str8ListSize(String8List* list);
-void    Str8ListPrepend(String8List* list, String8ListNode* node);
-void    Str8ListAppend(String8List* list, String8ListNode* node);
+void    Str8ListPrepend(Arena* arena, String8List* list, String8 string);
+void    Str8ListAppend(Arena* arena, String8List* list, String8 string);
 String8 Str8ListJoin(Arena* arena, String8List* list);
 String8List Str8Split(Arena* arena, String8 string, U8 c);
 
@@ -861,11 +861,12 @@ struct BinStream {
   U64 pos;
 };
 
-// TODO: just make this an assign fn instead of init
+BinStream BinStreamAssign(U8* bytes, U32 bytes_size);
 void BinStreamInit(BinStream* stream, U8* bytes, U32 bytes_size);
 B32  BinStreamSeek(BinStream* stream, U32 pos);
 B32  BinStreamSkip(BinStream* stream, U32 num, S32 size);
 U8*  BinStreamDecay(BinStream* stream);
+U64  BinStreamRemaining(BinStream* stream);
 
 B32 BinStreamPullU8(BinStream* stream, U8* result);
 B32 BinStreamPullU16LE(BinStream* stream, U16* result);
@@ -1061,7 +1062,7 @@ Arena* _ArenaAllocate(U64 reserve_size, U64 commit_size) {
 
 void ArenaRelease(Arena* arena) {
   if (UNLIKELY(arena == NULL)) { return; }
-  MemoryRelease(arena, CDEFAULT_ARENA_RESERVE_SIZE);
+  MemoryRelease(arena, arena->reserve_size);
 }
 
 void* _ArenaPush(Arena* arena, U64 size, U64 align) {
@@ -2080,11 +2081,18 @@ U32 Str8ListSize(String8List* list) {
   return result;
 }
 
-void Str8ListPrepend(String8List* list, String8ListNode* node) {
+
+void Str8ListPrepend(Arena* arena, String8List* list, String8 string) {
+  String8ListNode* node = ARENA_PUSH_STRUCT(arena, String8ListNode);
+  MEMORY_ZERO_STRUCT(node);
+  node->string = string;
   SLL_QUEUE_PUSH_FRONT(list->head, list->tail, node, next);
 }
 
-void Str8ListAppend(String8List* list, String8ListNode* node) {
+void Str8ListAppend(Arena* arena, String8List* list, String8 string) {
+  String8ListNode* node = ARENA_PUSH_STRUCT(arena, String8ListNode);
+  MEMORY_ZERO_STRUCT(node);
+  node->string = string;
   SLL_QUEUE_PUSH_BACK(list->head, list->tail, node, next);
 }
 
@@ -2113,16 +2121,12 @@ String8List Str8Split(Arena* arena, String8 string, U8 c) {
   U8* substring_start = string.str;
   for (S32 i = 0; i < string.size; ++i) {
     if (string.str[i] == c) {
-      String8ListNode* node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-      node->string = Str8Range(substring_start, &string.str[i]);
-      Str8ListAppend(&list, node);
+      Str8ListAppend(arena, &list, Str8Range(substring_start, &string.str[i]));
       substring_start = &string.str[++i];
     }
   }
   if (substring_start < string.str + string.size) {
-    String8ListNode* node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-    node->string = Str8Range(substring_start, string.str + string.size);
-    Str8ListAppend(&list, node);
+    Str8ListAppend(arena, &list, Str8Range(substring_start, string.str + string.size));
   }
   return list;
 }
@@ -2281,6 +2285,12 @@ U64 BinRead64BE(U8* bytes) {
   return ((((U64) x) << 32) + ((U64) y));
 }
 
+BinStream BinStreamAssign(U8* bytes, U32 bytes_size) {
+  BinStream result;
+  BinStreamInit(&result, bytes, bytes_size);
+  return result;
+}
+
 void BinStreamInit(BinStream* stream, U8* bytes, U32 bytes_size) {
   stream->bytes = bytes;
   stream->bytes_size = bytes_size;
@@ -2301,6 +2311,10 @@ B32 BinStreamSkip(BinStream* stream, U32 num, S32 size) {
 
 U8* BinStreamDecay(BinStream* stream) {
   return &stream->bytes[stream->pos];
+}
+
+U64 BinStreamRemaining(BinStream* stream) {
+  return stream->bytes_size - stream->pos;
 }
 
 B32 BinStreamPullU8(BinStream* stream, U8* result) {

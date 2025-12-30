@@ -50,8 +50,10 @@ B32 DirSetCurrent(String8 file_path); // NOTE: Sets the current working director
 B32 DirGetCurrent(Arena* arena, String8* file_path); // NOTE: Gets the current working directory.
 B32 DirGetExe(Arena* arena, String8* file_path);     // NOTE: Gets the path to the currently running executable.
 B32 DirGetExeDir(Arena* arena, String8* file_path);  // NOTE: Gets the directory to the currently running executable.
+B32 DirListFiles(Arena* arena, String8 dir_path, String8List* file_paths); // NOTE: Given a path to a directory, returns the files in that directory.
 
-B32 PathPop(String8* path); // NOTE: Pops the right most part of the path off. E.g. /a/b/c -> /a/b
+B32     PathPop(String8* path); // NOTE: Pops the right most part of the path off. E.g. /a/b/c -> /a/b
+String8 PathJoin(Arena* arena, String8List path_parts);
 
 FileHandle* FileHandleAllocate(Arena* arena);
 B32 FileHandleOpen(FileHandle* file, String8 file_path, FileMode mode);  // NOTE: Opens a file. Mode must include read and / or write. Implicitly places a shared or exclusive lock depending on the mode.
@@ -157,9 +159,9 @@ B32 WIN_DirGetCurrent(Arena* arena, String8* file_path) {
 }
 
 B32 WIN_DirSetCurrent(String8 file_path) {
-  CStrReplaceAllChar(file_path.str, '/', '\\');
   Arena* temp_arena = ArenaAllocate();
   U8* file_path_cstr = CStrFromStr8(temp_arena, file_path);
+  CStrReplaceAllChar(file_path_cstr, '/', '\\');
   BOOL result = SetCurrentDirectory((LPCSTR) file_path_cstr);
   ArenaRelease(temp_arena);
   if (!result) {
@@ -167,6 +169,43 @@ B32 WIN_DirSetCurrent(String8 file_path) {
     return false;
   }
   return true;
+}
+
+B32 WIN_DirListFiles(Arena* arena, String8 dir_path, String8List* file_paths) {
+  B32 success = false;
+  MEMORY_ZERO_STRUCT(file_paths);
+  Arena* temp_arena = ArenaAllocate();
+
+  String8List query_path;
+  MEMORY_ZERO_STRUCT(&query_path);
+  Str8ListAppend(temp_arena, &query_path, dir_path);
+  Str8ListAppend(temp_arena, &query_path, Str8Lit("*"));
+  U8* query_path_cstr = CStrFromStr8(temp_arena, PathJoin(temp_arena, query_path));
+  CStrReplaceAllChar(query_path_cstr, '/', '\\');
+
+  WIN32_FIND_DATAA find_data;
+  HANDLE handle = FindFirstFileA((char*) query_path_cstr, &find_data);
+  if (handle == INVALID_HANDLE_VALUE) {
+    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to read contents of directory: %.*s", dir_path.size, dir_path.str);
+    goto win_dir_list_files_exit;
+  }
+
+  do {
+    if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) { continue; }
+    ArenaClear(temp_arena);
+    String8List path_parts;
+    MEMORY_ZERO_STRUCT(&path_parts);
+    Str8ListAppend(temp_arena, &path_parts, dir_path);
+    Str8ListAppend(temp_arena, &path_parts, Str8CStr(find_data.cFileName));
+    String8 file_path = PathJoin(temp_arena, path_parts);
+    Str8ListAppend(arena, file_paths, Str8Copy(arena, file_path));
+  } while (FindNextFileA(handle, &find_data));
+  FindClose(handle);
+  success = true;
+
+win_dir_list_files_exit:
+  ArenaRelease(temp_arena);
+  return success;
 }
 
 B32 WIN_FileHandleOpen(FileHandle* file, String8 file_path, FileMode mode) {
@@ -269,10 +308,12 @@ B32 WIN_FileHandleWrite(FileHandle* file, U8* buffer, S32 buffer_size) {
 #elif defined(OS_LINUX)
 #define CDEFAULT_IO_BACKEND_NAMESPACE LINUX_
 
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 struct FileHandle {
@@ -324,9 +365,9 @@ B32 LINUX_DirGetExe(Arena* arena, String8* file_path) {
       return false;
     }
     size += 256;
-    file_path->str  = ARENA_PUSH_ARRAY(arena, U8, size);
+    file_path->str = ARENA_PUSH_ARRAY(arena, U8, size);
     // TODO: this only works on linux, not other unix OSs.
-    file_path->size = readlink("/proc/self/exe", file_path->str, file_path->size);
+    file_path->size = readlink("/proc/self/exe", file_path->str, size);
   } while (file_path->size == size);
   ARENA_POP_ARRAY(arena, U8, size - file_path->size);
   return true;
@@ -359,6 +400,43 @@ B32 LINUX_DirSetCurrent(String8 file_path) {
     return false;
   }
   return true;
+}
+
+B32 LINUX_DirListFiles(Arena* arena, String8 dir_path, String8List* file_paths) {
+  B32 success = false;
+  Arena* temp_arena = ArenaAllocate();
+
+  U8* dir_path_cstr = CStrFromStr8(temp_arena, dir_path);
+  CStrReplaceAllChar(dir_path_cstr, '\\', '/');
+  DIR* d = opendir(dir_path_cstr);
+  if (d == NULL) {
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to read contents of directory: %.*s", dir_path.size, dir_path.str);
+    goto linux_dir_list_files_exit;
+  }
+
+  struct stat dir_stat;
+  struct dirent* dir_entry;
+  while (dir_entry = readdir(d)) {
+    ArenaClear(temp_arena);
+    String8List path_parts;
+    MEMORY_ZERO_STRUCT(&path_parts);
+    Str8ListAppend(temp_arena, &path_parts, dir_path);
+    Str8ListAppend(temp_arena, &path_parts, Str8CStr(dir_entry->d_name));
+    String8 file_path = PathJoin(temp_arena, path_parts);
+    Str8ReplaceAllChar(&file_path, '\\', '/');
+    if (stat(CStrFromStr8(temp_arena, file_path), &dir_stat) != 0) {
+      LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to stat file %.*s", file_path.size, file_path.str);
+      continue;
+    }
+    if (dir_stat.st_mode & S_IFDIR) { continue; }
+    Str8ListAppend(arena, file_paths, Str8Copy(arena, file_path));
+  }
+  closedir(d);
+  success = true;
+
+linux_dir_list_files_exit:
+  ArenaRelease(temp_arena);
+  return success;
 }
 
 B32 LINUX_FileHandleOpen(FileHandle* file, String8 file_path, FileMode mode) {
@@ -563,6 +641,10 @@ dir_set_current_to_exe_dir_exit:
   return success;
 }
 
+B32 DirListFiles(Arena* arena, String8 dir_path, String8List* file_paths) {
+  return CDEFAULT_IO_BACKEND_FN(DirListFiles(arena, dir_path, file_paths));
+}
+
 B32 PathPop(String8* path) {
   Str8ReplaceAllChar(path, '\\', '/');
   S32 result = Str8FindReverse(*path, 0, Str8Lit("/"));
@@ -571,6 +653,33 @@ B32 PathPop(String8* path) {
     return true;
   }
   return false;
+}
+
+String8 PathJoin(Arena* arena, String8List path_parts) {
+  for (String8ListNode* node = path_parts.head; node != NULL; node = node->next) {
+    node->string = Str8Trim(node->string);
+    Str8ReplaceAllChar(&node->string, '\\', '/');
+    if (node->string.size == 0) { continue; }
+
+    if (node != path_parts.head) {
+      if (node->string.str[0] == '/') {
+        node->string = Str8Substring(node->string, 1, node->string.size);
+      }
+    }
+    if (node != path_parts.tail) {
+      if (node->string.str[node->string.size - 1] == '/') {
+        node->string = Str8Substring(node->string, 0, node->string.size - 1);
+      }
+
+      String8ListNode* delim = ARENA_PUSH_STRUCT(arena, String8ListNode);
+      delim->string = Str8Lit("/");
+      delim->next = node->next;
+      node->next = delim;
+
+      node = node->next;
+    }
+  }
+  return Str8ListJoin(arena, &path_parts);
 }
 
 B32 FileHandleStat(FileHandle* file, FileStats* stats) {

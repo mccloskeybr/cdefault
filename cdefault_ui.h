@@ -40,6 +40,7 @@ UiDrawCommand* commands = UiEnd();
 // NOTE: This struct is how you can respond to different events for each widget.
 typedef struct UiInteraction UiInteraction;
 struct UiInteraction {
+  B8  is_new;
   B8  hovered;
   B8  clicked;
   B8  right_clicked;
@@ -257,6 +258,7 @@ struct UiWidget {
 
   B32 open;
   U32 selected;
+  B32 hovered;
 
   String8 text;
   F32 slider_value;
@@ -285,7 +287,7 @@ struct UiContext {
   Arena* widget_arena;
   Arena* str8_hash_arena;
 
-  U32 hover_id;
+  U32 deepest_hover_id;
   U32 drag_id;
   UiStyle style;
   UiWidget* root;
@@ -502,7 +504,8 @@ static UiInteraction UiWidgetGetInteraction(UiWidget* widget) {
 
   UiInteraction result;
   MEMORY_ZERO_STRUCT(&result);
-  result.hovered       = c->hover_id == widget->id;
+  result.is_new        = widget->cached == NULL;
+  result.hovered       = widget->cached != NULL && widget->cached->hovered;
   result.clicked       = result.hovered && c->is_lmb_just_pressed;
   result.right_clicked = result.hovered && c->is_rmb_just_pressed;
   result.dragged       = c->drag_id == widget->id;
@@ -796,7 +799,8 @@ static void UiMaybeUpdateHot(UiWidget* widget, UiWidget** active_window, UiWidge
   min.y -= widget->size.y;
   max.x += widget->size.x;
   if (min.x <= m.x && m.x <= max.x && min.y <= m.y && m.y <= max.y) {
-    c->hover_id = widget->id;
+    widget->hovered = true;
+    c->deepest_hover_id = widget->id;
     for (UiWidget* child = widget->children_head; child != NULL; child = child->sibling_next) {
       UiMaybeUpdateHot(child, active_window, deepest_scrollable);
     }
@@ -1005,7 +1009,7 @@ UiStyle* UiGetStyle() {
 
 B32 UiContainsMouse() {
   UiContext* c = UiGetContext();
-  return c->hover_id != 0 || c->drag_id != 0;
+  return c->deepest_hover_id != 0 || c->drag_id != 0;
 }
 
 void UiBegin(F32 dt_s) {
@@ -1032,7 +1036,7 @@ UiDrawCommand* UiEnd() {
   SORT(UiWidget*, windows, windows_size, UiWidgetComparePriorityAsc);
 
   // NOTE: perform passes over all windows (to position, size, enqueue draw cmds)
-  c->hover_id = 0;
+  c->deepest_hover_id = 0;
   ArenaClear(c->command_arena);
   UiDrawCommand* commands_head = NULL;
   UiDrawCommand* commands_tail = NULL;
@@ -1060,7 +1064,7 @@ UiDrawCommand* UiEnd() {
 
   // NOTE: update active widget if just clicked
   if (c->is_lmb_just_pressed && c->drag_id == 0 && hot_root_widget != NULL) {
-    c->drag_id = c->hover_id;
+    c->drag_id = c->deepest_hover_id;
     // NOTE: boost priority of widget's window, to affect next frame draw order / precedence
     hot_root_widget->priority = c->root->children_size;
   } else if (!c->is_lmb_down) {
@@ -1401,10 +1405,11 @@ UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, V2 size, F3
 }
 
 UiInteraction UiText(U32 id, String8 text, V2 size) {
+  UiContext* c = UiGetContext();
   UiWidgetOptions options = UiWidgetOptions_RenderText;
   UiWidgetApplySizeDefaultFit(&options, size);
   UiWidget* text_widget = UiWidgetBegin(id, options);
-  text_widget->text = text;
+  text_widget->text = Str8Copy(c->widget_arena, text);
   text_widget->pref_size = size;
   UiFontMeasureText(text_widget->text, &text_widget->fit_size);
   UiWidgetEnd();
@@ -1471,8 +1476,9 @@ UiInteraction UiPlotLines(U32 id, F32* values, U32 values_count, V2 size) {
   UiWidget* graph = UiWidgetBegin(id, options);
   graph->pref_size = size;
   graph->color = c->style.background_color;
-  graph->graph_values = values;
+  graph->graph_values = ARENA_PUSH_ARRAY(c->widget_arena, F32, values_count);
   graph->graph_values_count = values_count;
+  MEMORY_MOVE(graph->graph_values, values, values_count * sizeof(F32));
   UiWidgetEnd();
   return UiWidgetGetInteraction(graph);
 }
@@ -1488,8 +1494,9 @@ UiInteraction UiPlotBar(U32 id, F32* values, U32 values_count, V2 size) {
   UiWidget* graph = UiWidgetBegin(id, options);
   graph->pref_size = size;
   graph->color = c->style.background_color;
-  graph->graph_values = values;
+  graph->graph_values = ARENA_PUSH_ARRAY(c->widget_arena, F32, values_count);
   graph->graph_values_count = values_count;
+  MEMORY_MOVE(graph->graph_values, values, values_count * sizeof(F32));
   UiWidgetEnd();
   return UiWidgetGetInteraction(graph);
 }

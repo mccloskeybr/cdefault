@@ -12,13 +12,14 @@ int main(void) {
   Stopwatch frame_stopwatch;
   StopwatchInit(&frame_stopwatch);
 
-  U32 image_handle, mesh_handle;
+  U32 image_handle, model_handle;
   Image image;
   DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, Str8Lit("../data/suzanne.bmp")));
   RendererRegisterImage(&image_handle, &image);
-  Mesh obj;
-  DEBUG_ASSERT(MeshLoadFile(arena, &obj, Str8Lit("../data/suzanne.obj")));
-  RendererRegisterMesh(&mesh_handle, image_handle, obj.points, obj.normals, obj.uvs, obj.vertices_size, obj.indices, obj.indices_size);
+  Model model;
+  // DEBUG_ASSERT(ModelLoadFile(arena, &model, Str8Lit("../data/suzanne.obj")));
+  DEBUG_ASSERT(ModelLoadFile(arena, &model, Str8Lit("../data/computer.glb")));
+  RendererRegisterModel(&model_handle, &model);
 
   Camera* camera = RendererCamera3D();
   camera->pos = (V3) { 0, 0, 3 };
@@ -67,8 +68,8 @@ int main(void) {
     // DrawSphere(-0.5f, 0, 0, 0, 0, 0, 1, 0.5f, 1, 0, 0);
     // DrawCube(-0.5f, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0);
     DrawTetrahedronV(V3Assign(-0.5f, -0.5f, -0.5f), V3Assign(0.5f, -0.5f, -0.5f), V3Assign(0, -0.5f, 0.5f), V3Assign(0, -1.0f, 0), V3_BLACK);
-    DrawMeshV(mesh_handle, (V3) { -0.5f, 0, 0 }, rot_4, (V3) { 0.1f, 0.1f, 0.1f});
-    DrawMeshV(mesh_handle, (V3) { +0.5f, 0, 0 }, rot_4, (V3) { 0.1f, 0.1f, 0.1f});
+    DrawModelV(model_handle, (V3) { -0.5f, 0, 0 }, rot_4, (V3) { 0.1f, 0.1f, 0.1f});
+    DrawModelV(model_handle, (V3) { +0.5f, 0, 0 }, rot_4, (V3) { 0.1f, 0.1f, 0.1f});
     // RendererDisableWireframe();
 
     obj_theta += 0.01f;

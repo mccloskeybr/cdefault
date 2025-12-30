@@ -34,7 +34,7 @@
 // typedef struct MyStruct MyStruct;
 // struct MyStruct { F32 x, y; }
 //
-// JsonValue JsonValuePushMyStruct(Arena* arena, MyStruct my_struct) {
+// JsonValue JsonValueMyStruct(Arena* arena, MyStruct my_struct) {
 //   JsonValue result = JsonValueObjectEmpty();
 //   JsonObjectPushNumber(arena, &result.object, Str8Lit("x"), my_struct.x);
 //   JsonObjectPushNumber(arena, &result.object, Str8Lit("y"), my_struct.y);
@@ -45,11 +45,11 @@
 //   if (!JsonValueGetObject(value, &obj)                     { return false; } // value is not an object, e.g. "key": "string, not an object"
 //   if (!JsonObjectGetNumber(obj, Str8Lit("x"), &result->x)) { return false; } // value has no 'x' property.
 //   if (!JsonObjectGetNumber(obj, Str8Lit("y"), &result->y)) { return false; } // value has no 'y' property.
-//  return true;
+//   return true;
 // }
 //
 // To read:  DEBUG_ASSERT(JsonValueGetMyStruct(JsonObjectGet(json_object, Str8Lit("my_key")), &my_struct));
-// To write: JsonObjectPushValue(arena, &json_object, Str8Lit("my_key"), JsonValuePushMyStruct(arena, my_struct));
+// To write: JsonObjectPushValue(arena, &json_object, Str8Lit("my_key"), JsonValueMyStruct(arena, my_struct));
 
 typedef enum JsonValueKind JsonValueKind;
 enum JsonValueKind {
@@ -364,14 +364,11 @@ static void JsonValueAppendToStr8List(Arena* arena, JsonValue* value, String8Lis
   switch (value->kind) {
     case JsonValueKind_String: {
       node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-      Str8ListAppend(json_str_list, node);
-      node->string = Str8Format(arena, "\"%.*s\"", value->string.size, value->string.str);
+      Str8ListAppend(arena, json_str_list, Str8Format(arena, "\"%.*s\"", value->string.size, value->string.str));
     } break;
 
     case JsonValueKind_Number: {
-      node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-      Str8ListAppend(json_str_list, node);
-      node->string = Str8Format(arena, "%f", value->number);
+      Str8ListAppend(arena, json_str_list, Str8Format(arena, "%f", value->number));
     } break;
 
     case JsonValueKind_Object: {
@@ -379,43 +376,31 @@ static void JsonValueAppendToStr8List(Arena* arena, JsonValue* value, String8Lis
     } break;
 
     case JsonValueKind_Array: {
-      node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-      Str8ListAppend(json_str_list, node);
-      node->string = Str8Format(arena, "[%s", pretty ? "\n" : "");
+      Str8ListAppend(arena, json_str_list, Str8Format(arena, "[%s", pretty ? "\n" : ""));
 
       S32 array_indent = indent + 2;
       for (JsonArrayNode* curr = value->array.head; curr != NULL; curr = curr->next) {
         if (pretty) {
-          node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-          Str8ListAppend(json_str_list, node);
-          node->string = Str8Format(arena, "%*s", array_indent, "");
+          Str8ListAppend(arena, json_str_list, Str8Format(arena, "%*s", array_indent, ""));
         }
 
         JsonValueAppendToStr8List(arena, &curr->value, json_str_list, pretty, array_indent);
 
         if (curr->next != NULL) {
-          node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-          Str8ListAppend(json_str_list, node);
-          node->string = Str8Format(arena, ",%s", pretty ? "\n" : " ");
+          Str8ListAppend(arena, json_str_list, Str8Format(arena, ",%s", pretty ? "\n" : " "));
         }
       }
 
-      node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-      Str8ListAppend(json_str_list, node);
-      node->string = Str8Format(arena, "%s%*s]", pretty ? "\n" : "", pretty ? indent : 0, "");
+      Str8ListAppend(arena, json_str_list, Str8Format(arena, "%s%*s]", pretty ? "\n" : "", pretty ? indent : 0, ""));
     } break;
 
     case JsonValueKind_Boolean: {
-      node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-      Str8ListAppend(json_str_list, node);
-      if (value->boolean) { node->string = Str8Lit("true");  }
-      else                { node->string = Str8Lit("false"); }
+      if (value->boolean) { Str8ListAppend(arena, json_str_list, Str8Lit("true"));  }
+      else                { Str8ListAppend(arena, json_str_list, Str8Lit("false")); }
     } break;
 
     case JsonValueKind_Null: {
-      node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-      Str8ListAppend(json_str_list, node);
-      node->string = Str8Lit("null");
+      Str8ListAppend(arena, json_str_list, Str8Lit("null"));
     } break;
 
     default: UNREACHABLE();
@@ -423,30 +408,21 @@ static void JsonValueAppendToStr8List(Arena* arena, JsonValue* value, String8Lis
 }
 
 static void JsonObjectAppendToStr8List(Arena* arena, JsonObject* object, String8List* json_str_list, B32 pretty, S32 indent) {
-  String8ListNode* node;
-  node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-  Str8ListAppend(json_str_list, node);
-  node->string = Str8Format(arena, "{%s", pretty ? "\n" : "");
+  Str8ListAppend(arena, json_str_list, Str8Format(arena, "{%s", pretty ? "\n" : ""));
 
   for (JsonObjectNode* curr = object->head; curr != NULL; curr = curr->next) {
     S32 value_indent = indent + 2;
 
-    node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-    Str8ListAppend(json_str_list, node);
-    node->string = Str8Format(arena, "%*s\"%.*s\": ", pretty ? value_indent : 0, "", curr->key.size, curr->key.str);
+    Str8ListAppend(arena, json_str_list, Str8Format(arena, "%*s\"%.*s\": ", pretty ? value_indent : 0, "", curr->key.size, curr->key.str));
 
     JsonValueAppendToStr8List(arena, &curr->value, json_str_list, pretty, value_indent);
 
     if (curr->next != NULL) {
-      node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-      Str8ListAppend(json_str_list, node);
-      node->string = Str8Format(arena, ",%s", pretty ? "\n" : "");
+      Str8ListAppend(arena, json_str_list, Str8Format(arena, ",%s", pretty ? "\n" : ""));
     }
   }
 
-  node = ARENA_PUSH_STRUCT(arena, String8ListNode);
-  Str8ListAppend(json_str_list, node);
-  node->string = Str8Format(arena, "%s%*s}", pretty ? "\n" : "", pretty ? indent : 0, "");
+  Str8ListAppend(arena, json_str_list, Str8Format(arena, "%s%*s}", pretty ? "\n" : "", pretty ? indent : 0, ""));
 }
 
 void JsonToString(Arena* arena, JsonObject object, String8* json_str, B32 pretty) {

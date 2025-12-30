@@ -3,6 +3,7 @@
 
 #include "cdefault_std.h"
 #include "cdefault_math.h"
+#include "cdefault_model.h"
 #include "cdefault_image.h"
 #include "cdefault_font.h"
 
@@ -55,9 +56,9 @@ void RendererSetProjection2D(M4 projection);
 void RendererSetProjection3D(M4 projection);
 Camera* RendererCamera3D();
 void RendererRegisterImage(U32* image_handle, Image* image);
-void RendererRegisterMesh(U32* mesh_handle, U32 image_handle, V3* points, V3* normals, V2* uvs, U32 vertices_size, U32* indices, U32 indices_size);
 void RendererReleaseImage(U32 image_handle);
-void RendererReleaseMesh(U32 mesh_handle);
+void RendererRegisterModel(U32* model_handle, Model* model);
+void RendererReleaseModel(U32 model_handle);
 void RendererEnableScissorTest(V2 min, V2 max);
 void RendererDisableScissorTest(void);
 void RendererEnableDepthTest(void);
@@ -128,12 +129,12 @@ void DrawCube(F32 center_x, F32 center_y, F32 center_z, F32 rot_x, F32 rot_y, F3
 void DrawCubeV(V3 center, V4 rot, V3 size, V3 color);
 void DrawTetrahedron(F32 x1, F32 y1, F32 z1, F32 x2, F32 y2, F32 z2, F32 x3, F32 y3, F32 z3, F32 x4, F32 y4, F32 z4, F32 color_r, F32 color_g, F32 color_b);
 void DrawTetrahedronV(V3 p1, V3 p2, V3 p3, V3 p4, V3 color);
-void DrawMesh(U32 mesh_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 quat_x, F32 quat_y, F32 quat_z, F32 quat_w, F32 scale_x, F32 scale_y, F32 scale_z);
-void DrawMeshV(U32 mesh_handle, V3 pos, V4 rot, V3 scale);
-void DrawMeshColor(U32 mesh_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 quat_x, F32 quat_y, F32 quat_z, F32 quat_w, F32 scale_x, F32 scale_y, F32 scale_z, F32 color_r, F32 color_g, F32 color_b);
-void DrawMeshColorV(U32 mesh_handle, V3 pos, V4 rot, V3 scale, V3 color);
-void DrawMeshEx(U32 mesh_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 quat_x, F32 quat_y, F32 quat_z, F32 quat_w, F32 scale_x, F32 scale_y, F32 scale_z, F32 color_r, F32 color_g, F32 color_b, F32 tex_color_ratio);
-void DrawMeshExV(U32 mesh_handle, V3 pos, V4 rot, V3 scale, V3 color, F32 tex_color_ratio);
+void DrawModel(U32 model_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 quat_x, F32 quat_y, F32 quat_z, F32 quat_w, F32 scale_x, F32 scale_y, F32 scale_z);
+void DrawModelV(U32 model_handle, V3 pos, V4 rot, V3 scale);
+void DrawModelColor(U32 model_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 quat_x, F32 quat_y, F32 quat_z, F32 quat_w, F32 scale_x, F32 scale_y, F32 scale_z, F32 color_r, F32 color_g, F32 color_b);
+void DrawModelColorV(U32 model_handle, V3 pos, V4 rot, V3 scale, V3 color);
+void DrawModelEx(U32 model_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 quat_x, F32 quat_y, F32 quat_z, F32 quat_w, F32 scale_x, F32 scale_y, F32 scale_z, F32 color_r, F32 color_g, F32 color_b, F32 tex_color_ratio);
+void DrawModelExV(U32 model_handle, V3 pos, V4 rot, V3 scale, V3 color, F32 tex_color_ratio);
 
 enum KeyboardKey {
   Key_A,
@@ -352,14 +353,20 @@ static OpenGLAPI _ogl;
 // TODO: accessing through a linked list is prolly a little too slow for this.
 typedef struct RenderMesh RenderMesh;
 struct RenderMesh {
-  U32 id;
   U32 vao;
   U32 vbo;
   U32 ibo;
   U32 indices_size;
   U32 image_handle;
-  RenderMesh* prev;
   RenderMesh* next;
+};
+
+typedef struct RenderModel RenderModel;
+struct RenderModel {
+  U32 id;
+  RenderMesh* meshes;
+  RenderModel* prev;
+  RenderModel* next;
 };
 
 typedef struct Renderer Renderer;
@@ -407,11 +414,12 @@ struct Renderer {
 
   // NOTE: 3D data
 
-  U32 next_mesh_id;
-  Arena* mesh_pool;
-  RenderMesh* meshes_head;
-  RenderMesh* meshes_tail;
-  RenderMesh* meshes_free_list;
+  U32 next_model_id;
+  Arena* model_pool;
+  RenderModel* models_head;
+  RenderModel* models_tail;
+  RenderModel* models_free_list;
+  RenderMesh*  meshes_free_list;
   U32 icosphere_handle;
   U32 cube_handle;
 
@@ -431,10 +439,10 @@ struct Renderer {
 };
 static Renderer _renderer;
 
-static RenderMesh* RendererFindMesh(U32 mesh_handle) {
+static RenderModel* RendererFindModel(U32 model_handle) {
   Renderer* r = &_renderer;
-  for (RenderMesh* curr = r->meshes_head; curr != NULL; curr = curr->next) {
-    if (curr->id == mesh_handle) { return curr; }
+  for (RenderModel* curr = r->models_head; curr != NULL; curr = curr->next) {
+    if (curr->id == model_handle) { return curr; }
   }
   return NULL;
 }
@@ -758,8 +766,11 @@ static B32 RendererInit(void) {
   r->camera_3d.look_dir = V3_Z_NEG;
   r->camera_3d.up_dir   = V3_Y_POS;
 
-  r->mesh_pool = ArenaAllocate();
-  V3 icosphere_points[12] = {
+  r->model_pool = ArenaAllocate();
+
+  Mesh icosphere_mesh;
+  MEMORY_ZERO_STRUCT(&icosphere_mesh);
+  icosphere_mesh.points = (V3[]) {
     (V3){-0.5257311f,  0.8506508f,  0.0000000f},
     (V3){ 0.5257311f,  0.8506508f,  0.0000000f},
     (V3){-0.5257311f, -0.8506508f,  0.0000000f},
@@ -773,7 +784,7 @@ static B32 RendererInit(void) {
     (V3){-0.8506508f,  0.0000000f, -0.5257311f},
     (V3){-0.8506508f,  0.0000000f,  0.5257311f},
   };
-  V3 icosphere_norms[12] = {
+  icosphere_mesh.normals = (V3[]) {
     (V3){-0.5257311f,  0.8506508f,  0.0000000f},
     (V3){ 0.5257311f,  0.8506508f,  0.0000000f},
     (V3){-0.5257311f, -0.8506508f,  0.0000000f},
@@ -787,7 +798,7 @@ static B32 RendererInit(void) {
     (V3){-0.8506508f,  0.0000000f, -0.5257311f},
     (V3){-0.8506508f,  0.0000000f,  0.5257311f},
   };
-  V2 icosphere_uvs[12] = {
+  icosphere_mesh.uvs = (V2[]) {
     (V2){1.0000f, 0.8230f},
     (V2){0.5000f, 0.8230f},
     (V2){1.0000f, 0.1770f},
@@ -801,15 +812,21 @@ static B32 RendererInit(void) {
     (V2){0.0885f, 0.5000f},
     (V2){0.9115f, 0.5000f},
   };
-  U32 icosphere_indices[60] = {
+  icosphere_mesh.indices = (U32[]) {
     0, 11, 5, 0, 5, 1,  0, 1, 7, 0, 7, 10, 0, 10, 11,
     1, 5, 9, 5, 11, 4, 11, 10, 2, 10, 7, 6, 7, 1, 8,
     3, 9, 4, 3, 4, 2,  3, 2, 6, 3, 6, 8,  3, 8, 9,
     4, 9, 5, 2, 4, 11, 6, 2, 10, 8, 6, 7,  9, 8, 1,
   };
-  RendererRegisterMesh(&r->icosphere_handle, 0, (V3*) &icosphere_points, (V3*) &icosphere_norms, (V2*) &icosphere_uvs, 12, (U32*) &icosphere_indices, 60);
+  icosphere_mesh.vertices_size = 12;
+  icosphere_mesh.indices_size  = 60;
+  Model icosphere_model;
+  icosphere_model.meshes = &icosphere_mesh;
+  RendererRegisterModel(&r->icosphere_handle, &icosphere_model);
 
-  V3 cube_points[24] = {
+  Mesh cube_mesh;
+  MEMORY_ZERO_STRUCT(&cube_mesh);
+  cube_mesh.points = (V3[]) {
     (V3){ 0.5f, -0.5f, -0.5f },
     (V3){ 0.5f,  0.5f, -0.5f },
     (V3){ 0.5f,  0.5f,  0.5f },
@@ -835,7 +852,7 @@ static B32 RendererInit(void) {
     (V3){ -0.5f,  0.5f, -0.5f },
     (V3){  0.5f,  0.5f, -0.5f },
   };
-  V3 cube_norms[24] = {
+  cube_mesh.normals = (V3[]) {
     (V3){ 1,0,0 }, (V3){ 1,0,0 }, (V3){ 1,0,0 }, (V3){ 1,0,0 },
     (V3){ -1,0,0 }, (V3){ -1,0,0 }, (V3){ -1,0,0 }, (V3){ -1,0,0 },
     (V3){ 0,1,0 }, (V3){ 0,1,0 }, (V3){ 0,1,0 }, (V3){ 0,1,0 },
@@ -843,7 +860,7 @@ static B32 RendererInit(void) {
     (V3){ 0,0,1 }, (V3){ 0,0,1 }, (V3){ 0,0,1 }, (V3){ 0,0,1 },
     (V3){ 0,0,-1 }, (V3){ 0,0,-1 }, (V3){ 0,0,-1 }, (V3){ 0,0,-1 },
   };
-  V2 cube_uvs[24] = {
+  cube_mesh.uvs = (V2[]) {
     (V2){0,0}, (V2){1,0}, (V2){1,1}, (V2){0,1},
     (V2){0,0}, (V2){1,0}, (V2){1,1}, (V2){0,1},
     (V2){0,0}, (V2){1,0}, (V2){1,1}, (V2){0,1},
@@ -851,7 +868,7 @@ static B32 RendererInit(void) {
     (V2){0,0}, (V2){1,0}, (V2){1,1}, (V2){0,1},
     (V2){0,0}, (V2){1,0}, (V2){1,1}, (V2){0,1},
   };
-  U32 cube_indices[36] = {
+  cube_mesh.indices = (U32[]) {
     0,1,2,     0,2,3,
     4,5,6,     4,6,7,
     8,9,10,    8,10,11,
@@ -859,7 +876,11 @@ static B32 RendererInit(void) {
     16,17,18,  16,18,19,
     20,21,22,  20,22,23
   };
-  RendererRegisterMesh(&r->cube_handle, 0, (V3*) &cube_points, (V3*) &cube_norms, (V2*) &cube_uvs, 24, (U32*) &cube_indices, 36);
+  cube_mesh.vertices_size = 24;
+  cube_mesh.indices_size = 36;
+  Model cube_model;
+  cube_model.meshes = &cube_mesh;
+  RendererRegisterModel(&r->cube_handle, &cube_model);
 
   RendererEnableDepthTest();
   g->glLineWidth(3);
@@ -872,7 +893,7 @@ static B32 RendererInit(void) {
 
 static void RendererDeinit() {
   Renderer* r = &_renderer;
-  ArenaRelease(r->mesh_pool);
+  ArenaRelease(r->model_pool);
 }
 
 void RendererSetProjection2D(M4 projection_2d) {
@@ -924,78 +945,94 @@ void RendererReleaseImage(U32 image_handle) {
   g->glDeleteTextures(1, &image_handle);
 }
 
-void RendererRegisterMesh(U32* mesh_handle, U32 image_handle, V3* points, V3* normals, V2* uvs, U32 vertices_size, U32* indices, U32 indices_size) {
+void RendererRegisterModel(U32* model_handle, Model* model) {
   Renderer* r = &_renderer;
   OpenGLAPI* g = &_ogl;
 
-  DEBUG_ASSERT(points != NULL);
-  U32 points_size  = vertices_size;
-  U32 normals_size = vertices_size * (normals != NULL);
-  U32 uvs_size     = vertices_size * (uvs != NULL);
-
-  GLuint vbo;
-  g->glGenBuffers(1, &vbo);
-  g->glBindBuffer(GL_ARRAY_BUFFER, vbo);
-  g->glBufferData(GL_ARRAY_BUFFER, (points_size * sizeof(V3)) + (normals_size * sizeof(V3)) + (uvs_size * sizeof(V2)), NULL, GL_STATIC_DRAW);
-
-  GLuint vao;
-  g->glGenVertexArrays(1, &vao);
-  g->glBindVertexArray(vao);
-  U64 offset = 0;
-
-  g->glEnableVertexAttribArray(0);
-  g->glBufferSubData(GL_ARRAY_BUFFER, offset, points_size * sizeof(V3), points);
-  g->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(V3), (void*) offset);
-  offset += points_size * sizeof(V3);
-
-  g->glEnableVertexAttribArray(1);
-  g->glBufferSubData(GL_ARRAY_BUFFER, offset, normals_size * sizeof(V3), normals);
-  g->glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(V3), (void*) offset);
-  offset += normals_size * sizeof(V3);
-
-  g->glEnableVertexAttribArray(2);
-  g->glBufferSubData(GL_ARRAY_BUFFER, offset, uvs_size * sizeof(V2), uvs);
-  g->glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(V2), (void*) offset);
-  offset += uvs_size * sizeof(V2);
-
-  GLuint ibo;
-  g->glGenBuffers(1, &ibo);
-  g->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
-  g->glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices_size * sizeof(U32), indices, GL_STATIC_DRAW);
-
-  g->glBindBuffer(GL_ARRAY_BUFFER, 0);
-  g->glBindVertexArray(0);
-  g->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-  RenderMesh* mesh;
-  if (r->meshes_free_list != NULL) {
-    mesh = r->meshes_free_list;
-    SLL_STACK_POP(r->meshes_free_list, next);
+  RenderModel* render_model;
+  if (r->models_free_list != NULL) {
+    render_model = r->models_free_list;
+    SLL_STACK_POP(r->models_free_list, next);
   } else {
-    mesh = ARENA_PUSH_STRUCT(r->mesh_pool, RenderMesh);
+    render_model = ARENA_PUSH_STRUCT(r->model_pool, RenderModel);
   }
-  MEMORY_ZERO_STRUCT(mesh);
-  DLL_PUSH_BACK(r->meshes_head, r->meshes_tail, mesh, prev, next);
-  *mesh_handle = r->next_mesh_id++;
-  mesh->id = *mesh_handle;
-  mesh->vao = vao;
-  mesh->vbo = vbo;
-  mesh->ibo = ibo;
-  mesh->indices_size = indices_size;
-  mesh->image_handle = image_handle;
+  MEMORY_ZERO_STRUCT(render_model);
+  DLL_PUSH_BACK(r->models_head, r->models_tail, render_model, prev, next);
+  render_model->id = r->next_model_id++;
+  for (Mesh* mesh = model->meshes; mesh != NULL; mesh = mesh->next) {
+    DEBUG_ASSERT(mesh->points != NULL);
+    U32 points_size  = mesh->vertices_size;
+    U32 normals_size = mesh->vertices_size * (mesh->normals != NULL);
+    U32 uvs_size     = mesh->vertices_size * (mesh->uvs != NULL);
+
+    GLuint vbo;
+    g->glGenBuffers(1, &vbo);
+    g->glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    g->glBufferData(GL_ARRAY_BUFFER, (points_size * sizeof(V3)) + (normals_size * sizeof(V3)) + (uvs_size * sizeof(V2)), NULL, GL_STATIC_DRAW);
+
+    GLuint vao;
+    g->glGenVertexArrays(1, &vao);
+    g->glBindVertexArray(vao);
+    U64 offset = 0;
+
+    g->glEnableVertexAttribArray(0);
+    g->glBufferSubData(GL_ARRAY_BUFFER, offset, points_size * sizeof(V3), mesh->points);
+    g->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(V3), (void*) offset);
+    offset += points_size * sizeof(V3);
+
+    g->glEnableVertexAttribArray(1);
+    g->glBufferSubData(GL_ARRAY_BUFFER, offset, normals_size * sizeof(V3), mesh->normals);
+    g->glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(V3), (void*) offset);
+    offset += normals_size * sizeof(V3);
+
+    g->glEnableVertexAttribArray(2);
+    g->glBufferSubData(GL_ARRAY_BUFFER, offset, uvs_size * sizeof(V2), mesh->uvs);
+    g->glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(V2), (void*) offset);
+    offset += uvs_size * sizeof(V2);
+
+    GLuint ibo;
+    g->glGenBuffers(1, &ibo);
+    g->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+    g->glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->indices_size * sizeof(U32), mesh->indices, GL_STATIC_DRAW);
+
+    g->glBindBuffer(GL_ARRAY_BUFFER, 0);
+    g->glBindVertexArray(0);
+    g->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    RenderMesh* render_mesh;
+    if (r->meshes_free_list != NULL) {
+      render_mesh = r->meshes_free_list;
+      SLL_STACK_POP(r->meshes_free_list, next);
+    } else {
+      render_mesh = ARENA_PUSH_STRUCT(r->model_pool, RenderMesh);
+    }
+    MEMORY_ZERO_STRUCT(render_mesh);
+    SLL_STACK_PUSH(render_model->meshes, render_mesh, next);
+    render_mesh->vao = vao;
+    render_mesh->vbo = vbo;
+    render_mesh->ibo = ibo;
+    render_mesh->indices_size = mesh->indices_size;
+    RendererRegisterImage(&render_mesh->image_handle, &mesh->texture);
+  }
+  *model_handle = render_model->id;
 }
 
-void RendererReleaseMesh(U32 mesh_handle) {
+void RendererReleaseModel(U32 model_handle) {
   Renderer* r = &_renderer;
   OpenGLAPI* g = &_ogl;
-  RenderMesh* mesh = RendererFindMesh(mesh_handle);
-  DEBUG_ASSERT(mesh != NULL);
-  // if (mesh == NULL) { return; }
-  g->glDeleteVertexArrays(1, &mesh->vao);
-  g->glDeleteBuffers(1, &mesh->vbo);
-  g->glDeleteBuffers(1, &mesh->ibo);
-  DLL_REMOVE(r->meshes_head, r->meshes_tail, mesh, prev, next);
-  SLL_STACK_PUSH(r->meshes_free_list, mesh, next);
+  RenderModel* model = RendererFindModel(model_handle);
+  DEBUG_ASSERT(model != NULL);
+  for (RenderMesh* mesh = model->meshes; mesh != NULL; mesh = mesh->next) {
+    g->glDeleteVertexArrays(1, &mesh->vao);
+    g->glDeleteBuffers(1, &mesh->vbo);
+    g->glDeleteBuffers(1, &mesh->ibo);
+  }
+  while (model->meshes != NULL) {
+    RenderMesh* mesh = model->meshes;
+    SLL_STACK_POP(model->meshes, next);
+    SLL_STACK_PUSH(r->meshes_free_list, mesh, next);
+  }
+  DLL_REMOVE(r->models_head, r->models_tail, model, prev, next);
 }
 
 void RendererEnableScissorTest(V2 min, V2 max) {
@@ -1067,8 +1104,12 @@ void RendererCastRay3(F32 x, F32 y, V3* start, V3* dir) {
   x2 = CLAMP(-1, x2, 1);
   y2 = CLAMP(-1, y2, 1);
 
-  M4 world_to_camera_inv;
-  M4Invert(&world_to_camera_inv, &r->world_to_camera_2d);
+  V3 target;
+  V3AddV3(&target, &r->camera_3d.pos, &r->camera_3d.look_dir);
+  M4 view = M4LookAt(&r->camera_3d.pos, &target, &r->camera_3d.up_dir);
+  M4 world_to_camera, world_to_camera_inv;
+  M4MultM4(&world_to_camera, &r->projection_3d, &view);
+  M4Invert(&world_to_camera_inv, &world_to_camera);
   V3 n = UnprojectPoint((V3) { x2, y2, -1}, &world_to_camera_inv);
   V3 f = UnprojectPoint((V3) { x2, y2, +1}, &world_to_camera_inv);
   V3 delta;
@@ -1516,7 +1557,7 @@ void DrawLine3V(V3 start, V3 end, V3 color) {
 
 void DrawSphere(F32 center_x, F32 center_y, F32 center_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 radius, F32 red, F32 green, F32 blue) {
   Renderer* r = &_renderer;
-  DrawMeshColor(r->icosphere_handle, center_x, center_y, center_z, rot_x, rot_y, rot_z, rot_w, radius, radius, radius, red, green, blue);
+  DrawModelColor(r->icosphere_handle, center_x, center_y, center_z, rot_x, rot_y, rot_z, rot_w, radius, radius, radius, red, green, blue);
 }
 
 void DrawSphereV(V3 center, V4 rot, F32 radius, V3 color) {
@@ -1525,7 +1566,7 @@ void DrawSphereV(V3 center, V4 rot, F32 radius, V3 color) {
 
 void DrawCube(F32 center_x, F32 center_y, F32 center_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 size_x, F32 size_y, F32 size_z, F32 red, F32 green, F32 blue) {
   Renderer* r = &_renderer;
-  DrawMeshColor(r->cube_handle, center_x, center_y, center_z, rot_x, rot_y, rot_z, rot_w, size_x, size_y, size_z, red, green, blue);
+  DrawModelColor(r->cube_handle, center_x, center_y, center_z, rot_x, rot_y, rot_z, rot_w, size_x, size_y, size_z, red, green, blue);
 }
 
 void DrawCubeV(V3 center, V4 rot, V3 size, V3 color) {
@@ -1585,38 +1626,49 @@ void DrawTetrahedronV(V3 p1, V3 p2, V3 p3, V3 p4, V3 color) {
     indices[idx + 2] = idx + 2;
   }
 
+  Mesh tetrahedron_mesh;
+  MEMORY_ZERO_STRUCT(&tetrahedron_mesh);
+  tetrahedron_mesh.points        = points;
+  tetrahedron_mesh.normals       = norms;
+  tetrahedron_mesh.uvs           = uvs;
+  tetrahedron_mesh.indices       = indices;
+  tetrahedron_mesh.vertices_size = 12;
+  tetrahedron_mesh.indices_size  = 12;
+  Model tetrahedron_model;
+  tetrahedron_model.meshes = &tetrahedron_mesh;
+
   U32 tetrahedron_handle;
-  RendererRegisterMesh(&tetrahedron_handle, 0, (V3*) &points, (V3*) &norms, (V2*) &uvs, 12, indices, 12);
+  RendererRegisterModel(&tetrahedron_handle, &tetrahedron_model);
   // NOTE: verts already in world space, so don't need to do additional transformation.
-  DrawMeshExV(tetrahedron_handle, V3_ZEROES, V4_QUAT_IDENT, V3_ONES, color, 1);
-  RendererReleaseMesh(tetrahedron_handle);
+  DrawModelExV(tetrahedron_handle, V3_ZEROES, V4_QUAT_IDENT, V3_ONES, color, 1);
+  RendererReleaseModel(tetrahedron_handle);
 }
 
-void DrawMesh(U32 mesh_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 scale_x, F32 scale_y, F32 scale_z) {
-  DrawMeshEx(mesh_handle, pos_x, pos_y, pos_z, rot_x, rot_y, rot_z, rot_w, scale_x, scale_y, scale_z, 0, 0, 0, 0);
+void DrawModel(U32 model_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 scale_x, F32 scale_y, F32 scale_z) {
+  DrawModelEx(model_handle, pos_x, pos_y, pos_z, rot_x, rot_y, rot_z, rot_w, scale_x, scale_y, scale_z, 0, 0, 0, 0);
 }
 
-void DrawMeshV(U32 mesh_handle, V3 pos, V4 rot, V3 scale) {
-  DrawMeshExV(mesh_handle, pos, rot, scale, V3Assign(0, 0, 0), 0);
+void DrawModelV(U32 model_handle, V3 pos, V4 rot, V3 scale) {
+  DrawModelExV(model_handle, pos, rot, scale, V3Assign(0, 0, 0), 0);
 }
 
-void DrawMeshColor(U32 mesh_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 scale_x, F32 scale_y, F32 scale_z, F32 color_r, F32 color_g, F32 color_b) {
-  DrawMeshEx(mesh_handle, pos_x, pos_y, pos_z, rot_x, rot_y, rot_z, rot_w, scale_x, scale_y, scale_z, color_r, color_g, color_b, 1);
+void DrawModelColor(U32 model_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 scale_x, F32 scale_y, F32 scale_z, F32 color_r, F32 color_g, F32 color_b) {
+  DrawModelEx(model_handle, pos_x, pos_y, pos_z, rot_x, rot_y, rot_z, rot_w, scale_x, scale_y, scale_z, color_r, color_g, color_b, 1);
 }
 
-void DrawMeshColorV(U32 mesh_handle, V3 pos, V4 rot, V3 scale, V3 color) {
-  DrawMeshExV(mesh_handle, pos, rot, scale, color, 1);
+void DrawModelColorV(U32 model_handle, V3 pos, V4 rot, V3 scale, V3 color) {
+  DrawModelExV(model_handle, pos, rot, scale, color, 1);
 }
 
-void DrawMeshEx(U32 mesh_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 scale_x, F32 scale_y, F32 scale_z, F32 color_r, F32 color_g, F32 color_b, F32 tex_color_ratio) {
-  DrawMeshExV(mesh_handle, V3Assign(pos_x, pos_y, pos_z), V4Assign(rot_x, rot_y, rot_z, rot_w), V3Assign(scale_x, scale_y, scale_z), V3Assign(color_r, color_g, color_b), tex_color_ratio);
+void DrawModelEx(U32 model_handle, F32 pos_x, F32 pos_y, F32 pos_z, F32 rot_x, F32 rot_y, F32 rot_z, F32 rot_w, F32 scale_x, F32 scale_y, F32 scale_z, F32 color_r, F32 color_g, F32 color_b, F32 tex_color_ratio) {
+  DrawModelExV(model_handle, V3Assign(pos_x, pos_y, pos_z), V4Assign(rot_x, rot_y, rot_z, rot_w), V3Assign(scale_x, scale_y, scale_z), V3Assign(color_r, color_g, color_b), tex_color_ratio);
 }
 
-void DrawMeshExV(U32 mesh_handle, V3 pos, V4 rot, V3 scale, V3 color, F32 tex_color_ratio) {
+void DrawModelExV(U32 model_handle, V3 pos, V4 rot, V3 scale, V3 color, F32 tex_color_ratio) {
   Renderer* r = &_renderer;
   OpenGLAPI* g = &_ogl;
-  RenderMesh* mesh = RendererFindMesh(mesh_handle);
-  DEBUG_ASSERT(mesh != NULL);
+  RenderModel* model = RendererFindModel(model_handle);
+  DEBUG_ASSERT(model != NULL);
 
   V3 camera_target;
   V3AddV3(&camera_target, &r->camera_3d.pos, &r->camera_3d.look_dir);
@@ -1631,11 +1683,13 @@ void DrawMeshExV(U32 mesh_handle, V3 pos, V4 rot, V3 scale, V3 color, F32 tex_co
   g->glUniformMatrix4fv(r->mesh_camera_uniform, 1, GL_FALSE, (GLfloat*) &mesh_to_camera_t);
   g->glUniform3fv(r->mesh_color_uniform, 1, (GLfloat*) &color);
   g->glUniform1f(r->mesh_tex_color_ratio_uniform, tex_color_ratio);
-  g->glBindTexture(GL_TEXTURE_2D, mesh->image_handle);
-  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  g->glBindVertexArray(mesh->vao);
-  g->glDrawElements(GL_TRIANGLES, mesh->indices_size, GL_UNSIGNED_INT, 0);
+  for (RenderMesh* mesh = model->meshes; mesh != NULL; mesh = mesh->next) {
+    g->glBindTexture(GL_TEXTURE_2D, mesh->image_handle);
+    g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    g->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    g->glBindVertexArray(mesh->vao);
+    g->glDrawElements(GL_TRIANGLES, mesh->indices_size, GL_UNSIGNED_INT, 0);
+  }
 
   g->glBindVertexArray(0);
   g->glBindTexture(GL_TEXTURE_2D, 0);
