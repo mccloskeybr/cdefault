@@ -30,7 +30,7 @@ int main(void) {
     DrawRoundedRectangleFrameRot(800, 200, 100, 100, 20, 1, theta, 0, 0, 1);
     DrawRing(1000, 200, 50, 5, 1, 0, 0);
     DrawRing(1000, 200, 45 * (1 - scale), 5, 0, 1, 0);
-    DrawLine(200, 400, 1000, 500, 25, 1, 1, 1);
+    DrawLine2(200, 400, 1000, 500, 25, 1, 1, 1);
 
     WindowSwapBuffers();
     WindowFlushEvents();

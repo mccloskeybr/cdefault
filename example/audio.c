@@ -14,7 +14,7 @@ int main(void) {
   spec.device_handle = AUDIO_DEFAULT_DEVICE;
   spec.channels  = sound.channels;
   spec.frequency = sound.frequency;
-  spec.format    = sound.format;
+  spec.format    = (AudioStreamFormat) sound.format;
   AudioStreamHandle stream;
   DEBUG_ASSERT(AudioStreamOpen(&stream, spec));
 

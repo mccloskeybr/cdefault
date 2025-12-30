@@ -24,10 +24,10 @@ void DrawLine(V3 start, V3 end, V3 offset, V3 color) {
 
 void DrawObj(U32 handle, V3 center, V3 offset, V3 color, B32 wireframe) {
   V3AddV3(&center, &center, &offset);
-  DrawMeshColorV(handle, center, V4_QUAT_IDENT, V3_ONES, color);
+  DrawModelColorV(handle, center, V4_QUAT_IDENT, V3_ONES, color);
   if (wireframe) {
     RendererEnableWireframe();
-    DrawMeshColorV(handle, center, V4_QUAT_IDENT, V3_ONES, V3_BLACK);
+    DrawModelColorV(handle, center, V4_QUAT_IDENT, V3_ONES, V3_BLACK);
     RendererDisableWireframe();
   }
 }
@@ -48,16 +48,18 @@ int main(void) {
   StopwatchInit(&frame_stopwatch);
 
   U32 a_mesh_handle, b_mesh_handle;
-  Mesh a_obj, b_obj;
-  DEBUG_ASSERT(MeshLoadFile(arena, &a_obj, Str8Lit("../data/sphere.obj")));
-  RendererRegisterMesh(&a_mesh_handle, 0, a_obj.points, a_obj.normals, a_obj.uvs, a_obj.vertices_size, a_obj.indices, a_obj.indices_size);
-  DEBUG_ASSERT(MeshLoadFile(arena, &b_obj, Str8Lit("../data/cube.obj")));
-  RendererRegisterMesh(&b_mesh_handle, 0, b_obj.points, b_obj.normals, b_obj.uvs, b_obj.vertices_size, b_obj.indices, b_obj.indices_size);
+  Model a_obj, b_obj;
+  DEBUG_ASSERT(ModelLoadFile(arena, &a_obj, Str8Lit("../data/sphere.obj")));
+  RendererRegisterModel(&a_mesh_handle, &a_obj);
+  DEBUG_ASSERT(ModelLoadFile(arena, &b_obj, Str8Lit("../data/cube.obj")));
+  RendererRegisterModel(&b_mesh_handle, &b_obj);
+  DEBUG_ASSERT(a_obj.meshes->next == NULL);
+  DEBUG_ASSERT(b_obj.meshes->next == NULL);
 
   V3  a_center = V3Assign(-5, 0, 0);
   V3  b_center = V3Assign(+5, 0, 0);
-  U32 a_points_size = a_obj.vertices_size;
-  U32 b_points_size = b_obj.vertices_size;
+  U32 a_points_size = a_obj.meshes->vertices_size;
+  U32 b_points_size = b_obj.meshes->vertices_size;
   V3* a_points = ARENA_PUSH_ARRAY(arena, V3, a_points_size);
   V3* b_points = ARENA_PUSH_ARRAY(arena, V3, b_points_size);
   U32 minkowski_diff_points_size = a_points_size * b_points_size;
@@ -87,8 +89,8 @@ int main(void) {
     }
 
     // NOTE: update points
-    for (U32 i = 0; i < a_points_size; i++) { V3AddV3(&a_points[i], &a_obj.points[i], &a_center); }
-    for (U32 i = 0; i < b_points_size; i++) { V3AddV3(&b_points[i], &b_obj.points[i], &b_center); }
+    for (U32 i = 0; i < a_points_size; i++) { V3AddV3(&a_points[i], &a_obj.meshes->points[i], &a_center); }
+    for (U32 i = 0; i < b_points_size; i++) { V3AddV3(&b_points[i], &b_obj.meshes->points[i], &b_center); }
     for (U32 i = 0; i < a_points_size; i++) {
       for (U32 j = 0; j < b_points_size; j++) {
         V3SubV3(&minkowski_diff_points[(i * b_points_size) + j], &a_points[i], &b_points[j]);

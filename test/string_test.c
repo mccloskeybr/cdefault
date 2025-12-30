@@ -239,28 +239,12 @@ void Str8FormatTest(void) {
 }
 
 void Str8ListBuildTest(void) {
-  String8ListNode* test = NULL;
-  String8List list = {0};
-  String8ListNode a = {0};
-  a.string = Str8Lit("hello");
-  String8ListNode b = {0};
-  b.string = Str8Lit(" ");
-  String8ListNode c = {0};
-  c.string = Str8Lit("world");
-  Str8ListAppend(&list, &b);
-  Str8ListPrepend(&list, &a);
-  Str8ListAppend(&list, &c);
-
-  test = list.head;
-  EXPECT_TRUE(IS_MEMORY_EQUAL(test, &a, sizeof(String8ListNode)));
-
-  test = test->next;
-  EXPECT_TRUE(IS_MEMORY_EQUAL(test, &b, sizeof(String8ListNode)));
-
-  test = test->next;
-  EXPECT_TRUE(IS_MEMORY_EQUAL(test, &c, sizeof(String8ListNode)));
-
   Arena* arena = ArenaAllocate();
+  String8List list;
+  MEMORY_ZERO_STRUCT(&list);
+  Str8ListAppend(arena, &list, Str8Lit(" "));
+  Str8ListPrepend(arena, &list, Str8Lit("hello"));
+  Str8ListAppend(arena, &list, Str8Lit("world"));
   EXPECT_TRUE(Str8Eq(Str8ListJoin(arena, &list), Str8Lit("hello world")));
 }
 
