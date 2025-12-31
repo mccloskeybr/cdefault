@@ -10,15 +10,17 @@ int main(void) {
   Arena* arena = ArenaAllocate();
 
   Image image;
-  DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, Str8Lit("../data/16bpp.bmp")));
+  // DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, Str8Lit("../data/16bpp.bmp")));
+  DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, Str8Lit("../data/leia.png")));
   DEBUG_ASSERT(ImageDumpBmp(&image, Str8Lit("../data/TEST_2.bmp")));
   U32 image_handle;
   RendererRegisterImage(&image_handle, &image);
 
-  ArenaRelease(arena);
+  // ArenaRelease(arena);
 
   F32 theta = 0;
-  F32 scale = 1;
+  // F32 scale = 1;
+  F32 scale = 0.25f;
   while (!WindowShouldClose()) {
     if (WindowIsKeyPressed(Key_Control) && WindowIsKeyJustPressed(Key_C)) {
       LOG_INFO("SIGINT received");
