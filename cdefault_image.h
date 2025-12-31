@@ -8,7 +8,7 @@
 //
 // The following file formats are supported:
 // -   BMP: versions v2 - v5, bpp in (1, 4, 8, 16, 24, 32), uncompressed or bitfield compression (NOT RLE compression).
-// -   PNG: 8BPP / color type 6
+// -   PNG: 8BPP / color type 6, NOT interlace
 
 // Example
 #if 0
@@ -23,6 +23,7 @@ ArenaRelease(arena);
 // TODO: support other input / file formats?
 // TODO: different output formats?
 // TODO: SIMD
+// TODO: wider PNG support
 
 // NOTE: Uncompressed image data format.
 typedef enum ImageFormat ImageFormat;
@@ -43,12 +44,15 @@ struct Image {
 };
 
 B32  ImageLoadFile(Arena* arena, Image* image, ImageFormat format, String8 file_path);
-B32  ImageLoad(Arena* arena, Image* image, ImageFormat format, U8* file_data, U32 image_data_size);
+B32  ImageLoad(Arena* arena, Image* image, ImageFormat format, U8* file_data, U32 file_data_size);
 void ImageConvert(Arena* arena, Image* to, Image* from, ImageFormat to_format);
 B32  ImageDumpBmp(Image* image, String8 file_path); // NOTE: Preserves alpha channel, if present.
 
-B32  ImageLoadBmp(Arena* arena, Image* image, ImageFormat format, U8* file_data, U32 image_data_size);
-B32  ImageLoadPng(Arena* arena, Image* image, ImageFormat format, U8* file_data, U32 image_data_size);
+U32  ImageBytesPerPixel(ImageFormat format);
+void ImageFlipY(Image* image);
+
+B32  ImageLoadBmp(Arena* arena, Image* image, ImageFormat format, U8* file_data, U32 file_data_size);
+B32  ImageLoadPng(Arena* arena, Image* image, ImageFormat format, U8* file_data, U32 file_data_size);
 
 #endif // CDEFAULT_IMAGE_H_
 
@@ -57,8 +61,8 @@ B32  ImageLoadPng(Arena* arena, Image* image, ImageFormat format, U8* file_data,
 
 #define IMAGE_LOG_OUT_OF_CHARS() LOG_ERROR("[FONT] Ran out of characters in image file.")
 
-typedef enum ImageBmpVersion ImageBmpVersion;
-enum ImageBmpVersion {
+typedef enum BmpVersion BmpVersion;
+enum BmpVersion {
   ImageBmpVersion_WinV2,
   ImageBmpVersion_WinV3,
   ImageBmpVersion_WinV3_Adobe,
@@ -91,7 +95,7 @@ B32 ImageLoadBmp(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
   // NOTE: Read version-specific BMP header
   IMAGE_TRY_PARSE(BinStreamPullU32LE(&s, &header_size));
   palette_offset += header_size;
-  ImageBmpVersion version;
+  BmpVersion version;
   switch (header_size) {
     case 12:  { version = ImageBmpVersion_WinV2;       } break;
     case 40:  { version = ImageBmpVersion_WinV3;       } break;
@@ -355,13 +359,7 @@ B32 ImageLoadBmp(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
     }
   }
 
-  if (y_flipped) {
-    for (U32 i = 0; i < temp_image.height / 2; i++) {
-      U8* a = temp_image.data + (i * temp_image.width * 4);
-      U8* b = temp_image.data + ((temp_image.height - 1 - i) * temp_image.width * 4);
-      for (U32 j = 0; j < temp_image.width * 4; j++) { SWAP(U8, a[j], b[j]); }
-    }
-  }
+  if (y_flipped) { ImageFlipY(&temp_image); }
   ImageConvert(arena, image, &temp_image, format);
   success = true;
 image_load_bmp_exit:
@@ -370,7 +368,7 @@ image_load_bmp_exit:
 }
 #undef IMAGE_TRY_PARSE
 
-#define PNG_HUFFMAN_MAX_BIT_COUNT 15
+#define PNG_HUFFMAN_MAX_BIT_COUNT 16
 static U32 _cdef_png_hclen_swizzle[]         = { 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15 };
 // NOTE: { last value, num bits }
 static U32 _cdef_png_fixed_hclens[][2]       = { {143, 8}, {255, 9}, {279, 7}, {287, 8}, {319, 5} };
@@ -385,6 +383,13 @@ struct PngChunk {
   PngChunk* next;
 };
 
+typedef struct PngIdatStream PngIdatStream;
+struct PngIdatStream {
+  PngChunk* chunks;
+  U64 buffer;
+  U8  buffer_size;
+};
+
 typedef struct PngHuffmanNode PngHuffmanNode;
 struct PngHuffmanNode {
   S32 symbol;
@@ -392,30 +397,15 @@ struct PngHuffmanNode {
   PngHuffmanNode* right;
 };
 
-// TODO: move to std?
-typedef struct BitStream BitStream;
-struct BitStream {
-  U8* bytes;
-  U64 bytes_size;
-  U64 pos;
-  U64 buffer;
-  U8  buffer_size;
-};
-
-static BitStream BitStreamAssign(U8* bytes, U64 bytes_size) {
-  BitStream result;
-  MEMORY_ZERO_STRUCT(&result);
-  result.bytes = bytes;
-  result.bytes_size = bytes_size;
-  return result;
-}
-
-static B32 BitStreamPullBits(BitStream* s, U32 num_bits, U32* result) {
+static B32 PngIdatStreamPullBits(PngIdatStream* s, U32 num_bits, U32* result) {
   DEBUG_ASSERT(num_bits <= 32);
   while (s->buffer_size < num_bits) {
-    if (s->pos + 1 > s->bytes_size) { return false; }
-    U8 byte = BinRead8(s->bytes + s->pos);
-    s->pos += 1;
+    U8 byte;
+    while (!BinStreamPullU8(&s->chunks->s, &byte)) {
+      UNTESTED();
+      if (s->chunks->next == NULL) { return false; }
+      s->chunks = s->chunks->next;
+    }
     s->buffer |= ((U64) byte) << s->buffer_size;
     s->buffer_size += 8;
   }
@@ -425,7 +415,7 @@ static B32 BitStreamPullBits(BitStream* s, U32 num_bits, U32* result) {
   return true;
 }
 
-static void BitStreamFlushByte(BitStream* s) {
+static void PngIdatStreamFlush(PngIdatStream* s) {
   U32 x = s->buffer_size % 8;
   s->buffer >>= x;
   s->buffer_size -= x;
@@ -466,7 +456,7 @@ static PngHuffmanNode* PngHuffmanBuild(Arena* arena, U32* code_lengths, U32 num_
     for (S32 i = code_length - 1; i >= 0; i--) {
       S32 bit = (curr_code >> i) & 1;
       if (bit == 0) {
-        if (node->left == NULL) { node->left = PngHuffmanNodeCreate(arena); }
+        if (node->left == NULL)  { node->left = PngHuffmanNodeCreate(arena);  }
         node = node->left;
       } else {
         if (node->right == NULL) { node->right = PngHuffmanNodeCreate(arena); }
@@ -479,11 +469,11 @@ static PngHuffmanNode* PngHuffmanBuild(Arena* arena, U32* code_lengths, U32 num_
 }
 
 #define IMAGE_TRY_PARSE(eval) if (!eval) { IMAGE_LOG_OUT_OF_CHARS(); return false; }
-static B32 PngHuffmanDecode(PngHuffmanNode* root, BitStream* s, U32* result) {
+static B32 PngHuffmanDecode(PngHuffmanNode* root, PngIdatStream* s, U32* result) {
   PngHuffmanNode* curr = root;
   while (curr->symbol < 0) {
     U32 bit;
-    IMAGE_TRY_PARSE(BitStreamPullBits(s, 1, &bit));
+    IMAGE_TRY_PARSE(PngIdatStreamPullBits(s, 1, &bit));
     if (bit == 0) { curr = curr->left;  }
     else          { curr = curr->right; }
     if (curr == NULL) {
@@ -522,7 +512,6 @@ static U8 PngFilterPaeth(U8* x, U8* a_arr, U8* b_arr, U8* c_arr, U32 channel) {
   if ((pa <= pb) && (pa <= pc)) { paeth = a; }
   else if (pb <= pc)            { paeth = b; }
   else                          { paeth = c; }
-
   return x[channel] + (U8) paeth;
 }
 
@@ -530,20 +519,21 @@ static U8 PngFilterPaeth(U8* x, U8* a_arr, U8* b_arr, U8* c_arr, U32 channel) {
 // https://github.com/HandmadeHero/cpp/blob/master/code/handmade_png.cpp
 // https://github.com/nothings/stb/blob/master/stb_image.h
 #define IMAGE_TRY_PARSE(eval) if (!eval) { IMAGE_LOG_OUT_OF_CHARS(); goto image_load_png_exit; }
-B32 ImageLoadPng(Arena* arena, Image* image, ImageFormat format, U8* file_data, U32 image_data_size) {
+B32 ImageLoadPng(Arena* arena, Image* image, ImageFormat format, U8* file_data, U32 file_data_size) {
   MEMORY_ZERO_STRUCT(image);
   B32 success = false;
   U64 arena_base = ArenaPos(arena);
   Arena* temp_arena = ArenaAllocate();
-  BinStream s = BinStreamAssign(file_data, image_data_size);
+  BinStream s = BinStreamAssign(file_data, file_data_size);
 
   U64 magic_number;
   IMAGE_TRY_PARSE(BinStreamPullU64BE(&s, &magic_number));
   if (magic_number != 0x89504E470D0A1A0A) { return false; }
 
   // NOTE: pull out interesting chunks
-  PngChunk* ihdr_chunk       = NULL;
-  PngChunk* idat_chunks      = NULL;
+  PngIdatStream idat;
+  MEMORY_ZERO_STRUCT(&idat);
+  BinStream* ihdr            = NULL;
   PngChunk* idat_chunks_tail = NULL;
   while (BinStreamRemaining(&s) > 0) {
     U32 chunk_length, chunk_crc;
@@ -556,40 +546,39 @@ B32 ImageLoadPng(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
     IMAGE_TRY_PARSE(BinStreamPullU32BE(&s, &chunk_crc));
     // LOG_INFO("Identified chunk: %.*s", chunk_type.size, chunk_type.str);
     if (Str8Eq(chunk_type, Str8Lit("IHDR"))) {
-      if (ihdr_chunk != NULL) {
+      if (ihdr != NULL) {
         LOG_ERROR("[IMAGE] PNG multiple IHDR chunks detected!");
         goto image_load_png_exit;
       }
-      ihdr_chunk = ARENA_PUSH_STRUCT(temp_arena, PngChunk);
-      MEMORY_ZERO_STRUCT(ihdr_chunk);
-      ihdr_chunk->s = chunk_stream;
+      ihdr = ARENA_PUSH_STRUCT(temp_arena, BinStream);
+      MEMORY_ZERO_STRUCT(ihdr);
+      *ihdr = chunk_stream;
     } else if (Str8Eq(chunk_type, Str8Lit("IDAT"))) {
       PngChunk* chunk = ARENA_PUSH_STRUCT(temp_arena, PngChunk);
       MEMORY_ZERO_STRUCT(chunk);
       chunk->s = chunk_stream;
-      SLL_QUEUE_PUSH_BACK(idat_chunks, idat_chunks_tail, chunk, next);
+      SLL_QUEUE_PUSH_BACK(idat.chunks, idat_chunks_tail, chunk, next);
     }
   }
-  if (ihdr_chunk == NULL) {
+  if (ihdr == NULL) {
     LOG_ERROR("[IMAGE] PNG missing required chunk 'IHDR'!");
     goto image_load_png_exit;
   }
-  if (idat_chunks == NULL) {
+  if (idat.chunks == NULL) {
     LOG_ERROR("[IMAGE] PNG missing required chunk 'IDAT'!");
     goto image_load_png_exit;
   }
 
   // NOTE: investigate header chunk
-  BinStream ihdr = ihdr_chunk->s;
   U32 width, height;
   U8 bit_depth, color_type, compression_method, filter_method, interlace_method;
-  IMAGE_TRY_PARSE(BinStreamPullU32BE(&ihdr, &width));
-  IMAGE_TRY_PARSE(BinStreamPullU32BE(&ihdr, &height));
-  IMAGE_TRY_PARSE(BinStreamPullU8(&ihdr, &bit_depth));
-  IMAGE_TRY_PARSE(BinStreamPullU8(&ihdr, &color_type));
-  IMAGE_TRY_PARSE(BinStreamPullU8(&ihdr, &compression_method));
-  IMAGE_TRY_PARSE(BinStreamPullU8(&ihdr, &filter_method));
-  IMAGE_TRY_PARSE(BinStreamPullU8(&ihdr, &interlace_method));
+  IMAGE_TRY_PARSE(BinStreamPullU32BE(ihdr, &width));
+  IMAGE_TRY_PARSE(BinStreamPullU32BE(ihdr, &height));
+  IMAGE_TRY_PARSE(BinStreamPullU8(ihdr, &bit_depth));
+  IMAGE_TRY_PARSE(BinStreamPullU8(ihdr, &color_type));
+  IMAGE_TRY_PARSE(BinStreamPullU8(ihdr, &compression_method));
+  IMAGE_TRY_PARSE(BinStreamPullU8(ihdr, &filter_method));
+  IMAGE_TRY_PARSE(BinStreamPullU8(ihdr, &interlace_method));
   // TODO: support other bit depths.
   if (bit_depth != 8) {
     LOG_ERROR("[IMAGE] PNG unsupported bit depth detected: %d", bit_depth);
@@ -614,17 +603,9 @@ B32 ImageLoadPng(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
   }
 
   // NOTE: investigate zlib chunks
-  U32 idat_size = 0, idat_offset = 0;
-  for (PngChunk* curr = idat_chunks; curr != NULL; curr = curr->next) { idat_size += curr->s.bytes_size; }
-  U8* idat_merged = ARENA_PUSH_ARRAY(temp_arena, U8, idat_size);
-  for (PngChunk* curr = idat_chunks; curr != NULL; curr = curr->next) {
-    MEMORY_MOVE(idat_merged + idat_offset, curr->s.bytes, curr->s.bytes_size * sizeof(U8));
-    idat_offset += curr->s.bytes_size;
-  }
-  BitStream idat = BitStreamAssign(idat_merged, idat_size);
   U32 zlib_compression_method, flags;
-  IMAGE_TRY_PARSE(BitStreamPullBits(&idat, 8, &zlib_compression_method));
-  IMAGE_TRY_PARSE(BitStreamPullBits(&idat, 8, &flags));
+  IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, 8, &zlib_compression_method));
+  IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, 8, &flags));
   U8 zlib_cm    = (zlib_compression_method >> 0) & 0xF;
   U8 zlib_fdict = (flags >> 5) & 0x1;
   if (zlib_cm != 8) {
@@ -637,7 +618,7 @@ B32 ImageLoadPng(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
   }
 
   // NOTE: decompress
-  // NOTE: addl. height for png filtering information (per-row)
+  // NOTE: addl. height for png filtering information (+1 byte per-row)
   U32 decompressed_pixels_size = ((width * height * 4) + height) * sizeof(U8);
   U8* decompressed_pixels = ARENA_PUSH_ARRAY(temp_arena, U8, decompressed_pixels_size);
   MEMORY_ZERO(decompressed_pixels, decompressed_pixels_size);
@@ -645,22 +626,24 @@ B32 ImageLoadPng(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
   U32 bfinal = 0;
   while (bfinal != 1) {
     U32 btype;
-    IMAGE_TRY_PARSE(BitStreamPullBits(&idat, 1, &bfinal));
-    IMAGE_TRY_PARSE(BitStreamPullBits(&idat, 2, &btype));
+    IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, 1, &bfinal));
+    IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, 2, &btype));
 
       // NOTE: no compression
     if (btype == 0) {
-      BitStreamFlushByte(&idat);
+      PngIdatStreamFlush(&idat);
       U32 len = 0, nlen = 0;
-      IMAGE_TRY_PARSE(BitStreamPullBits(&idat, 16, &len));
-      IMAGE_TRY_PARSE(BitStreamPullBits(&idat, 16, &nlen));
+      IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, 16, &len));
+      IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, 16, &nlen));
       if ((U16)len != (U16)~nlen) {
         LOG_ERROR("[IMAGE] PNG zlib chunk len / nlen mismatch");
         goto image_load_png_exit;
       }
-
-      TODO(); // TODO: implement me
-
+      for (U32 i = 0; i < len; i++) {
+        U32 byte;
+        IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, 8, &byte));
+        *dest++ = (U8) byte;
+      }
     } else {
       U32 hlit;
       U32 hdist;
@@ -681,18 +664,18 @@ B32 ImageLoadPng(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
       } else if (btype == 2) {
         // NOTE: dynamic huffman codes
         U32 hclen;
-        IMAGE_TRY_PARSE(BitStreamPullBits(&idat, 5, &hlit));
-        IMAGE_TRY_PARSE(BitStreamPullBits(&idat, 5, &hdist));
-        IMAGE_TRY_PARSE(BitStreamPullBits(&idat, 4, &hclen));
+        IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, 5, &hlit));
+        IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, 5, &hdist));
+        IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, 4, &hclen));
         hlit  += 257;
         hdist += 1;
         hclen += 4;
 
-        DEBUG_ASSERT(hclen < STATIC_ARRAY_SIZE(_cdef_png_hclen_swizzle));
+        DEBUG_ASSERT(hclen <= STATIC_ARRAY_SIZE(_cdef_png_hclen_swizzle));
         U32 hclen_table[STATIC_ARRAY_SIZE(_cdef_png_hclen_swizzle)];
         MEMORY_ZERO_STATIC_ARRAY(hclen_table);
         for (U32 i = 0; i < hclen; i++) {
-          IMAGE_TRY_PARSE(BitStreamPullBits(&idat, 3, &hclen_table[_cdef_png_hclen_swizzle[i]]));
+          IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, 3, &hclen_table[_cdef_png_hclen_swizzle[i]]));
         }
         PngHuffmanNode* dict_huffman = PngHuffmanBuild(temp_arena, hclen_table, STATIC_ARRAY_SIZE(hclen_table));
 
@@ -710,15 +693,15 @@ B32 ImageLoadPng(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
           } else if (encoded_len == 16) {
             DEBUG_ASSERT(lit_len_count > 0);
             rep_val = lit_len_dist_table[lit_len_count - 1];
-            IMAGE_TRY_PARSE(BitStreamPullBits(&idat, 2, &rep_count));
+            IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, 2, &rep_count));
             rep_count += 3;
           } else if (encoded_len == 17) {
             rep_val = 0;
-            IMAGE_TRY_PARSE(BitStreamPullBits(&idat, 3, &rep_count));
+            IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, 3, &rep_count));
             rep_count += 3;
           } else if (encoded_len == 18) {
             rep_val = 0;
-            IMAGE_TRY_PARSE(BitStreamPullBits(&idat, 7, &rep_count));
+            IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, 7, &rep_count));
             rep_count += 11;
           } else {
             LOG_ERROR("[IMAGE] PNG unrecognized encoded length: %d", encoded_len);
@@ -752,7 +735,7 @@ B32 ImageLoadPng(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
           U32 extra_length_bits_used  = _cdef_png_extra_length_codes[len_idx][1];
           if (extra_length_bits_used > 0) {
             U32 extra_bits;
-            IMAGE_TRY_PARSE(BitStreamPullBits(&idat, extra_length_bits_used, &extra_bits));
+            IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, extra_length_bits_used, &extra_bits));
             length += extra_bits;
           }
 
@@ -763,7 +746,7 @@ B32 ImageLoadPng(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
           U32 extra_distance_bits_used = _cdef_png_extra_dist_codes[dist_idx][1];
           if (extra_distance_bits_used > 0) {
             U32 extra_bits;
-            IMAGE_TRY_PARSE(BitStreamPullBits(&idat, extra_distance_bits_used, &extra_bits));
+            IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, extra_distance_bits_used, &extra_bits));
             distance += extra_bits;
           }
 
@@ -886,13 +869,9 @@ B32 ImageLoadPng(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
     prior_row = current_row;
     prior_row_advance = 4;
   }
+  // NOTE: PNG stores opposite to how cdefault handles pixels, so flip it
+  ImageFlipY(&temp_image);
 
-  // NOTE: flip so y coordinate is correct
-  for (U32 i = 0; i < temp_image.height / 2; i++) {
-    U8* a = temp_image.data + (i * temp_image.width * 4);
-    U8* b = temp_image.data + ((temp_image.height - 1 - i) * temp_image.width * 4);
-    for (U32 j = 0; j < temp_image.width * 4; j++) { SWAP(U8, a[j], b[j]); }
-  }
   ImageConvert(arena, image, &temp_image, format);
   success = true;
 image_load_png_exit:
@@ -913,9 +892,9 @@ image_load_file_exit:
   return success;
 }
 
-B32 ImageLoad(Arena* arena, Image* image, ImageFormat format, U8* file_data, U32 image_data_size) {
-  if (ImageLoadBmp(arena, image, format, file_data, image_data_size)) { return true; }
-  if (ImageLoadPng(arena, image, format, file_data, image_data_size)) { return true; }
+B32 ImageLoad(Arena* arena, Image* image, ImageFormat format, U8* file_data, U32 file_data_size) {
+  if (ImageLoadBmp(arena, image, format, file_data, file_data_size)) { return true; }
+  if (ImageLoadPng(arena, image, format, file_data, file_data_size)) { return true; }
   return false;
 }
 
@@ -924,14 +903,7 @@ void ImageConvert(Arena* arena, Image* to, Image* from, ImageFormat to_format) {
   to->width = from->width;
   to->height = from->height;
 
-  U32 bytes_per_pixel = 0;
-  switch (to->format) {
-    case ImageFormat_RGBA: { bytes_per_pixel = 4; } break;
-    case ImageFormat_RGB:  { bytes_per_pixel = 3; } break;
-    case ImageFormat_R:    { bytes_per_pixel = 1; } break;
-    default: { UNREACHABLE(); }
-  }
-
+  U32 bytes_per_pixel = ImageBytesPerPixel(to->format);
   to->data = ARENA_PUSH_ARRAY(arena, U8, to->width * to->height * bytes_per_pixel);
   if (to->format == from->format) {
     MEMORY_COPY(to->data, from->data, to->width * to->height * bytes_per_pixel);
@@ -1050,6 +1022,24 @@ B32 ImageDumpBmp(Image* image, String8 file_path) {
   B32 success = FileDump(file_path, bmp, bmp_file_size);
   ArenaRelease(temp_arena);
   return success;
+}
+
+U32 ImageBytesPerPixel(ImageFormat format) {
+  switch (format) {
+    case ImageFormat_RGBA:  return 4;
+    case ImageFormat_RGB:   return 3;
+    case ImageFormat_R:     return 1;
+    default: UNREACHABLE(); return 0;
+  }
+}
+
+void ImageFlipY(Image* image) {
+  U32 bytes_per_pixel = ImageBytesPerPixel(image->format);
+  for (U32 i = 0; i < image->height / 2; i++) {
+    U8* a = image->data + (i * image->width * bytes_per_pixel);
+    U8* b = image->data + ((image->height - 1 - i) * image->width * bytes_per_pixel);
+    for (U32 j = 0; j < image->width * bytes_per_pixel; j++) { SWAP(U8, a[j], b[j]); }
+  }
 }
 
 #undef IMAGE_LOG_OUT_OF_CHARS

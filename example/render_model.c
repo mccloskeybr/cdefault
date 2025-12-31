@@ -12,14 +12,10 @@ int main(void) {
   Stopwatch frame_stopwatch;
   StopwatchInit(&frame_stopwatch);
 
-  U32 image_handle, model_handle;
-  Image image;
-  DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, Str8Lit("../data/suzanne.bmp")));
-  RendererRegisterImage(&image_handle, &image);
   Model model;
   // DEBUG_ASSERT(ModelLoadFile(arena, &model, Str8Lit("../data/suzanne.obj")));
   DEBUG_ASSERT(ModelLoadFile(arena, &model, Str8Lit("../data/computer.glb")));
-  RendererRegisterModel(&model_handle, &model);
+  U32 model_handle = RendererRegisterModel(&model);
 
   Camera* camera = RendererCamera3D();
   camera->pos = (V3) { 0, 0, 3 };

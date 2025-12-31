@@ -20,17 +20,15 @@ int main(void) {
 
   FontAtlas bmp_atlas;
   Image     bmp_atlas_image;
-  U32       bmp_atlas_handle;
   DEBUG_ASSERT(FontAtlasBakeBitmap(font_arena, font_arena, &font, &bmp_atlas, &bmp_atlas_image, BMP_FONT_HEIGHT, FontCharSetLatin()));
   DEBUG_ASSERT(ImageDumpBmp(&bmp_atlas_image, Str8Lit("../data/TEST_BMP.bmp")));
-  RendererRegisterImage(&bmp_atlas_handle, &bmp_atlas_image);
+  U32 bmp_atlas_handle = RendererRegisterImage(&bmp_atlas_image);
 
   FontAtlas sdf_atlas;
   Image     sdf_atlas_image;
-  U32       sdf_atlas_handle;
   DEBUG_ASSERT(FontAtlasBakeSdf(font_arena, font_arena, &font, &sdf_atlas, &sdf_atlas_image, BMP_FONT_HEIGHT, SDF_FONT_HEIGHT, 4.0f, FontCharSetLatin()));
   DEBUG_ASSERT(ImageDumpBmp(&sdf_atlas_image, Str8Lit("../data/TEST_SDF.bmp")));
-  RendererRegisterImage(&sdf_atlas_handle, &sdf_atlas_image);
+  U32 sdf_atlas_handle = RendererRegisterImage(&sdf_atlas_image);
 
   String8 alphabet = Str8Lit("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
   while (!WindowShouldClose()) {

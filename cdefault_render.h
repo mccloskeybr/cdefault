@@ -55,9 +55,9 @@ void WindowGetMouseDeltaPositionV(V2* pos);
 void RendererSetProjection2D(M4 projection);
 void RendererSetProjection3D(M4 projection);
 Camera* RendererCamera3D();
-void RendererRegisterImage(U32* image_handle, Image* image);
+U32  RendererRegisterImage(Image* image);
 void RendererReleaseImage(U32 image_handle);
-void RendererRegisterModel(U32* model_handle, Model* model);
+U32  RendererRegisterModel(Model* model);
 void RendererReleaseModel(U32 model_handle);
 void RendererEnableScissorTest(V2 min, V2 max);
 void RendererDisableScissorTest(void);
@@ -822,7 +822,7 @@ static B32 RendererInit(void) {
   icosphere_mesh.indices_size  = 60;
   Model icosphere_model;
   icosphere_model.meshes = &icosphere_mesh;
-  RendererRegisterModel(&r->icosphere_handle, &icosphere_model);
+  r->icosphere_handle = RendererRegisterModel(&icosphere_model);
 
   Mesh cube_mesh;
   MEMORY_ZERO_STRUCT(&cube_mesh);
@@ -880,7 +880,7 @@ static B32 RendererInit(void) {
   cube_mesh.indices_size = 36;
   Model cube_model;
   cube_model.meshes = &cube_mesh;
-  RendererRegisterModel(&r->cube_handle, &cube_model);
+  r->cube_handle = RendererRegisterModel(&cube_model);
 
   RendererEnableDepthTest();
   g->glLineWidth(3);
@@ -916,10 +916,11 @@ Camera* RendererCamera3D() {
   return &r->camera_3d;
 }
 
-void RendererRegisterImage(U32* image_handle, Image* image) {
+U32 RendererRegisterImage(Image* image) {
   OpenGLAPI* g = &_ogl;
-  g->glGenTextures(1, image_handle);
-  g->glBindTexture(GL_TEXTURE_2D, *image_handle);
+  U32 image_handle;
+  g->glGenTextures(1, &image_handle);
+  g->glBindTexture(GL_TEXTURE_2D, image_handle);
   switch (image->format) {
     case ImageFormat_RGBA: {
       g->glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
@@ -938,6 +939,7 @@ void RendererRegisterImage(U32* image_handle, Image* image) {
     } break;
   }
   g->glBindTexture(GL_TEXTURE_2D, 0);
+  return image_handle;
 }
 
 void RendererReleaseImage(U32 image_handle) {
@@ -945,7 +947,7 @@ void RendererReleaseImage(U32 image_handle) {
   g->glDeleteTextures(1, &image_handle);
 }
 
-void RendererRegisterModel(U32* model_handle, Model* model) {
+U32 RendererRegisterModel(Model* model) {
   Renderer* r = &_renderer;
   OpenGLAPI* g = &_ogl;
 
@@ -1012,9 +1014,10 @@ void RendererRegisterModel(U32* model_handle, Model* model) {
     render_mesh->vbo = vbo;
     render_mesh->ibo = ibo;
     render_mesh->indices_size = mesh->indices_size;
-    RendererRegisterImage(&render_mesh->image_handle, &mesh->texture);
+    render_mesh->image_handle = RendererRegisterImage(&mesh->texture);
   }
-  *model_handle = render_model->id;
+
+  return render_model->id;
 }
 
 void RendererReleaseModel(U32 model_handle) {
@@ -1026,6 +1029,7 @@ void RendererReleaseModel(U32 model_handle) {
     g->glDeleteVertexArrays(1, &mesh->vao);
     g->glDeleteBuffers(1, &mesh->vbo);
     g->glDeleteBuffers(1, &mesh->ibo);
+    RendererReleaseImage(mesh->image_handle);
   }
   while (model->meshes != NULL) {
     RenderMesh* mesh = model->meshes;
@@ -1637,8 +1641,7 @@ void DrawTetrahedronV(V3 p1, V3 p2, V3 p3, V3 p4, V3 color) {
   Model tetrahedron_model;
   tetrahedron_model.meshes = &tetrahedron_mesh;
 
-  U32 tetrahedron_handle;
-  RendererRegisterModel(&tetrahedron_handle, &tetrahedron_model);
+  U32 tetrahedron_handle = RendererRegisterModel(&tetrahedron_model);
   // NOTE: verts already in world space, so don't need to do additional transformation.
   DrawModelExV(tetrahedron_handle, V3_ZEROES, V4_QUAT_IDENT, V3_ONES, color, 1);
   RendererReleaseModel(tetrahedron_handle);

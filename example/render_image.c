@@ -9,14 +9,14 @@ int main(void) {
 
   Arena* arena = ArenaAllocate();
 
+
   Image image;
   // DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, Str8Lit("../data/16bpp.bmp")));
   DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, Str8Lit("../data/leia.png")));
   DEBUG_ASSERT(ImageDumpBmp(&image, Str8Lit("../data/TEST_2.bmp")));
-  U32 image_handle;
-  RendererRegisterImage(&image_handle, &image);
+  U32 image_handle = RendererRegisterImage(&image);
 
-  // ArenaRelease(arena);
+  ArenaRelease(arena);
 
   F32 theta = 0;
   // F32 scale = 1;

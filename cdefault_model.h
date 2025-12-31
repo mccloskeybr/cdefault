@@ -6,6 +6,14 @@
 #include "cdefault_image.h"
 #include "cdefault_json.h"
 
+// NOTE: supports loading:
+// - OBJ
+// - GLB (v2.0)
+
+// TODO:
+// - OBJ support mtl files / textures
+// - extend GLB to support GLTF files too
+
 typedef struct Mesh Mesh;
 struct Mesh {
   Mesh* next;
@@ -30,18 +38,23 @@ struct Model {
 B32 ModelLoadFile(Arena* arena, Model* model, String8 file_path);
 B32 ModelLoad(Arena* arena, Model* model, U8* file_data, U32 file_data_size);
 
+B32 ModelLoadObj(Arena* arena, Model* model, U8* file_data, U32 file_data_size);
+B32 ModelLoadGlb(Arena* arena, Model* model, U8* file_data, U32 file_data_size);
+
 #endif // CDEFAULT_MODEL_H_
 
 #ifdef CDEFAULT_MODEL_IMPLEMENTATION
 #undef CDEFAULT_MODEL_IMPLEMENTATION
 
-static B32 ModelLoadObj(Arena* arena, Model* model, U8* file_data, U32 file_data_size) {
+B32 ModelLoadObj(Arena* arena, Model* model, U8* file_data, U32 file_data_size) {
   MEMORY_ZERO_STRUCT(model);
   Arena* temp_arena = ArenaAllocate();
   String8 file_str = Str8(file_data, file_data_size);
   String8List lines = Str8Split(temp_arena, file_str, '\n');
   U64 arena_pos = ArenaPos(arena);
   B32 success = false;
+
+  // TODO: fast failure if file is not an obj file
 
   // NOTE: OBJ files are only a single mesh.
   Mesh* mesh = ARENA_PUSH_STRUCT(arena, Mesh);
@@ -202,13 +215,6 @@ mesh_load_obj_end:
   return success;
 }
 
-typedef struct GltfBuffer GltfBuffer;
-struct GltfBuffer {
-  GltfBuffer* next;
-  U8* bytes;
-  U32 length;
-};
-
 typedef enum GltfAccessorType GltfAccessorType;
 enum GltfAccessorType {
   GltfAccessorType_Scalar,
@@ -246,21 +252,11 @@ struct GltfAccessor {
   };
 };
 
-typedef struct GltfMeshPrimitives GltfMeshPrimitives;
-struct GltfMeshPrimitives {
-  GltfMeshPrimitives* next;
-  GltfAccessor* position; // NOTE: V3 F32
-  GltfAccessor* normal;   // NOTE: V3 F32
-  GltfAccessor* texcoord; // NOTE: V2 F32
-  GltfAccessor* indices;  // NOTE: Scalar
-};
-
-typedef struct GltfMesh GltfMesh;
-struct GltfMesh {
-  GltfMesh* next;
-  String8 name;
-  GltfMeshPrimitives* head;
-  GltfMeshPrimitives* tail;
+typedef struct GltfBuffer GltfBuffer;
+struct GltfBuffer {
+  GltfBuffer* next;
+  U8* bytes;
+  U32 length;
 };
 
 B32 GltfBufferGet(GltfBuffer* head, U32 index, GltfBuffer** result) {
@@ -287,7 +283,6 @@ B32 GltfAccessorGet(GltfAccessor* head, U32 index, GltfAccessor** result) {
 
 #define MODEL_TRY_PARSE(eval) if (!eval) { LOG_ERROR("[MESH] Ran out of characters in mesh GLTF file."); return false; }
 static B32 GltfBufferParse(JsonValue* value, BinStream buffer, GltfBuffer* result) {
-  MEMORY_ZERO_STRUCT(result);
   JsonObject obj;
   if (!JsonValueGetObject(value, &obj)) {
     LOG_ERROR("[MESH] GLTF unable to parse 'bufferView' object.");
@@ -312,24 +307,100 @@ static B32 GltfBufferParse(JsonValue* value, BinStream buffer, GltfBuffer* resul
   }
 
   MODEL_TRY_PARSE(BinStreamSeek(&buffer, byte_offset));
+  MEMORY_ZERO_STRUCT(result);
   result->bytes  = BinStreamDecay(&buffer);
   result->length = byte_length;
   return true;
 }
 #undef MODEL_TRY_PARSE
 
+static B32 GltfImageParse(JsonValue* value, GltfBuffer* buffers, GltfBuffer* result) {
+  JsonObject obj;
+  if (!JsonValueGetObject(value, &obj)) {
+    LOG_ERROR("[MESH] GLTF unable to parse 'image' object.");
+    return false;
+  }
+  F32 buffer_idx;
+  if (!JsonObjectGetNumber(obj, Str8Lit("bufferView"), &buffer_idx)) {
+    LOG_ERROR("[MESH] GLTF image missing required 'bufferView'.");
+    return false;
+  }
+  GltfBuffer* buffer;
+  if (!GltfBufferGet(buffers, (U32) buffer_idx, &buffer)) {
+    LOG_ERROR("[MESH] GLTF buffer view idx is OOB: %d", (U32) buffer_idx);
+    return false;
+  }
+
+  MEMORY_ZERO_STRUCT(result);
+  result->bytes  = buffer->bytes;
+  result->length = buffer->length;
+  return true;
+}
+
+static B32 GltfTextureParse(JsonValue* value, GltfBuffer* images, GltfBuffer* result) {
+  JsonObject obj;
+  if (!JsonValueGetObject(value, &obj)) {
+    LOG_ERROR("[MESH] GLTF unable to parse 'texture' object.");
+    return false;
+  }
+  F32 image_idx;
+  if (!JsonObjectGetNumber(obj, Str8Lit("source"), &image_idx)) {
+    LOG_ERROR("[MESH] GLTF texture missing required 'source'.");
+    return false;
+  }
+  GltfBuffer* image;
+  if (!GltfBufferGet(images, (U32) image_idx, &image)) {
+    LOG_ERROR("[MESH] GLTF image idx is OOB: %d", (U32) image_idx);
+    return false;
+  }
+
+  MEMORY_ZERO_STRUCT(result);
+  result->bytes  = image->bytes;
+  result->length = image->length;
+  return true;
+}
+
+static B32 GltfMaterialParse(JsonValue* value, GltfBuffer* textures, GltfBuffer* result) {
+  JsonObject obj, pbr_metallic_roughness, base_color_texture;
+  if (!JsonValueGetObject(value, &obj)) {
+    LOG_ERROR("[MESH] GLTF unable to parse 'material' object.");
+    return false;
+  }
+  if (!JsonObjectGetObject(obj, Str8Lit("pbrMetallicRoughness"), &pbr_metallic_roughness)) {
+    LOG_ERROR("[MESH] GLTF material missing required 'pbrMetallicRoughness'.");
+    return false;
+  }
+  if (!JsonObjectGetObject(pbr_metallic_roughness, Str8Lit("baseColorTexture"), &base_color_texture)) {
+    LOG_ERROR("[MESH] GLTF pbrMetallicRoughness missing required 'baseColorTexture'.");
+    return false;
+  }
+  F32 texture_idx;
+  if (!JsonObjectGetNumber(base_color_texture, Str8Lit("index"), &texture_idx)) {
+    LOG_ERROR("[MESH] GLTF pbrMetallicRoughness missing required 'index'.");
+    return false;
+  }
+  GltfBuffer* texture;
+  if (!GltfBufferGet(textures, (U32) texture_idx, &texture)) {
+    LOG_ERROR("[MESH] GLTF texture idx is OOB: %d", (U32) texture_idx);
+    return false;
+  }
+  MEMORY_ZERO_STRUCT(result);
+  result->bytes  = texture->bytes;
+  result->length = texture->length;
+  return true;
+}
+
 #define MODEL_TRY_PARSE(eval) if (!eval) { LOG_ERROR("[MESH] Ran out of characters in mesh GLTF file."); goto gltf_accessor_parse_exit; }
 static B32 GltfAccessorParse(Arena* arena, JsonValue* value, GltfBuffer* buffers, GltfAccessor* result) {
   B32 success = false;
   U64 arena_base = ArenaPos(arena);
-  MEMORY_ZERO_STRUCT(result);
   JsonObject obj;
   if (!JsonValueGetObject(value, &obj)) {
     LOG_ERROR("[MESH] GLTF unable to parse 'accessor' object.");
     goto gltf_accessor_parse_exit;
   }
-  F32 buffer_view_idx, count, component_type;
-  if (!JsonObjectGetNumber(obj, Str8Lit("bufferView"), &buffer_view_idx)) {
+  F32 buffer_idx, count, component_type;
+  if (!JsonObjectGetNumber(obj, Str8Lit("bufferView"), &buffer_idx)) {
     LOG_ERROR("[MESH] GLTF accessor missing required 'bufferView'.");
     goto gltf_accessor_parse_exit;
   }
@@ -347,6 +418,7 @@ static B32 GltfAccessorParse(Arena* arena, JsonValue* value, GltfBuffer* buffers
     goto gltf_accessor_parse_exit;
   }
 
+  MEMORY_ZERO_STRUCT(result);
   result->count = count;
   U32 component_count;
   if (Str8Eq(type, Str8Lit("SCALAR"))) {
@@ -355,19 +427,19 @@ static B32 GltfAccessorParse(Arena* arena, JsonValue* value, GltfBuffer* buffers
   } else if (Str8Eq(type, Str8Lit("VEC2"))) {
     result->type = GltfAccessorType_V2;
     component_count = 2;
-  } else if (Str8Eq(type, Str8Lit("VEC3")))   {
+  } else if (Str8Eq(type, Str8Lit("VEC3"))) {
     result->type = GltfAccessorType_V3;
     component_count = 3;
-  } else if (Str8Eq(type, Str8Lit("VEC4")))   {
+  } else if (Str8Eq(type, Str8Lit("VEC4"))) {
     result->type = GltfAccessorType_V4;
     component_count = 4;
-  } else if (Str8Eq(type, Str8Lit("MAT2")))   {
+  } else if (Str8Eq(type, Str8Lit("MAT2"))) {
     result->type = GltfAccessorType_M2;
     component_count = 4;
-  } else if (Str8Eq(type, Str8Lit("MAT3")))   {
+  } else if (Str8Eq(type, Str8Lit("MAT3"))) {
     result->type = GltfAccessorType_M3;
     component_count = 9;
-  } else if (Str8Eq(type, Str8Lit("MAT4")))   {
+  } else if (Str8Eq(type, Str8Lit("MAT4"))) {
     result->type = GltfAccessorType_M4;
     component_count = 16;
   } else {
@@ -414,8 +486,8 @@ static B32 GltfAccessorParse(Arena* arena, JsonValue* value, GltfBuffer* buffers
   }
 
   GltfBuffer* buffer;
-  if (!GltfBufferGet(buffers, (U32) buffer_view_idx, &buffer)) {
-    LOG_ERROR("[MESH] GLTF buffer view idx is OOB: %d", (U32) buffer_view_idx);
+  if (!GltfBufferGet(buffers, (U32) buffer_idx, &buffer)) {
+    LOG_ERROR("[MESH] GLTF buffer view idx is OOB: %d", (U32) buffer_idx);
     goto gltf_accessor_parse_exit;
   }
   if (result->count * component_count * component_byte_size != buffer->length) {
@@ -423,21 +495,20 @@ static B32 GltfAccessorParse(Arena* arena, JsonValue* value, GltfBuffer* buffers
     goto gltf_accessor_parse_exit;
   }
   BinStream s = BinStreamAssign(buffer->bytes, buffer->length);
-  for (U32 i = 0; i < result->count; i++) {
-    for (U32 j = 0; j < component_count; j++) {
-      switch (result->component_type) {
-        case GltfAccessorComponentType_S8:  { MODEL_TRY_PARSE(BinStreamPullS8(&s, &result->s8_arr[(i * component_count) + j]));     } break;
-        case GltfAccessorComponentType_U8:  { MODEL_TRY_PARSE(BinStreamPullU8(&s, &result->u8_arr[(i * component_count) + j]));     } break;
-        case GltfAccessorComponentType_S16: { MODEL_TRY_PARSE(BinStreamPullS16LE(&s, &result->s16_arr[(i * component_count) + j])); } break;
-        case GltfAccessorComponentType_U16: { MODEL_TRY_PARSE(BinStreamPullU16LE(&s, &result->u16_arr[(i * component_count) + j])); } break;
-        case GltfAccessorComponentType_U32: { MODEL_TRY_PARSE(BinStreamPullU32LE(&s, &result->u32_arr[(i * component_count) + j])); } break;
-        case GltfAccessorComponentType_F32: {
-          U32 component;
-          MODEL_TRY_PARSE(BinStreamPullU32LE(&s, &component));
-          result->f32_arr[(i * component_count) + j] = *(F32*)&component;
-        } break;
-        default: UNREACHABLE();
-      }
+  // TODO: better way to do this?
+  for (U32 i = 0; i < result->count * component_count; i++) {
+    switch (result->component_type) {
+      case GltfAccessorComponentType_S8:  { MODEL_TRY_PARSE(BinStreamPullS8(&s, &result->s8_arr[i]));     } break;
+      case GltfAccessorComponentType_U8:  { MODEL_TRY_PARSE(BinStreamPullU8(&s, &result->u8_arr[i]));     } break;
+      case GltfAccessorComponentType_S16: { MODEL_TRY_PARSE(BinStreamPullS16LE(&s, &result->s16_arr[i])); } break;
+      case GltfAccessorComponentType_U16: { MODEL_TRY_PARSE(BinStreamPullU16LE(&s, &result->u16_arr[i])); } break;
+      case GltfAccessorComponentType_U32: { MODEL_TRY_PARSE(BinStreamPullU32LE(&s, &result->u32_arr[i])); } break;
+      case GltfAccessorComponentType_F32: {
+        U32 component;
+        MODEL_TRY_PARSE(BinStreamPullU32LE(&s, &component));
+        result->f32_arr[i] = *(F32*)&component;
+      } break;
+      default: UNREACHABLE();
     }
   }
 
@@ -448,129 +519,166 @@ gltf_accessor_parse_exit:
 }
 #undef MODEL_TRY_PARSE
 
-static B32 GltfMeshPrimitivesParse(JsonValue* value, GltfAccessor* accessors, GltfMeshPrimitives* result) {
-  MEMORY_ZERO_STRUCT(result);
-  JsonObject obj, attributes;
-  if (!JsonValueGetObject(value, &obj)) {
-    LOG_ERROR("[MESH] GLTF unable to parse 'primitives' object.");
-    return false;
-  }
-  if (!JsonObjectGetObject(obj, Str8Lit("attributes"), &attributes)) {
-    LOG_ERROR("[MESH] GLTF mesh missing required 'attributes'.");
-    return false;
-  }
-
-  F32 position, normal, texcoord, indices;
-  if (!JsonObjectGetNumber(attributes, Str8Lit("POSITION"), &position)) {
-    LOG_ERROR("[MESH] GLTF mesh missing required 'POSITION'.");
-    return false;
-  }
-  if (!JsonObjectGetNumber(attributes, Str8Lit("NORMAL"), &normal)) {
-    normal = -1;
-  }
-  if (!JsonObjectGetNumber(attributes, Str8Lit("TEXCOORD_0"), &texcoord)) {
-    texcoord = -1;
-  }
-  if (!JsonObjectGetNumber(obj, Str8Lit("indices"), &indices)) {
-    LOG_ERROR("[MESH] GLTF mesh missing required 'indices'.");
-    return false;
-  }
-
-  // TODO: move validations out of here?
-  if (!GltfAccessorGet(accessors, (U32) position, &result->position)) {
-    LOG_ERROR("[MESH] GLTF mesh unable to find 'position' accessor %d", (U32) position);
-    return false;
-  }
-  if (result->position->type != GltfAccessorType_V3) {
-    LOG_ERROR("[MESH] GLTF mesh 'position' unexpectedly not type V3.");
-    return false;
-  }
-  if (result->position->component_type != GltfAccessorComponentType_F32) {
-    LOG_ERROR("[MESH] GLTF mesh 'position' component unexpectedly not type F32.");
-    return false;
-  }
-  U32 expected_vertices_count = result->position->count;
-
-  if (!GltfAccessorGet(accessors, (U32) indices, &result->indices)) {
-    LOG_ERROR("[MESH] GLTF mesh unable to find 'indices' accessor %d", (U32) indices);
-    return false;
-  }
-  if (result->indices->type != GltfAccessorType_Scalar) {
-    LOG_ERROR("[MESH] GLTF mesh 'indices' unexpectedly not type V3.");
-    return false;
-  }
-
-  if (normal >= 0) {
-    if (!GltfAccessorGet(accessors, (U32) normal, &result->normal)) {
-      LOG_ERROR("[MESH] GLTF mesh unable to find 'normal' accessor %d", (U32) normal);
-      return false;
-    }
-    if (result->normal->type != GltfAccessorType_V3) {
-      LOG_ERROR("[MESH] GLTF mesh 'normal' unexpectedly not type V3.");
-      return false;
-    }
-    if (result->normal->component_type != GltfAccessorComponentType_F32) {
-      LOG_ERROR("[MESH] GLTF mesh 'normal' component unexpectedly not type F32.");
-      return false;
-    }
-    if (result->normal->count != expected_vertices_count) {
-      LOG_ERROR("[MESH] GLTF mesh 'normal' does not have the expected size %d", (U32) expected_vertices_count);
-      return false;
-    }
-  }
-
-  if (texcoord >= 0) {
-    if (!GltfAccessorGet(accessors, (U32) texcoord, &result->texcoord)) {
-      LOG_ERROR("[MESH] GLTF mesh unable to find 'texcoord' accessor %d", (U32) texcoord);
-      return false;
-    }
-    if (result->texcoord->type != GltfAccessorType_V2) {
-      LOG_ERROR("[MESH] GLTF mesh 'indices' unexpectedly not type V2.");
-      return false;
-    }
-    if (result->texcoord->component_type != GltfAccessorComponentType_F32) {
-      LOG_ERROR("[MESH] GLTF mesh 'texcoord' component unexpectedly not type F32.");
-      return false;
-    }
-    if (result->texcoord->count != expected_vertices_count) {
-      LOG_ERROR("[MESH] GLTF mesh 'texcoord' does not have the expected size %d", (U32) expected_vertices_count);
-      return false;
-    }
-  }
-
-  return true;
-}
-
-static B32 GltfMeshParse(Arena* arena, JsonValue* value, GltfAccessor* accessors, GltfMesh* result) {
-  MEMORY_ZERO_STRUCT(result);
+static B32 GltfMeshParse(Arena* arena, JsonValue* value, GltfAccessor* accessors, GltfBuffer* materials, Mesh** result) {
+  *result = NULL;
   B32 success = false;
   U64 arena_base = ArenaPos(arena);
   JsonObject obj;
   if (!JsonValueGetObject(value, &obj)) {
     LOG_ERROR("[MESH] GLTF mesh unable to parse 'mesh' object.");
-    goto json_value_get_gltf_mesh_exit;
+    goto gltf_mesh_parse_exit;
   }
-  JsonObjectGetString(obj, Str8Lit("name"), &result->name);
-  JsonArray primitives;
-  if (!JsonObjectGetArray(obj, Str8Lit("primitives"), &primitives)) {
+  JsonArray json_primitives_arr;
+  if (!JsonObjectGetArray(obj, Str8Lit("primitives"), &json_primitives_arr)) {
     LOG_ERROR("[MESH] GLTF mesh missing required 'primitives'.");
-    goto json_value_get_gltf_mesh_exit;
+    goto gltf_mesh_parse_exit;
   }
-  JsonArrayNode* primitives_arr = primitives.head;
-  JsonValue* primitives_value   = NULL;
-  while ((primitives_value = JsonArrayNext(&primitives_arr)) != NULL) {
-    GltfMeshPrimitives* primitives = ARENA_PUSH_STRUCT(arena, GltfMeshPrimitives);
-    if (!GltfMeshPrimitivesParse(primitives_value, accessors, primitives)) { goto json_value_get_gltf_mesh_exit; }
-    SLL_QUEUE_PUSH_BACK(result->head, result->tail, primitives, next);
+  JsonArrayNode* json_primitives_it = json_primitives_arr.head;
+  JsonValue* json_primitives_value  = NULL;
+  while ((json_primitives_value = JsonArrayNext(&json_primitives_it)) != NULL) {
+    JsonObject json_primitives_obj, json_attributes;
+    if (!JsonValueGetObject(json_primitives_value, &json_primitives_obj)) {
+      LOG_ERROR("[MESH] Unable to parse 'primitives' object.");
+      goto gltf_mesh_parse_exit;
+    }
+    if (!JsonObjectGetObject(json_primitives_obj, Str8Lit("attributes"), &json_attributes)) {
+      LOG_ERROR("[MESH] GLTF mesh missing required 'attributes'.");
+      goto gltf_mesh_parse_exit;
+    }
+
+    Mesh* mesh = ARENA_PUSH_STRUCT(arena, Mesh);
+    MEMORY_ZERO_STRUCT(mesh);
+    if (*result != NULL) { mesh->next = *result; }
+    *result = mesh;
+
+    // NOTE: indices
+    F32 indices_idx;
+    if (!JsonObjectGetNumber(json_primitives_obj, Str8Lit("indices"), &indices_idx)) {
+      LOG_ERROR("[MESH] GLTF mesh missing required 'indices'.");
+      goto gltf_mesh_parse_exit;
+    }
+    GltfAccessor* indices;
+    if (!GltfAccessorGet(accessors, (U32) indices_idx, &indices)) {
+      LOG_ERROR("[MESH] GLTF mesh unable to find 'indices' accessor %d", (U32) indices_idx);
+      goto gltf_mesh_parse_exit;
+    }
+    if (indices->type != GltfAccessorType_Scalar) {
+      LOG_ERROR("[MESH] GLTF mesh 'indices' unexpectedly not type V3.");
+      goto gltf_mesh_parse_exit;
+    }
+    mesh->indices_size = indices->count;
+    mesh->indices = ARENA_PUSH_ARRAY(arena, U32, indices->count);
+    // TODO: better way to do this?
+    for (U32 i = 0; i < mesh->indices_size; i++) {
+      switch (indices->component_type) {
+        case GltfAccessorComponentType_S8:  { mesh->indices[i] = (U32) indices->s8_arr[i];  } break;
+        case GltfAccessorComponentType_U8:  { mesh->indices[i] = (U32) indices->u8_arr[i];  } break;
+        case GltfAccessorComponentType_S16: { mesh->indices[i] = (U32) indices->s16_arr[i]; } break;
+        case GltfAccessorComponentType_U16: { mesh->indices[i] = (U32) indices->u16_arr[i]; } break;
+        case GltfAccessorComponentType_U32: { mesh->indices[i] = (U32) indices->u32_arr[i]; } break;
+        default: {
+          LOG_ERROR("[MESH] GLTF unexpected mesh indices attribute observed.");
+          goto gltf_mesh_parse_exit;
+        } break;
+      }
+    }
+
+    // NOTE: positions
+    F32 position_idx;
+    if (!JsonObjectGetNumber(json_attributes, Str8Lit("POSITION"), &position_idx)) {
+      LOG_ERROR("[MESH] GLTF mesh missing required 'POSITION'.");
+      goto gltf_mesh_parse_exit;
+    }
+    GltfAccessor* position;
+    if (!GltfAccessorGet(accessors, (U32) position_idx, &position)) {
+      LOG_ERROR("[MESH] GLTF mesh unable to find 'position' accessor %d", (U32) position_idx);
+      goto gltf_mesh_parse_exit;
+    }
+    if (position->type != GltfAccessorType_V3) {
+      LOG_ERROR("[MESH] GLTF mesh 'position' unexpectedly not type V3.");
+      goto gltf_mesh_parse_exit;
+    }
+    if (position->component_type != GltfAccessorComponentType_F32) {
+      LOG_ERROR("[MESH] GLTF mesh 'position' component unexpectedly not type F32.");
+      goto gltf_mesh_parse_exit;
+    }
+    mesh->vertices_size = position->count;
+    mesh->points = ARENA_PUSH_ARRAY(arena, V3, position->count);
+    MEMORY_MOVE(mesh->points, position->f32_arr, sizeof(F32) * 3 * position->count);
+
+    // NOTE: normals
+    F32 normal_idx;
+    if (JsonObjectGetNumber(json_attributes, Str8Lit("NORMAL"), &normal_idx)) {
+      GltfAccessor* normal;
+      if (!GltfAccessorGet(accessors, (U32) normal_idx, &normal)) {
+        LOG_ERROR("[MESH] GLTF mesh unable to find 'normal' accessor %d", (U32) normal_idx);
+        goto gltf_mesh_parse_exit;
+      }
+      if (normal->type != GltfAccessorType_V3) {
+        LOG_ERROR("[MESH] GLTF mesh 'normal' unexpectedly not type V3.");
+        goto gltf_mesh_parse_exit;
+      }
+      if (normal->component_type != GltfAccessorComponentType_F32) {
+        LOG_ERROR("[MESH] GLTF mesh 'normal' component unexpectedly not type F32.");
+        goto gltf_mesh_parse_exit;
+      }
+      if (normal->count != position->count) {
+        LOG_ERROR("[MESH] GLTF mesh 'normal' does not have the expected size: %d (was: %d)", position->count, normal->count);
+        goto gltf_mesh_parse_exit;
+      }
+      mesh->normals = ARENA_PUSH_ARRAY(arena, V3, normal->count);
+      MEMORY_MOVE(mesh->normals, normal->f32_arr, sizeof(F32) * 3 * normal->count);
+    }
+
+    // NOTE: UVs
+    F32 texcoord_idx;
+    if (JsonObjectGetNumber(json_attributes, Str8Lit("TEXCOORD_0"), &texcoord_idx)) {
+      GltfAccessor* texcoord;
+      if (!GltfAccessorGet(accessors, (U32) texcoord_idx, &texcoord)) {
+        LOG_ERROR("[MESH] GLTF mesh unable to find 'texcoord' accessor %d", (U32) texcoord_idx);
+        goto gltf_mesh_parse_exit;
+      }
+      if (texcoord->type != GltfAccessorType_V2) {
+        LOG_ERROR("[MESH] GLTF mesh 'texcoord' component unexpectedly not type V2.");
+        goto gltf_mesh_parse_exit;
+      }
+      if (texcoord->component_type != GltfAccessorComponentType_F32) {
+        LOG_ERROR("[MESH] GLTF mesh 'texcoord' component unexpectedly not type F32.");
+        goto gltf_mesh_parse_exit;
+      }
+      if (texcoord->count != position->count) {
+        LOG_ERROR("[MESH] GLTF mesh 'texcoord' does not have the expected size: %d (was: %d)", position->count, texcoord->count);
+        goto gltf_mesh_parse_exit;
+      }
+      mesh->uvs = ARENA_PUSH_ARRAY(arena, V2, texcoord->count);
+      MEMORY_MOVE(mesh->uvs, texcoord->f32_arr, sizeof(F32) * 2 * texcoord->count);
+      // NOTE: correct image y coordinate (since cdefault coords are low -> high, not high -> low)
+      for (U32 i = 0; i < texcoord->count; i++) { mesh->uvs[i].v = 1 - mesh->uvs[i].v; }
+    }
+
+    // NOTE: texture
+    F32 material_idx;
+    if (JsonObjectGetNumber(json_primitives_obj, Str8Lit("material"), &material_idx)) {
+      GltfBuffer* material;
+      if (!GltfBufferGet(materials, (U32) material_idx, &material)) {
+        LOG_ERROR("[MESH] GLTF mesh unable to find 'material' %d", (U32) material_idx);
+        goto gltf_mesh_parse_exit;
+      }
+      if (!ImageLoad(arena, &mesh->texture, ImageFormat_RGBA, material->bytes, material->length)) {
+        LOG_ERROR("[MESH] GLTF failed to load texture.");
+        goto gltf_mesh_parse_exit;
+      }
+    }
   }
+
   success = true;
-json_value_get_gltf_mesh_exit:
+gltf_mesh_parse_exit:
   if (!success) { ArenaPopTo(arena, arena_base); }
   return success;
 }
 
 #define MODEL_TRY_PARSE(eval) if (!eval) { LOG_ERROR("[MESH] Ran out of characters in mesh GLTF file."); goto mesh_load_glb_exit; }
-static B32 ModelLoadGlb(Arena* arena, Model* model, U8* file_data, U32 file_data_size) {
+B32 ModelLoadGlb(Arena* arena, Model* model, U8* file_data, U32 file_data_size) {
   MEMORY_ZERO_STRUCT(model);
   U64 arena_base = ArenaPos(arena);
   Arena* temp_arena = ArenaAllocate();
@@ -638,12 +746,12 @@ static B32 ModelLoadGlb(Arena* arena, Model* model, U8* file_data, U32 file_data
     goto mesh_load_glb_exit;
   }
   JsonArrayNode* json_buffers_it = json_buffers.head;
-  JsonValue* json_buffer_view    = NULL;
-  GltfBuffer* buffers            = NULL;
-  GltfBuffer* buffers_tail       = NULL;
-  while ((json_buffer_view = JsonArrayNext(&json_buffers_it)) != NULL) {
+  JsonValue* json_buffer   = NULL;
+  GltfBuffer* buffers      = NULL;
+  GltfBuffer* buffers_tail = NULL;
+  while ((json_buffer = JsonArrayNext(&json_buffers_it)) != NULL) {
     GltfBuffer* buffer = ARENA_PUSH_STRUCT(temp_arena, GltfBuffer);
-    if (!GltfBufferParse(json_buffer_view, bin, buffer)) { goto mesh_load_glb_exit; }
+    if (!GltfBufferParse(json_buffer, bin, buffer)) { goto mesh_load_glb_exit; }
     SLL_QUEUE_PUSH_BACK(buffers, buffers_tail, buffer, next);
   }
 
@@ -662,6 +770,45 @@ static B32 ModelLoadGlb(Arena* arena, Model* model, U8* file_data, U32 file_data
     SLL_QUEUE_PUSH_BACK(accessors, accessors_tail, accessor, next);
   }
 
+  JsonArray json_images;
+  GltfBuffer* images = NULL;
+  if (JsonObjectGetArray(json, Str8Lit("images"), &json_images)) {
+    JsonArrayNode* json_images_it = json_images.head;
+    JsonValue* json_image   = NULL;
+    GltfBuffer* images_tail = NULL;
+    while ((json_image = JsonArrayNext(&json_images_it)) != NULL) {
+      GltfBuffer* image = ARENA_PUSH_STRUCT(temp_arena, GltfBuffer);
+      if (!GltfImageParse(json_image, buffers, image)) { goto mesh_load_glb_exit; }
+      SLL_QUEUE_PUSH_BACK(images, images_tail, image, next);
+    }
+  }
+
+  JsonArray json_textures;
+  GltfBuffer* textures = NULL;
+  if (JsonObjectGetArray(json, Str8Lit("textures"), &json_textures)) {
+    JsonArrayNode* json_textures_it = json_textures.head;
+    JsonValue* json_texture   = NULL;
+    GltfBuffer* textures_tail = NULL;
+    while ((json_texture = JsonArrayNext(&json_textures_it)) != NULL) {
+      GltfBuffer* texture = ARENA_PUSH_STRUCT(temp_arena, GltfBuffer);
+      if (!GltfTextureParse(json_texture, images, texture)) { goto mesh_load_glb_exit; }
+      SLL_QUEUE_PUSH_BACK(textures, textures_tail, texture, next);
+    }
+  }
+
+  JsonArray json_materials;
+  GltfBuffer* materials = NULL;
+  if (JsonObjectGetArray(json, Str8Lit("materials"), &json_materials)) {
+    JsonArrayNode* json_materials_it = json_materials.head;
+    JsonValue* json_material   = NULL;
+    GltfBuffer* materials_tail = NULL;
+    while ((json_material = JsonArrayNext(&json_materials_it)) != NULL) {
+      GltfBuffer* material = ARENA_PUSH_STRUCT(temp_arena, GltfBuffer);
+      if (!GltfMaterialParse(json_material, textures, material)) { goto mesh_load_glb_exit; }
+      SLL_QUEUE_PUSH_BACK(materials, materials_tail, material, next);
+    }
+  }
+
   JsonArray json_meshes;
   if (!JsonObjectGetArray(json, Str8Lit("meshes"), &json_meshes)) {
     LOG_ERROR("[MESH] GLTF missing required attribute 'meshes'.");
@@ -669,47 +816,10 @@ static B32 ModelLoadGlb(Arena* arena, Model* model, U8* file_data, U32 file_data
   }
   JsonArrayNode* json_meshes_it = json_meshes.head;
   JsonValue* json_mesh          = NULL;
-  GltfMesh* meshes              = NULL;
   while ((json_mesh = JsonArrayNext(&json_meshes_it)) != NULL) {
-    GltfMesh* mesh = ARENA_PUSH_STRUCT(temp_arena, GltfMesh);
-    if (!GltfMeshParse(temp_arena, json_mesh, accessors, mesh)) { goto mesh_load_glb_exit; }
-    SLL_STACK_PUSH(meshes, mesh, next);
-  }
-
-  for (GltfMesh* gltf_mesh = meshes; gltf_mesh != NULL; gltf_mesh = gltf_mesh->next) {
-    for (GltfMeshPrimitives* primitives = gltf_mesh->head; primitives != NULL; primitives = primitives->next) {
-      Mesh* mesh = ARENA_PUSH_STRUCT(arena, Mesh);
-      MEMORY_ZERO_STRUCT(mesh);
-      SLL_STACK_PUSH(model->meshes, mesh, next);
-
-      mesh->vertices_size = primitives->position->count;
-      mesh->points = ARENA_PUSH_ARRAY(arena, V3, mesh->vertices_size);
-      MEMORY_MOVE(mesh->points, primitives->position->f32_arr, sizeof(F32) * 3 * mesh->vertices_size);
-      if (primitives->normal != NULL) {
-        mesh->normals = ARENA_PUSH_ARRAY(arena, V3, mesh->vertices_size);
-        MEMORY_MOVE(mesh->normals, primitives->normal->f32_arr, sizeof(F32) * 3 * mesh->vertices_size);
-      }
-      if (primitives->texcoord != NULL) {
-        mesh->uvs = ARENA_PUSH_ARRAY(arena, V2, mesh->vertices_size);
-        MEMORY_MOVE(mesh->uvs, primitives->texcoord->f32_arr, sizeof(F32) * 2 * mesh->vertices_size);
-      }
-
-      mesh->indices_size = primitives->indices->count;
-      mesh->indices = ARENA_PUSH_ARRAY(arena, U32, primitives->indices->count);
-      for (U32 i = 0; i < mesh->indices_size; i++) {
-        switch (primitives->indices->component_type) {
-          case GltfAccessorComponentType_S8:  { mesh->indices[i] = (U32) primitives->indices->s8_arr[i];  } break;
-          case GltfAccessorComponentType_U8:  { mesh->indices[i] = (U32) primitives->indices->u8_arr[i];  } break;
-          case GltfAccessorComponentType_S16: { mesh->indices[i] = (U32) primitives->indices->s16_arr[i]; } break;
-          case GltfAccessorComponentType_U16: { mesh->indices[i] = (U32) primitives->indices->u16_arr[i]; } break;
-          case GltfAccessorComponentType_U32: { mesh->indices[i] = (U32) primitives->indices->u32_arr[i]; } break;
-          default: {
-            LOG_ERROR("[MESH] GLTF unexpected mesh indices attribute observed.");
-            goto mesh_load_glb_exit;
-          } break;
-        }
-      }
-    }
+    Mesh* mesh;
+    if (!GltfMeshParse(arena, json_mesh, accessors, materials, &mesh)) { goto mesh_load_glb_exit; }
+    SLL_STACK_PUSH(model->meshes, mesh, next);
   }
 
   success = true;
@@ -721,8 +831,8 @@ mesh_load_glb_exit:
 #undef MODEL_TRY_PARSE
 
 B32 ModelLoad(Arena* arena, Model* model, U8* file_data, U32 file_data_size) {
-  if (ModelLoadObj(arena, model, file_data, file_data_size)) { return true; }
   if (ModelLoadGlb(arena, model, file_data, file_data_size)) { return true; }
+  if (ModelLoadObj(arena, model, file_data, file_data_size)) { return true; }
   return false;
 }
 

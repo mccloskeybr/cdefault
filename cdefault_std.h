@@ -209,6 +209,7 @@ U32 U32CountBits(U32 x); // E.g. 1111 -> 4.
 #define STATIC_ASSERT(exp, msg) static_assert((exp), msg)
 #define UNIMPLEMENTED() ASSERT(false)
 #define UNREACHABLE() DEBUG_ASSERT(false)
+#define UNTESTED() ASSERT(false)
 #define TODO() ASSERT(false)
 
 ///////////////////////////////////////////////////////////////////////////////

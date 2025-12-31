@@ -47,12 +47,11 @@ int main(void) {
   Stopwatch frame_stopwatch;
   StopwatchInit(&frame_stopwatch);
 
-  U32 a_mesh_handle, b_mesh_handle;
   Model a_obj, b_obj;
   DEBUG_ASSERT(ModelLoadFile(arena, &a_obj, Str8Lit("../data/sphere.obj")));
-  RendererRegisterModel(&a_mesh_handle, &a_obj);
+  U32 a_mesh_handle = RendererRegisterModel(&a_obj);
   DEBUG_ASSERT(ModelLoadFile(arena, &b_obj, Str8Lit("../data/cube.obj")));
-  RendererRegisterModel(&b_mesh_handle, &b_obj);
+  U32 b_mesh_handle = RendererRegisterModel(&b_obj);
   DEBUG_ASSERT(a_obj.meshes->next == NULL);
   DEBUG_ASSERT(b_obj.meshes->next == NULL);
 

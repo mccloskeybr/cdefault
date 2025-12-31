@@ -30,8 +30,7 @@ int main(void) {
   Image font_atlas_image;
   DEBUG_ASSERT(FontAtlasBakeSdfFromFile(atlas_arena, bmp_arena, &font_atlas, &font_atlas_image, 0, 0, 6.0f, FontCharSetLatin(), Str8Lit("c:/windows/fonts/verdana.ttf")));
 
-  U32 font_handle;
-  RendererRegisterImage(&font_handle, &font_atlas_image);
+  U32 font_handle = RendererRegisterImage(&font_atlas_image);
   ArenaRelease(bmp_arena);
 
   B32 test_b32 = false;
