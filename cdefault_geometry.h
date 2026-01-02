@@ -2469,12 +2469,12 @@ void ConvexHull3GetEnclosingAabb3(V3* hull_points, U32 hull_points_size, V3* aab
   V3 to_pt;
   for (U32 i = 0; i < hull_points_size; i++) {
     V3SubV3(&to_pt, &hull_points[i], aabb_center);
-    if (to_pt.x < x_min) { x_min = to_pt.x; }
-    if (to_pt.y < y_min) { x_min = to_pt.y; }
-    if (to_pt.z < z_min) { x_min = to_pt.z; }
-    if (to_pt.x > x_max) { x_max = to_pt.x; }
-    if (to_pt.y > y_max) { y_max = to_pt.y; }
-    if (to_pt.z > z_max) { z_max = to_pt.z; }
+    x_min = MIN(x_min, to_pt.x);
+    y_min = MIN(y_min, to_pt.y);
+    z_min = MIN(z_min, to_pt.z);
+    x_max = MAX(x_max, to_pt.x);
+    y_max = MAX(y_max, to_pt.y);
+    z_max = MAX(z_max, to_pt.z);
   }
   aabb_size->x = x_max - x_min;
   aabb_size->y = y_max - y_min;

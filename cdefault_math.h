@@ -98,6 +98,8 @@ B32 F64IsInteger(F64 x);
 
 #define V2_ZEROES (V2) { 0,  0 }
 #define V2_ONES   (V2) { 1,  1 }
+#define V2_MAX    (V2) { F32_MAX, F32_MAX }
+#define V2_MAX    (V2) { F32_MAX, F32_MAX }
 
 #define V2_X_POS  (V2) {+1,  0}
 #define V2_Y_POS  (V2) { 0, +1}
@@ -136,6 +138,8 @@ V2* V2Lerp(V2* dest, V2* x, V2* y, F32 t);
 
 #define V3_ZEROES (V3) { 0,  0,  0}
 #define V3_ONES   (V3) { 1,  1,  1}
+#define V3_MIN    (V3) { F32_MIN, F32_MIN, F32_MIN }
+#define V3_MAX    (V3) { F32_MAX, F32_MAX, F32_MAX }
 #define V3_X_POS  (V3) {+1,  0,  0}
 #define V3_Y_POS  (V3) { 0, +1,  0}
 #define V3_Z_POS  (V3) { 0,  0, +1}
@@ -204,21 +208,25 @@ V3* V3RotateAroundAxis(V3* dest, V3* x, V3* axis, F32 angle_rad);
 ///////////////////////////////////////////////////////////////////////////////
 
 #define V4_QUAT_IDENT (V4) {0, 0, 0, 1}
-#define V4_X_POS (V4) {+1,  0,  0,  0}
-#define V4_Y_POS (V4) { 0, +1,  0,  0}
-#define V4_Z_POS (V4) { 0,  0, +1,  0}
-#define V4_W_POS (V4) { 0,  0,  0, +1}
-#define V4_X_NEG (V4) {-1,  0,  0,  0}
-#define V4_Y_NEG (V4) { 0, -1,  0,  0}
-#define V4_Z_NEG (V4) { 0,  0, -1,  0}
-#define V4_W_NEG (V4) { 0,  0,  0, -1}
+#define V4_ONES   (V4) { 1,  1,  1,  1}
+#define V4_ZEROES (V4) { 0,  0,  0,  0}
+#define V4_MIN    (V4) { F32_MIN, F32_MIN, F32_MIN, F32_MIN }
+#define V4_MAX    (V4) { F32_MAX, F32_MAX, F32_MAX, F32_MAX }
+#define V4_X_POS  (V4) {+1,  0,  0,  0}
+#define V4_Y_POS  (V4) { 0, +1,  0,  0}
+#define V4_Z_POS  (V4) { 0,  0, +1,  0}
+#define V4_W_POS  (V4) { 0,  0,  0, +1}
+#define V4_X_NEG  (V4) {-1,  0,  0,  0}
+#define V4_Y_NEG  (V4) { 0, -1,  0,  0}
+#define V4_Z_NEG  (V4) { 0,  0, -1,  0}
+#define V4_W_NEG  (V4) { 0,  0,  0, -1}
 
-#define V4_TRANS (V4) {0, 0, 0, 0}
-#define V4_BLACK (V4) {0, 0, 0, 1}
-#define V4_WHITE (V4) {1, 1, 1, 1}
-#define V4_RED   (V4) {1, 0, 0, 1}
-#define V4_GREEN (V4) {0, 1, 0, 1}
-#define V4_BLUE  (V4) {0, 0, 1, 1}
+#define V4_TRANS  (V4) {0, 0, 0, 0}
+#define V4_BLACK  (V4) {0, 0, 0, 1}
+#define V4_WHITE  (V4) {1, 1, 1, 1}
+#define V4_RED    (V4) {1, 0, 0, 1}
+#define V4_GREEN  (V4) {0, 1, 0, 1}
+#define V4_BLUE   (V4) {0, 0, 1, 1}
 
 V4  V4Assign(F32 x, F32 y, F32 z, F32 w);
 V4  V4Splat(F32 c);

@@ -8,8 +8,8 @@ set LIBS=ole32.lib user32.lib opengl32.lib gdi32.lib
 echo Compiling:
 REM cl %FLAGS% audio.c /Fobuild/audio.obj /Febin/audio.exe /link %LIBS%
 REM cl %FLAGS% render_shapes.c /Fobuild/render_shapes.obj /Febin/render_shapes.exe /link %LIBS%
-REM cl %FLAGS% render_image.c /Fobuild/render_image.obj /Febin/render_image.exe /link %LIBS%
-cl %FLAGS% render_model.c /Fobuild/render_model.obj /Febin/render_model.exe /link %LIBS%
+cl %FLAGS% render_image.c /Fobuild/render_image.obj /Febin/render_image.exe /link %LIBS%
+REM cl %FLAGS% render_model.c /Fobuild/render_model.obj /Febin/render_model.exe /link %LIBS%
 REM cl %FLAGS% render_font.c /Fobuild/render_font.obj /Febin/render_font.exe /link %LIBS%
 REM cl %FLAGS% render_ui.c /Fobuild/render_ui.obj /Febin/render_ui.exe /link %LIBS%
 REM cl %FLAGS% snake.c /Fobuild/snake.obj /Febin/snake.exe /link %LIBS%

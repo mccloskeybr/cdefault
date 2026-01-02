@@ -402,7 +402,6 @@ static B32 PngIdatStreamPullBits(PngIdatStream* s, U32 num_bits, U32* result) {
   while (s->buffer_size < num_bits) {
     U8 byte;
     while (!BinStreamPullU8(&s->chunks->s, &byte)) {
-      UNTESTED();
       if (s->chunks->next == NULL) { return false; }
       s->chunks = s->chunks->next;
     }
@@ -415,7 +414,7 @@ static B32 PngIdatStreamPullBits(PngIdatStream* s, U32 num_bits, U32* result) {
   return true;
 }
 
-static void PngIdatStreamFlush(PngIdatStream* s) {
+static void PngIdatStreamFlushByte(PngIdatStream* s) {
   U32 x = s->buffer_size % 8;
   s->buffer >>= x;
   s->buffer_size -= x;
@@ -631,7 +630,7 @@ B32 ImageLoadPng(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
 
       // NOTE: no compression
     if (btype == 0) {
-      PngIdatStreamFlush(&idat);
+      PngIdatStreamFlushByte(&idat);
       U32 len = 0, nlen = 0;
       IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, 16, &len));
       IMAGE_TRY_PARSE(PngIdatStreamPullBits(&idat, 16, &nlen));
@@ -931,6 +930,7 @@ void ImageConvert(Arena* arena, Image* to, Image* from, ImageFormat to_format) {
           b = r;
           a = 255;
         } break;
+        default: UNREACHABLE();
       }
 
       switch (to->format) {
@@ -948,6 +948,7 @@ void ImageConvert(Arena* arena, Image* to, Image* from, ImageFormat to_format) {
         case ImageFormat_R: {
           to->data[(((i * to->width) + j) * 1) + 0] = (r + g + b) / 3;
         } break;
+        default: UNREACHABLE();
       }
     }
   }
