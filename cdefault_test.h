@@ -34,7 +34,7 @@ void LogTestReport(); // NOTE: Prints the final test report to stdout. Must be c
 // NOTE: These must be called from test functions directly, to signify expectations / behavior on error.
 // NOTE: Failed expectations will exit the test immediately.
 #define PASS()                      return
-#define FAIL(...)                   EXPECT_BASE(false, __VA_ARGS__)
+#define FAIL(fmt, ...)              EXPECT_BASE(false, fmt, __VA_ARGS__)
 #define EXPECT_TRUE(result)         EXPECT_BASE(result, "Expected true, but got false: %s", #result)
 #define EXPECT_FALSE(result)        EXPECT_BASE(!(result), "Expected false, but got true: %s", #result)
 #define EXPECT_S8_EQ(a, b)          EXPECT_BASE((a) == (b), "Expected S8s equal, but got: %d, %d", (a), (b))
@@ -62,14 +62,14 @@ void LogTestReport(); // NOTE: Prints the final test report to stdout. Must be c
 #define EXPECT_V4_APPROX_EQ(a, b)   EXPECT_BASE(F32ApproxEq((a).x, (b).x) && F32ApproxEq((a).y, (b).y) && F32ApproxEq((a).z, (b).z) && F32ApproxEq((a).w, (b).w), "Expected V4s approximately equal, but got: { %.5f, %.5f, %.5f, %.5f }, { %.5f, %.5f, %.5f, %.5f }", (a).x, (a).y, (a).z, (a).w, (b).x, (b).y, (b).z, (b).w)
 
 // NOTE: Custom expectations can use EXPECT_BASE as a foundation.
-#define EXPECT_BASE(result, ...)                            \
-  if (!(result)) {                                          \
-    TestContext* _c = &_cdef_test_context;                  \
-    _c->failed = true;                                      \
-    _c->error_message = Str8Format(_c->arena, __VA_ARGS__); \
-    _c->file = (U8*) __FILE__;                              \
-    _c->line = __LINE__;                                    \
-    return;                                                 \
+#define EXPECT_BASE(result, fmt, ...)                            \
+  if (!(result)) {                                               \
+    TestContext* _c = &_cdef_test_context;                       \
+    _c->failed = true;                                           \
+    _c->error_message = Str8Format(_c->arena, fmt, __VA_ARGS__); \
+    _c->file = (U8*) __FILE__;                                   \
+    _c->line = __LINE__;                                         \
+    return;                                                      \
   }
 
 void _RunTest(String8 test_file, String8 test_name, Test_Fn* test_fn);

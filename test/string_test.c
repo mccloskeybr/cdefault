@@ -233,8 +233,44 @@ void Str8ConcatTest(void) {
 
 void Str8FormatTest(void) {
   Arena* arena = ArenaAllocate();
-  String8 str = Str8Format(arena, "hello %s %d", "world", 100);
-  String8 expected = Str8Lit("hello world 100");
+  String8 str, expected;
+
+  str = Str8Format(arena, "hello%c%s", ' ', "world");
+  expected = Str8Lit("hello world");
+  EXPECT_STR8_EQ(str, expected);
+
+  String8 world = Str8Lit("world");
+  str = Str8Format(arena, "hello %.*s %.3s", world.size, world.str, "world");
+  expected = Str8Lit("hello world wor");
+  EXPECT_STR8_EQ(str, expected);
+
+  str = Str8Format(arena, "hello %S", Str8Lit("world"));
+  expected = Str8Lit("hello world");
+  EXPECT_STR8_EQ(str, expected);
+
+  str = Str8Format(arena, "%d %i %d %i", -5, -1, 0, 12345);
+  expected = Str8Lit("-5 -1 0 12345");
+  EXPECT_STR8_EQ(str, expected);
+
+  str = Str8Format(arena, "%x %X %#x %#X", 255, 255, 255, 255);
+  expected = Str8Lit("ff FF 0xff 0XFF");
+  EXPECT_STR8_EQ(str, expected);
+
+  str = Str8Format(arena, "%.2f %+.2f", 0.567f, 0.567f);
+  expected = Str8Lit("0.56 +0.56");
+  EXPECT_STR8_EQ(str, expected);
+
+  str = Str8Format(arena, "%07.2f %-7.2f", 0.567f, 0.567f);
+  expected = Str8Lit("0000.56 0.56   ");
+  EXPECT_STR8_EQ(str, expected);
+
+  str = Str8Format(arena, "%.2f %#.2f", 0.0f, 0.0f);
+  expected = Str8Lit("0 0.00");
+  EXPECT_STR8_EQ(str, expected);
+
+  V4 test_v4 = V4Assign(1.11f, 2.22f, 3.33f, 4.44f);
+  str = Str8Format(arena, "%.1V4", test_v4);
+  expected = Str8Lit("{ 1.1, 2.2, 3.3, 4.4 }");
   EXPECT_STR8_EQ(str, expected);
 }
 

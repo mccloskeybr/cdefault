@@ -755,9 +755,9 @@ B32     Str8Eq(String8 a, String8 b);
 S32     Str8Find(String8 string, S32 start_pos, String8 needle); // NOTE: Returns -1 on failure.
 S32     Str8FindReverse(String8 string, S32 reverse_start_pos, String8 needle); // NOTE: Returns -1 on failure.
 String8 Str8Concat(Arena* arena, String8 a, String8 b);
-String8 Str8FormatV(Arena* arena, U8* fmt, va_list args);
-String8 _Str8Format(Arena* arena, U8* fmt, ...);
-#define Str8Format(a, fmt, ...) _Str8Format(a, (U8*) fmt, ##__VA_ARGS__)
+String8 Str8FormatV(Arena* arena, String8 fmt, va_list args); // NOTE: can print String8s using the S modifier, V2-V4 using V2, V3, V4.
+String8 _Str8Format(Arena* arena, String8 fmt, ...);
+#define Str8Format(a, fmt, ...) _Str8Format(a, Str8Lit(fmt), ##__VA_ARGS__)
 
 U32     Str8ListSize(String8List* list);
 void    Str8ListPrepend(Arena* arena, String8List* list, String8 string);
@@ -2052,23 +2052,436 @@ String8 Str8Concat(Arena* arena, String8 a, String8 b) {
   return result;
 }
 
-String8 Str8FormatV(Arena* arena, U8* fmt, va_list args) {
-  va_list args_copy;
-  va_copy(args_copy, args);
-  U32 size = vsnprintf(NULL, 0, (const char* const) fmt, args_copy) + 1;
-  va_end(args_copy);
-  String8 result;
-  MEMORY_ZERO_STRUCT(&result);
-  result.size = size - 1;
-  result.str = ARENA_PUSH_ARRAY(arena, U8, size);
-  va_copy(args_copy, args);
-  vsnprintf((char* const) result.str, size, (char* const) fmt, args_copy);
-  va_end(args_copy);
-  ArenaPop(arena, 1); // NOTE: null terminator.
+// NOTE: used to progressively allocate whole chunks of data for the final formatted string,
+// instead of some other scheme like having a separate sizing pass. this works because, during
+// Str8Format, it is assumed that the fn has exclusive access to the arena. therefore, any excess
+// allocations can be popped off at the end (STR8_FORMAT_STREAM_SIZE - stream.pos extra U8s)
+#define STR8_FORMAT_STREAM_SIZE 512
+typedef struct Str8FmtStream Str8FmtStream;
+struct Str8FmtStream {
+  Arena* arena;
+  String8 str;
+  U8* data;
+  U32 pos;
+};
+
+// NOTE: represents a temporary / working buffer that is pushed into the final string separately.
+// (necessary to adhere to e.g. width / padding rules on the final substring)
+typedef struct Str8FmtBuffer Str8FmtBuffer;
+struct Str8FmtBuffer {
+  U8* buffer;
+  U32 buffer_size;
+  U32 pos;
+};
+
+typedef enum Str8FmtFlags Str8FmtFlags;
+enum Str8FmtFlags {
+  Str8FmtFlags_LeftJustify        = BIT(0),
+  Str8FmtFlags_PadZeroes          = BIT(1),
+  Str8FmtFlags_SignPrintPlus      = BIT(2),
+  Str8FmtFlags_SignPrintEmpty     = BIT(3),
+  Str8FmtFlags_PrintBase          = BIT(4),
+  Str8FmtFlags_PrintDecimal       = BIT(5),
+  Str8FmtFlags_WideInt            = BIT(6),
+  Str8FmtFlags_WidthSpecified     = BIT(7),
+  Str8FmtFlags_PrecisionSpecified = BIT(8),
+};
+
+typedef enum Str8FmtBase Str8FmtBase;
+enum Str8FmtBase {
+  Str8FmtBase_Octal,
+  Str8FmtBase_Decimal,
+  Str8FmtBase_HexLower,
+  Str8FmtBase_HexUpper,
+};
+
+static U8 _cdef_oct_str[]       = "01234567";
+static U8 _cdef_dec_str[]       = "0123456789";
+static U8 _cdef_hex_lower_str[] = "0123456789abcdef";
+static U8 _cdef_hex_upper_str[] = "0123456789ABCDEF";
+
+static Str8FmtStream Str8FmtStreamAssign(Arena* arena) {
+  Str8FmtStream result;
+  result.arena    = arena;
+  result.str.str  = ARENA_PUSH_ARRAY(arena, U8, STR8_FORMAT_STREAM_SIZE);
+  result.str.size = 0;
+  result.data     = result.str.str;
+  result.pos      = 0;
   return result;
 }
 
-String8 _Str8Format(Arena* arena, U8* fmt, ...) {
+static void Str8FmtStreamPushChar(Str8FmtStream* stream, U8 c) {
+  if (stream->pos == STR8_FORMAT_STREAM_SIZE) {
+    stream->data = ARENA_PUSH_ARRAY(stream->arena, U8, STR8_FORMAT_STREAM_SIZE);
+    stream->pos  = 0;
+  }
+  stream->data[stream->pos] = c;
+  stream->pos      += 1;
+  stream->str.size += 1;
+}
+
+static Str8FmtBuffer Str8FmtBufferAssign(U8* buffer, U32 buffer_size, U32 pos) {
+  Str8FmtBuffer result;
+  result.buffer      = buffer;
+  result.buffer_size = buffer_size;
+  result.pos         = pos;
+  return result;
+}
+
+static void Str8FmtBufferPushChar(Str8FmtBuffer* buffer, U8 c) {
+  DEBUG_ASSERT(buffer->pos + 1 <= buffer->buffer_size);
+  buffer->buffer[buffer->pos] = c;
+  buffer->pos++;
+}
+
+static void Str8FmtBufferPushStr8(Str8FmtBuffer* buffer, String8 s) {
+  for (S32 i = 0; i < s.size; i++) { Str8FmtBufferPushChar(buffer, s.str[i]); }
+}
+
+static void Str8FmtBufferPushU64Impl(Str8FmtBuffer* buffer, U64 value, Str8FmtBase base, U32 flags) {
+  U32 base_lit;
+  U32 base_str_size;
+  U8* base_str = NULL;
+  switch (base) {
+    case Str8FmtBase_Octal: {
+      base_lit      = 8;
+      base_str      = _cdef_oct_str;
+      base_str_size = STATIC_ARRAY_SIZE(_cdef_oct_str);
+    } break;
+    case Str8FmtBase_Decimal: {
+      base_lit      = 10;
+      base_str      = _cdef_dec_str;
+      base_str_size = STATIC_ARRAY_SIZE(_cdef_dec_str);
+    } break;
+    case Str8FmtBase_HexLower: {
+      base_lit      = 16;
+      base_str      = _cdef_hex_lower_str;
+      base_str_size = STATIC_ARRAY_SIZE(_cdef_hex_lower_str);
+    } break;
+    case Str8FmtBase_HexUpper: {
+      base_lit      = 16;
+      base_str      = _cdef_hex_upper_str;
+      base_str_size = STATIC_ARRAY_SIZE(_cdef_hex_upper_str);
+    } break;
+    default: UNREACHABLE();
+  }
+  if ((flags & Str8FmtFlags_PrintBase) && value != 0) {
+    switch (base) {
+      case Str8FmtBase_Octal:    { Str8FmtBufferPushStr8(buffer, Str8Lit("0"));  } break;
+      case Str8FmtBase_HexLower: { Str8FmtBufferPushStr8(buffer, Str8Lit("0x")); } break;
+      case Str8FmtBase_HexUpper: { Str8FmtBufferPushStr8(buffer, Str8Lit("0X")); } break;
+      case Str8FmtBase_Decimal: break;
+      default: UNREACHABLE();
+    }
+  }
+  U8* start = &buffer->buffer[buffer->pos];
+  do {
+    U32 digit = value % base_lit;
+    DEBUG_ASSERT(digit < base_str_size);
+    Str8FmtBufferPushChar(buffer, base_str[digit]);
+    value = value / base_lit;
+  } while (value > 0);
+  U8* end = &buffer->buffer[buffer->pos];
+  while (start < end) {
+    end--;
+    SWAP(U8, *start, *end);
+    start++;
+  }
+}
+
+static void Str8FmtBufferPushU64(Str8FmtBuffer* buffer, S64 value, Str8FmtBase base, U32 flags) {
+  if      (flags & Str8FmtFlags_SignPrintPlus)  { Str8FmtBufferPushChar(buffer, '+'); }
+  else if (flags & Str8FmtFlags_SignPrintEmpty) { Str8FmtBufferPushChar(buffer, ' '); }
+  Str8FmtBufferPushU64Impl(buffer, value, base, flags);
+}
+
+static void Str8FmtBufferPushS64(Str8FmtBuffer* buffer, S64 value, Str8FmtBase base, U32 flags) {
+  if (value < 0) {
+    Str8FmtBufferPushChar(buffer, '-');
+    value = -value;
+  } else {
+    if      (flags & Str8FmtFlags_SignPrintPlus)  { Str8FmtBufferPushChar(buffer, '+'); }
+    else if (flags & Str8FmtFlags_SignPrintEmpty) { Str8FmtBufferPushChar(buffer, ' '); }
+  }
+  Str8FmtBufferPushU64Impl(buffer, value, base, flags);
+}
+
+static void Str8FmtBufferPushF64(Str8FmtBuffer* buffer, F64 value, U32 precision, U32 flags) {
+  if (!(flags & Str8FmtFlags_PrecisionSpecified)) { precision = 6; }
+  if (value < 0) {
+    Str8FmtBufferPushChar(buffer, '-');
+    value = -value;
+  } else {
+    if      (flags & Str8FmtFlags_SignPrintPlus)  { Str8FmtBufferPushChar(buffer, '+'); }
+    else if (flags & Str8FmtFlags_SignPrintEmpty) { Str8FmtBufferPushChar(buffer, ' '); }
+  }
+  U64 int_part     = (U64) value;
+  F64 decimal_part = value - int_part;
+  F64 factor       = 1.0;
+  Str8FmtBufferPushU64Impl(buffer, int_part, Str8FmtBase_Decimal, flags);
+  if (value == int_part && !(flags & Str8FmtFlags_PrintDecimal)) { return; }
+  Str8FmtBufferPushChar(buffer, '.');
+  for (U32 i = 0; i < precision; i++) {
+    factor *= 10.0;
+    U32 digit = ((U64) (decimal_part * factor)) % 10;
+    DEBUG_ASSERT(digit < STATIC_ARRAY_SIZE(_cdef_dec_str));
+    Str8FmtBufferPushChar(buffer, _cdef_dec_str[digit]);
+  }
+}
+
+static B32 Str8FmtNext(String8* fmt, U8* c) {
+  if (fmt->size == 0) { return false; }
+  *c = *fmt->str;
+  fmt->str  += 1;
+  fmt->size -= 1;
+  return true;
+}
+
+#define TRY_PULL_CHAR(eval) if (!(eval)) { LOG_ERROR("[STD] Format string is malformed, ran out of chars: %.*s", orig_fmt.size, orig_fmt.str); UNREACHABLE(); }
+String8 Str8FormatV(Arena* arena, String8 fmt, va_list args) {
+  String8 orig_fmt = fmt;
+  Str8FmtStream stream = Str8FmtStreamAssign(arena);
+
+  U8 format_char;
+  U8 default_temp_buffer[512];
+  while (Str8FmtNext(&fmt, &format_char)) {
+    if (format_char != '%') { Str8FmtStreamPushChar(&stream, format_char); continue; }
+    TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char));
+
+    // NOTE: flags
+    U32 flags = 0;
+    B32 parsing_flags = true;
+    while (parsing_flags) {
+      switch (format_char) {
+        case '-': { flags |= Str8FmtFlags_LeftJustify;    } break;
+        case '+': { flags |= Str8FmtFlags_SignPrintPlus;  } break;
+        case ' ': { flags |= Str8FmtFlags_SignPrintEmpty; } break;
+        case '0': { flags |= Str8FmtFlags_PadZeroes;      } break;
+        case '#': { flags |= Str8FmtFlags_PrintBase;
+                    flags |= Str8FmtFlags_PrintDecimal;   } break;
+        default:  { parsing_flags = false;                } break;
+      }
+      if (parsing_flags) { TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char)); }
+    }
+
+    // NOTE: width
+    U32 width = 0;
+    if (format_char == '*') {
+      flags |= Str8FmtFlags_WidthSpecified;
+      width = va_arg(args, U32);
+      TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char));
+    } else if (CharIsDigit(format_char)) {
+      flags |= Str8FmtFlags_WidthSpecified;
+      do {
+        width *= 10;
+        width += format_char - '0';
+        TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char));
+      } while (CharIsDigit(format_char));
+    }
+
+    // NOTE: precision
+    U32 precision = 0;
+    if (format_char == '.') {
+      flags |= Str8FmtFlags_PrecisionSpecified;
+      TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char));
+      if (format_char == '*') {
+        precision = va_arg(args, U32);
+        TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char));
+      } else if (CharIsDigit(format_char)) {
+        do {
+          precision *= 10;
+          precision += format_char - '0';
+          TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char));
+        } while (CharIsDigit(format_char));
+      } else {
+        LOG_ERROR("[STD] String format precision specifier is malformed: %.*s", orig_fmt.size, orig_fmt.str);
+        UNREACHABLE();
+      }
+    }
+
+    // NOTE: length
+    switch (format_char) {
+      case 'h': {
+        TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char));
+        if (format_char == 'h') {
+          TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char));
+        }
+      } break;
+      case 'l': {
+        if (sizeof(long) == 8) { flags |= Str8FmtFlags_WideInt; }
+        TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char));
+        if (format_char == 'l') {
+          flags |= Str8FmtFlags_WideInt;
+          TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char));
+        }
+      } break;
+      case 'j': {
+        if (sizeof(size_t) == 8) { flags |= Str8FmtFlags_WideInt; }
+        TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char));
+      } break;
+      case 'z': {
+        if (sizeof(ptrdiff_t) == 8) { flags |= Str8FmtFlags_WideInt; }
+        TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char));
+      } break;
+      case 't': {
+        if (sizeof(ptrdiff_t) == 8) { flags |= Str8FmtFlags_WideInt; }
+        TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char));
+      } break;
+      case 'L': {
+        TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char));
+      } break;
+    }
+
+    // NOTE: write components into a temp buffer, since we don't know e.g. how much
+    // padding is required until we know the full size of the component.
+    Str8FmtBuffer temp = Str8FmtBufferAssign(default_temp_buffer, STATIC_ARRAY_SIZE(default_temp_buffer), 0);
+
+    switch (format_char) {
+      // NOTE: character
+      case 'c': {
+        U32 arg = va_arg(args, U32);
+        Str8FmtBufferPushChar(&temp, arg);
+      } break;
+
+      // NOTE: cstring
+      case 's': {
+        U8* arg = va_arg(args, U8*);
+        U32 arg_size;
+        if (flags & Str8FmtFlags_PrecisionSpecified) { arg_size = precision;           }
+        else                                         { arg_size = (U32) CStrSize(arg); }
+        temp = Str8FmtBufferAssign(arg, arg_size, arg_size);
+      } break;
+
+      // NOTE: signed decimal integer
+      case 'i':
+      case 'd': {
+        S64 arg;
+        if (flags & Str8FmtFlags_WideInt) { arg = va_arg(args, S64); }
+        else                              { arg = va_arg(args, S32); }
+        Str8FmtBufferPushS64(&temp, arg, Str8FmtBase_Decimal, flags);
+      } break;
+
+      // NOTE: unsigned decimal integer
+      case 'u': {
+        U64 arg;
+        if (flags & Str8FmtFlags_WideInt) { arg = va_arg(args, U64); }
+        else                              { arg = va_arg(args, U32); }
+        Str8FmtBufferPushU64(&temp, arg, Str8FmtBase_Decimal, flags);
+      } break;
+
+      // NOTE: unsigned octal
+      case 'o': {
+        U64 arg;
+        if (flags & Str8FmtFlags_WideInt) { arg = va_arg(args, U64); }
+        else                              { arg = va_arg(args, U32); }
+        Str8FmtBufferPushU64(&temp, arg, Str8FmtBase_Octal, flags);
+      } break;
+
+      // NOTE: unsigned hex (lower)
+      case 'x': {
+        U64 arg;
+        if (flags & Str8FmtFlags_WideInt) { arg = va_arg(args, U64); }
+        else                              { arg = va_arg(args, U32); }
+        Str8FmtBufferPushU64(&temp, arg, Str8FmtBase_HexLower, flags);
+      } break;
+
+      // NOTE: unsigned hex (upper)
+      case 'X': {
+        U64 arg;
+        if (flags & Str8FmtFlags_WideInt) { arg = va_arg(args, U64); }
+        else                              { arg = va_arg(args, U32); }
+        Str8FmtBufferPushU64(&temp, arg, Str8FmtBase_HexUpper, flags);
+      } break;
+
+      // NOTE: float
+      // TODO : support non-decimal formatting
+      case 'f':
+      case 'F':
+      case 'e':
+      case 'E':
+      case 'g':
+      case 'G':
+      case 'a':
+      case 'A': {
+        F64 arg = va_arg(args, F64);
+        Str8FmtBufferPushF64(&temp, arg, precision, flags);
+      } break;
+
+      // NOTE: pointer
+      case 'p': {
+        if (sizeof(void*) == 8) { flags |= Str8FmtFlags_WideInt; }
+        // TODO: should be a size_t or something similar, not U64
+        U64 arg;
+        if (flags & Str8FmtFlags_WideInt) { arg = va_arg(args, U64); }
+        else                              { arg = va_arg(args, U32); }
+        Str8FmtBufferPushU64(&temp, arg, Str8FmtBase_HexLower, flags);
+      } break;
+
+      // NOTE: save pos
+      case 'n': {
+        U32* arg = va_arg(args, U32*);
+        *arg = (stream.data + stream.pos) - stream.str.str;
+      } break;
+
+      // NOTE: percent sign
+      case '%': {
+        Str8FmtBufferPushChar(&temp, '%');
+      } break;
+
+      // NOTE: string8
+      case 'S': {
+        String8 arg = va_arg(args, String8);
+        temp = Str8FmtBufferAssign(arg.str, arg.size, arg.size);
+        temp.pos = arg.size;
+      } break;
+
+      // NOTE: vectors
+      case 'V': {
+        TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char));
+        F32* arg = va_arg(args, F32*);
+        U32  arg_size;
+        switch (format_char) {
+          case '2': { arg_size = 2; } break;
+          case '3': { arg_size = 3; } break;
+          case '4': { arg_size = 4; } break;
+          default: {
+            LOG_ERROR("[STD] Unrecognized string format specifier: V%c", format_char);
+            UNREACHABLE();
+          } break;
+        }
+        Str8FmtBufferPushStr8(&temp, Str8Lit("{ "));
+        for (U32 i = 0; i < arg_size; i++) {
+          Str8FmtBufferPushF64(&temp, arg[i], precision, flags);
+          if (i != arg_size - 1) { Str8FmtBufferPushStr8(&temp, Str8Lit(", ")); }
+        }
+        Str8FmtBufferPushStr8(&temp, Str8Lit(" }"));
+      } break;
+
+      // NOTE: unknown
+      default: {
+        LOG_ERROR("[STD] Unrecognized string format specifier: %c", format_char);
+        UNREACHABLE();
+      } break;
+    }
+
+    U32 pad_count = width > temp.pos ? width - temp.pos : 0;
+    U8  pad_char  = ' ';
+    if (flags & Str8FmtFlags_PadZeroes) { pad_char = '0'; }
+    if ((flags & Str8FmtFlags_WidthSpecified) && !(flags & Str8FmtFlags_LeftJustify)) {
+      for (U32 i = 0; i < pad_count; i++) { Str8FmtStreamPushChar(&stream, pad_char); }
+    }
+    for (U32 i = 0; i < temp.pos; i++) { Str8FmtStreamPushChar(&stream, temp.buffer[i]); }
+    if ((flags & Str8FmtFlags_WidthSpecified) && (flags & Str8FmtFlags_LeftJustify)) {
+      for (U32 i = 0; i < pad_count; i++) { Str8FmtStreamPushChar(&stream, pad_char); }
+    }
+  }
+
+  ArenaPop(stream.arena, STR8_FORMAT_STREAM_SIZE - stream.pos);
+  return stream.str;
+}
+#undef TRY_PULL_CHAR
+
+String8 _Str8Format(Arena* arena, String8 fmt, ...) {
   va_list args;
   va_start(args, fmt);
   String8 result = Str8FormatV(arena, fmt, args);
@@ -2081,7 +2494,6 @@ U32 Str8ListSize(String8List* list) {
   for (String8ListNode* curr = list->head; curr != NULL; curr = curr->next) { result += 1; }
   return result;
 }
-
 
 void Str8ListPrepend(Arena* arena, String8List* list, String8 string) {
   String8ListNode* node = ARENA_PUSH_STRUCT(arena, String8ListNode);
