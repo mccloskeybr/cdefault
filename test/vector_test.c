@@ -177,6 +177,7 @@ void V4Test(void) {
 }
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   RUN_TEST(V2Test);
   RUN_TEST(V3Test);
   RUN_TEST(V4Test);

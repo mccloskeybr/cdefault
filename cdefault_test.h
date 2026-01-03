@@ -2,6 +2,7 @@
 #define CDEFAULT_TEST_H_
 
 #include "cdefault_std.h"
+#include "cdefault_io.h"
 
 // NOTE: suppress pass reports by defining CDEFAULT_TEST_PASS_SUPPRESS
 

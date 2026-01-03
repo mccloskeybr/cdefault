@@ -245,6 +245,7 @@ void JsonConstructVectorTest() {
 }
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   arena = ArenaAllocate();
   RUN_TEST(JsonParseEmptyTest);
   RUN_TEST(JsonParseStringTest);

@@ -205,6 +205,7 @@ void CopyTest(void) {
 }
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   arena = ArenaAllocate();
   RUN_TEST(InsertTest);
   RUN_TEST(SwapRemoveTest);

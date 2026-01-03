@@ -15,6 +15,7 @@ static F32 CamX(F32 x) { return x - camera_pos.x + WINDOW_WIDTH / 2; }
 static F32 CamY(F32 y) { return y - camera_pos.y + WINDOW_HEIGHT / 2; }
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   TimeInit();
   RandSeed(NULL, 12345);
   DEBUG_ASSERT(WindowInit(WINDOW_WIDTH, WINDOW_HEIGHT, "monstro"));

@@ -16,6 +16,7 @@ void UiFontGetAttributesImpl(void* user_data, F32* descent) {
 }
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   TimeInit();
   DEBUG_ASSERT(WindowInit(WINDOW_WIDTH, WINDOW_HEIGHT, "ui example"));
   RendererDisableDepthTest();

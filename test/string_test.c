@@ -305,6 +305,7 @@ void Str8SplitTest(void) {
 }
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   RUN_TEST(CharTest);
   RUN_TEST(CStrCopyTest);
   RUN_TEST(CStrSubstringTest);

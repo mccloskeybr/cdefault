@@ -229,6 +229,7 @@ void DllInsertRemoveMiddleTest(void) {
 }
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   RUN_TEST(DllPushFrontTest);
   RUN_TEST(DllPushBackTest);
   RUN_TEST(DllPopFrontTest);

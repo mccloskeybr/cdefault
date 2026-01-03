@@ -5,6 +5,7 @@
 #include "cdefault_math.h"
 #include "cdefault_image.h"
 #include "cdefault_json.h"
+#include "cdefault_io.h"
 
 // NOTE: supports loading:
 // - OBJ

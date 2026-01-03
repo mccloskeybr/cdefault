@@ -2,6 +2,7 @@
 #define CDEFAULT_AUDIO_H_
 
 #include "cdefault_std.h"
+#include "cdefault_io.h"
 #include "cdefault_math.h"
 
 // TODO: return error codes not b32s?
@@ -1077,7 +1078,7 @@ pulseaudio_check_default_device_end:
 static void PULSEAUDIO_AddDeviceCallback(pa_context* UNUSED(c), const pa_sink_info* sink_info, S32 UNUSED(eol), void* UNUSED(user_data)) {
   PULSEAUDIO_AudioContext* ctx = &_pulse_context;
   if (sink_info == NULL) { goto pulseaudio_add_device_end; }
-  String8 description = String8CreateCString(sink_info->description);
+  String8 description = Str8CStr(sink_info->description);
   LockWitness witness = MutexLock(&ctx->mutex);
   PULSEAUDIO_AudioDevice* device = PULSEAUDIO_ContextFindDeviceByName(ctx, witness, sink_info->name);
   if (device != NULL) {
@@ -1090,9 +1091,9 @@ static void PULSEAUDIO_AddDeviceCallback(pa_context* UNUSED(c), const pa_sink_in
   device = ARENA_PUSH_STRUCT(ctx->arena, PULSEAUDIO_AudioDevice);
   MEMORY_ZERO_STRUCT(device);
   device->arena = ArenaAllocate(); // TODO: is separate arena needed?
-  CStringCopy(device->arena, &device->name, sink_info->name);
+  device->name = CStrCopy(device->arena, (U8*) sink_info->name);
   device->base.handle = AtomicS32FetchAdd(&ctx->next_device_id, 1);
-  device->base.name = String8Copy(device->arena, &description);
+  device->base.name = Str8Copy(device->arena, description);
   device->base.is_connected = true;
   device->base.next = (AudioDevice*) ctx->devices;
   ctx->devices = (PULSEAUDIO_AudioDevice*) device;
@@ -1107,7 +1108,7 @@ static void PULSEAUDIO_RemoveDeviceCallback(pa_context* UNUSED(c), const pa_sink
   PULSEAUDIO_AudioContext* ctx = &_pulse_context;
   LockWitness mainloop_witness = pa_threaded_mainloop_lock_implied(ctx->mainloop);
   if (sink_info == NULL) { goto pulseaudio_remove_device_end; }
-  String8 description = String8CreateCString(sink_info->description);
+  String8 description = Str8CStr(sink_info->description);
   LockWitness ctx_witness = MutexLock(&ctx->mutex);
   PULSEAUDIO_AudioDevice* device = PULSEAUDIO_ContextFindDeviceByName(ctx, ctx_witness, sink_info->name);
   if (device != NULL) {

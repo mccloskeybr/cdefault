@@ -4,6 +4,7 @@
 #include "../cdefault_io.h"
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   DEBUG_ASSERT(DirSetCurrentToExeDir());
   Arena* arena = ArenaAllocate();
 

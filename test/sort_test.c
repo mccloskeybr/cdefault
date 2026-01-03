@@ -82,6 +82,7 @@ void SortStr8DescTest(void) {
 }
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   RUN_TEST(SortS8AscTest);
   RUN_TEST(SortS64AscTest);
   RUN_TEST(SortF32AscTest);

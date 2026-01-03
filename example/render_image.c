@@ -2,13 +2,13 @@
 #include "../cdefault.h"
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   TimeInit();
   DirSetCurrentToExeDir();
   ASSERT(WindowInit(1920, 1080, "render image example"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
 
   Arena* arena = ArenaAllocate();
-
 
   Image image;
   // DEBUG_ASSERT(ImageLoadFile(arena, &image, ImageFormat_RGBA, Str8Lit("../data/16bpp.bmp")));

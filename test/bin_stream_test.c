@@ -136,6 +136,7 @@ void PushLETest(void) {
 }
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   RUN_TEST(PullBETest);
   RUN_TEST(PullLETest);
   RUN_TEST(PeekBETest);

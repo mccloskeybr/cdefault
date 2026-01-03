@@ -4,6 +4,7 @@
 #include "cdefault_std.h"
 
 // API for handling OS files, with some generic convenience funcs. All routines are synchronous.
+// Also contains routines for logging (either to stdout or a file, based on initialization).
 //
 // NOTE: This API simplifies file access semantics. If opening a file to write, it places an exclusive
 // (read & write) lock on that file. If opening a file in read-only mode, it places a shared (read)
@@ -56,12 +57,35 @@ B32     PathPop(String8* path); // NOTE: Pops the right most part of the path of
 String8 PathJoin(Arena* arena, String8List path_parts);
 
 FileHandle* FileHandleAllocate(Arena* arena);
+B32 FileHandleOpenStdOut(FileHandle* file);                              // NOTE: Opens a file to stdout / the console.
 B32 FileHandleOpen(FileHandle* file, String8 file_path, FileMode mode);  // NOTE: Opens a file. Mode must include read and / or write. Implicitly places a shared or exclusive lock depending on the mode.
 B32 FileHandleClose(FileHandle* file);                               // NOTE: Closes a file, releases any locks held on that file.
 B32 FileHandleStat(FileHandle* file, FileStats* stats);              // NOTE: Like FileStat, but on a FileHandle instead of a path.
 B32 FileHandleSeek(FileHandle* file, S32 distance, FileSeekPos pos); // NOTE: Seeks to a given position in the file.
 B32 FileHandleRead(FileHandle* file, U8* buffer, S32 buffer_size, S32* bytes_read); // NOTE: Reads / places buffer_size bytes into buffer, stopping if EOF is observed. Num bytes read is placed into bytes_read.
 B32 FileHandleWrite(FileHandle* file, U8* buffer, S32 buffer_size);  // NOTE: Writes / places buffer_size bytes from buffer into the file.
+
+B32 LogInitStdOut();
+B32 LogInitFile(String8 file_path);
+#define LOG_NO_PREFIX(fmt, ...)  Log(LogLevel_NoPrefix, Str8CStr(FILENAME), __LINE__, Str8Lit(fmt), ##__VA_ARGS__)
+#define LOG_INFO(fmt, ...)       Log(LogLevel_Info,     Str8CStr(FILENAME), __LINE__, Str8Lit(fmt), ##__VA_ARGS__)
+#define LOG_WARN(fmt, ...)       Log(LogLevel_Warning,  Str8CStr(FILENAME), __LINE__, Str8Lit(fmt), ##__VA_ARGS__)
+#define LOG_ERROR(fmt, ...)      Log(LogLevel_Error,    Str8CStr(FILENAME), __LINE__, Str8Lit(fmt), ##__VA_ARGS__)
+#ifndef NDEBUG
+#  define LOG_DEBUG(fmt, ...)    Log(LogLevel_Debug,    Str8CStr(FILENAME), __LINE__, Str8Lit(fmt), ##__VA_ARGS__)
+#else
+#  define LOG_DEBUG(fmt, ...)
+#endif
+
+typedef enum LogLevel LogLevel;
+enum LogLevel {
+  LogLevel_NoPrefix,
+  LogLevel_Debug,
+  LogLevel_Info,
+  LogLevel_Warning,
+  LogLevel_Error,
+};
+void Log(LogLevel level, String8 filename, U32 loc, String8 fmt, ...);
 
 #endif // CDEFAULT_IO_H_
 
@@ -206,6 +230,18 @@ B32 WIN_DirListFiles(Arena* arena, String8 dir_path, String8List* file_paths) {
 win_dir_list_files_exit:
   ArenaRelease(temp_arena);
   return success;
+}
+
+B32 WIN_FileHandleOpenStdOut(FileHandle* file) {
+  MEMORY_ZERO_STRUCT(file);
+  file->handle = CreateFileA("CON", GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (file->handle == INVALID_HANDLE_VALUE) {
+    WIN_IO_LOG_ERROR(GetLastError(), "[IO] Failed to open handle to stdout.");
+    return false;
+  }
+  file->file_path  = Str8Lit("stdout");
+  file->is_writing = true;
+  return true;
 }
 
 B32 WIN_FileHandleOpen(FileHandle* file, String8 file_path, FileMode mode) {
@@ -437,6 +473,14 @@ B32 LINUX_DirListFiles(Arena* arena, String8 dir_path, String8List* file_paths) 
 linux_dir_list_files_exit:
   ArenaRelease(temp_arena);
   return success;
+}
+
+B32 LINUX_FileHandleOpenStdOut(FileHandle* file) {
+  MEMORY_ZERO_STRUCT(file);
+  file->fd = dup(STDOUT_FILENO);
+  file->file_path = Str8Lit("stdout");
+  file->is_writing = true;
+  return true;
 }
 
 B32 LINUX_FileHandleOpen(FileHandle* file, String8 file_path, FileMode mode) {
@@ -690,6 +734,10 @@ FileHandle* FileHandleAllocate(Arena* arena) {
   return ARENA_PUSH_STRUCT(arena, FileHandle);
 }
 
+B32 FileHandleOpenStdOut(FileHandle* file) {
+  return CDEFAULT_IO_BACKEND_FN(FileHandleOpenStdOut(file));
+}
+
 B32 FileHandleOpen(FileHandle* file, String8 file_path, FileMode mode) {
   return CDEFAULT_IO_BACKEND_FN(FileHandleOpen(file, file_path, mode));
 }
@@ -708,6 +756,78 @@ B32 FileHandleRead(FileHandle* file, U8* buffer, S32 buffer_size, S32* bytes_rea
 
 B32 FileHandleWrite(FileHandle* file, U8* buffer, S32 buffer_size) {
   return CDEFAULT_IO_BACKEND_FN(FileHandleWrite(file, buffer, buffer_size));
+}
+
+typedef struct LogConfig LogConfig;
+struct LogConfig {
+  Arena*      arena;
+  FileHandle* handle;
+  Mutex       mtx;
+  B8          is_initialized;
+};
+static LogConfig _cdef_log_config;
+
+static void LogInitCommon(LogConfig* c) {
+  DEBUG_ASSERT(!c->is_initialized);
+  MEMORY_ZERO_STRUCT(c);
+  c->arena  = ArenaAllocate();
+  c->handle = FileHandleAllocate(c->arena);
+  MutexInit(&c->mtx);
+}
+
+B32 LogInitStdOut() {
+  LogConfig* c = &_cdef_log_config;
+  LogInitCommon(c);
+  if (!FileHandleOpenStdOut(c->handle)) { return false; }
+  c->is_initialized = true;
+  return true;
+}
+
+B32 LogInitFile(String8 file_path) {
+  LogConfig* c = &_cdef_log_config;
+  LogInitCommon(c);
+  if (!FileHandleOpen(c->handle, file_path, FileMode_Write | FileMode_Create | FileMode_Truncate)) { return false; }
+  c->is_initialized = true;
+  return true;
+}
+
+static void LogV(LogLevel level, String8 filename, U32 loc, String8 fmt, va_list args) {
+  LogConfig* c = &_cdef_log_config;
+  DEBUG_ASSERT(c->is_initialized);
+  U64 arena_base = ArenaPos(c->arena);
+
+  // TODO: make highlighting optional.
+  String8 prefix_text;
+  switch (level) {
+    case LogLevel_NoPrefix: break;
+    case LogLevel_Debug:   { prefix_text = Str8Lit(ANSI_COLOR_BLUE "DEBUG" ANSI_COLOR_RESET);  } break;
+    case LogLevel_Info:    { prefix_text = Str8Lit("INFO");                                    } break;
+    case LogLevel_Warning: { prefix_text = Str8Lit(ANSI_COLOR_YELLOW "WARN" ANSI_COLOR_RESET); } break;
+    case LogLevel_Error:   { prefix_text = Str8Lit(ANSI_COLOR_RED "ERROR" ANSI_COLOR_RESET);   } break;
+    default: UNREACHABLE();
+  }
+
+  String8 prefix = Str8Lit("");
+  if (level != LogLevel_NoPrefix) {
+    prefix = Str8Format(c->arena, "[%S | %S:%d]: ", prefix_text, filename, loc);
+  }
+  String8 message = Str8FormatV(c->arena, fmt, args);
+  String8 suffix  = Str8Lit("\n");
+
+  MutexLock(&_cdef_log_config.mtx);
+  FileHandleWrite(c->handle, prefix.str, prefix.size);
+  FileHandleWrite(c->handle, message.str, message.size);
+  FileHandleWrite(c->handle, suffix.str, suffix.size);
+  MutexUnlock(&_cdef_log_config.mtx);
+
+  ArenaPopTo(c->arena, arena_base);
+}
+
+void Log(LogLevel level, String8 filename, U32 loc, String8 fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  LogV(level, filename, loc, fmt, args);
+  va_end(args);
 }
 
 #endif // CDEFAULT_IO_IMPLEMENTATION

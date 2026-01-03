@@ -3,6 +3,7 @@
 
 #include "cdefault_std.h"
 #include "cdefault_math.h"
+#include "cdefault_io.h"
 
 // TODO: for widget caching, use a hash map instead of referencing the old frame's tree
 // TODO: text wrapping

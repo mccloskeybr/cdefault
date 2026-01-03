@@ -2,6 +2,7 @@
 #include "../cdefault.h"
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   TimeInit();
   ASSERT(WindowInit(1280, 720, "collision"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);

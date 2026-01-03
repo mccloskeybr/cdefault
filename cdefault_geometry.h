@@ -3,6 +3,7 @@
 
 #include "cdefault_math.h"
 #include "cdefault_std.h"
+#include "cdefault_io.h"
 
 // TODO: finish rounding out 3d
 // TODO: debug assertions for e.g. dirs, etc are normal

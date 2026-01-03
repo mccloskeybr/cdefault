@@ -2,6 +2,7 @@
 #include "../cdefault.h"
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   DEBUG_ASSERT(DirSetCurrentToExeDir());
   DEBUG_ASSERT(AudioInit());
   Arena* arena = ArenaAllocate();

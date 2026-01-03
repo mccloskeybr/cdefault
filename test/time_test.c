@@ -17,6 +17,7 @@ void StopwatchTest(void) {
 }
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   TimeInit();
   RUN_TEST(StopwatchTest);
   LogTestReport();

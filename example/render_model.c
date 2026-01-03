@@ -2,6 +2,7 @@
 #include "../cdefault.h"
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   TimeInit();
   DirSetCurrentToExeDir();
   ASSERT(WindowInit(1280, 720, "physics"));

@@ -263,6 +263,7 @@ void M4InvertTest(void) {
 }
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   RUN_TEST(M2TrivialOpTest);
   RUN_TEST(M2TransposeTest);
   RUN_TEST(M2MultTest);

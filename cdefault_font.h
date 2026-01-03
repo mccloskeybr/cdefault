@@ -2,6 +2,7 @@
 #define CDEFAULT_FONT_H_
 
 #include "cdefault_std.h"
+#include "cdefault_io.h"
 #include "cdefault_math.h"
 #include "cdefault_image.h"
 

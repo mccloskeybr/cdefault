@@ -83,6 +83,7 @@ void ArenaPushArrayTest(void) {
 }
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   RUN_TEST(ArenaAllocateTest);
   RUN_TEST(ArenaAllocateOverflowTest);
   RUN_TEST(ArenaAllocateLargeSizeTest);

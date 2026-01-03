@@ -6,6 +6,7 @@
 #include "cdefault_model.h"
 #include "cdefault_image.h"
 #include "cdefault_font.h"
+#include "cdefault_io.h"
 
 // TODO:
 // move 2d camera

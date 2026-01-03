@@ -54,6 +54,7 @@
 
 #include <assert.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -130,6 +131,7 @@ typedef double   F64;
 
 #define STRINGIFY(x) #x
 #define GLUE(a, b) a ## b
+// TODO: comptime? don't use stdlib fns?
 #define FILENAME (strrchr(__FILE__, '/')  ? strrchr(__FILE__, '/')  + 1 : \
                  (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : \
                  __FILE__))
@@ -208,9 +210,9 @@ U32 U32CountBits(U32 x); // E.g. 1111 -> 4.
 #endif
 #define STATIC_ASSERT(exp, msg) static_assert((exp), msg)
 #define UNIMPLEMENTED() ASSERT(false)
-#define UNREACHABLE() DEBUG_ASSERT(false)
-#define UNTESTED() ASSERT(false)
-#define TODO() ASSERT(false)
+#define UNREACHABLE()   ASSERT(false)
+#define UNTESTED()      ASSERT(false)
+#define TODO()          ASSERT(false)
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Alignment and offsets
@@ -499,24 +501,6 @@ void  MemoryDecommit(void* ptr, U64 size);
   DA_RESERVE_EX(arena, b_data, b_capacity, a_size);                               \
   b_size = a_size;                                                                \
   MEMORY_COPY(b_data, a_data, (a_size) * sizeof(*(a_data)))
-
-///////////////////////////////////////////////////////////////////////////////
-// NOTE: Log
-///////////////////////////////////////////////////////////////////////////////
-
-// NOTE: If not initialized, will print to stderr.
-void LogInit(FILE* fd);
-void LogNoPrefix(char* fmt, ...);
-void Log(char* level, char* filename, U32 loc, char* fmt, ...);
-#define LOG_NO_PREFIX(fmt, ...)  LogNoPrefix(fmt, ##__VA_ARGS__)
-#define LOG_INFO(fmt, ...)  Log("INFO",  FILENAME, __LINE__, fmt, ##__VA_ARGS__)
-#define LOG_WARN(fmt, ...)  Log(ANSI_COLOR_YELLOW "WARN" ANSI_COLOR_RESET, FILENAME, __LINE__, fmt, ##__VA_ARGS__)
-#define LOG_ERROR(fmt, ...) Log(ANSI_COLOR_RED "ERR " ANSI_COLOR_RESET, FILENAME, __LINE__, fmt, ##__VA_ARGS__)
-#ifndef NDEBUG
-#  define LOG_DEBUG(fmt, ...) Log(ANSI_COLOR_BLUE "DEBUG" ANSI_COLOR_RESET, FILENAME, fmt, ##__VA_ARGS__)
-#else
-#  define LOG_DEBUG(fmt, ...)
-#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Arena
@@ -986,57 +970,6 @@ void MemoryDecommit(void* ptr, U64 size) {
   madvise(ptr, size, MADV_DONTNEED);
   mprotect(ptr, size, PROT_NONE);
 #endif
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// NOTE: Log implementation
-///////////////////////////////////////////////////////////////////////////////
-
-// TODO: use the in-house file api. need to handle stdout / stderr first.
-typedef struct LogConfig LogConfig;
-struct LogConfig {
-  FILE* fd;
-  Mutex mtx;
-  B8 is_initialized;
-};
-static LogConfig _cdef_log_config;
-
-void LogInit(FILE* fd) {
-  MEMORY_ZERO_STRUCT(&_cdef_log_config);
-  _cdef_log_config.fd = fd;
-  MutexInit(&_cdef_log_config.mtx);
-  _cdef_log_config.is_initialized = true;
-}
-
-static void LogNoPrefixV(char* fmt, va_list args) {
-  if (UNLIKELY(!_cdef_log_config.is_initialized)) { LogInit(stderr); }
-  MutexLock(&_cdef_log_config.mtx);
-  vfprintf(_cdef_log_config.fd, fmt, args);
-  fprintf(_cdef_log_config.fd, "\n");
-  MutexUnlock(&_cdef_log_config.mtx);
-}
-
-static void LogV(char* level, char* filename, U32 loc, char* fmt, va_list args) {
-  if (UNLIKELY(!_cdef_log_config.is_initialized)) { LogInit(stderr); }
-  MutexLock(&_cdef_log_config.mtx);
-  fprintf(_cdef_log_config.fd, "[%s | %s:%d]: ", level, filename, loc);
-  vfprintf(_cdef_log_config.fd, fmt, args);
-  fprintf(_cdef_log_config.fd, "\n");
-  MutexUnlock(&_cdef_log_config.mtx);
-}
-
-void LogNoPrefix(char* fmt, ...) {
-  va_list args;
-  va_start(args, fmt);
-  LogNoPrefixV(fmt, args);
-  va_end(args);
-}
-
-void Log(char* level, char* filename, U32 loc, char* fmt, ...) {
-  va_list args;
-  va_start(args, fmt);
-  LogV(level, filename, loc, fmt, args);
-  va_end(args);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -2237,9 +2170,8 @@ static B32 Str8FmtNext(String8* fmt, U8* c) {
   return true;
 }
 
-#define TRY_PULL_CHAR(eval) if (!(eval)) { LOG_ERROR("[STD] Format string is malformed, ran out of chars: %.*s", orig_fmt.size, orig_fmt.str); UNREACHABLE(); }
+#define TRY_PULL_CHAR(eval) if (!(eval)) { ASSERT(!"[STD] Format string is malformed, ran out of chars"); }
 String8 Str8FormatV(Arena* arena, String8 fmt, va_list args) {
-  String8 orig_fmt = fmt;
   Str8FmtStream stream = Str8FmtStreamAssign(arena);
 
   U8 format_char;
@@ -2294,8 +2226,7 @@ String8 Str8FormatV(Arena* arena, String8 fmt, va_list args) {
           TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char));
         } while (CharIsDigit(format_char));
       } else {
-        LOG_ERROR("[STD] String format precision specifier is malformed: %.*s", orig_fmt.size, orig_fmt.str);
-        UNREACHABLE();
+        ASSERT(!"[STD] String format precision specifier is malformed");
       }
     }
 
@@ -2445,8 +2376,7 @@ String8 Str8FormatV(Arena* arena, String8 fmt, va_list args) {
           case '3': { arg_size = 3; } break;
           case '4': { arg_size = 4; } break;
           default: {
-            LOG_ERROR("[STD] Unrecognized string format specifier: V%c", format_char);
-            UNREACHABLE();
+            ASSERT(!"[STD] Unrecognized vector string format specifier");
           } break;
         }
         Str8FmtBufferPushStr8(&temp, Str8Lit("{ "));
@@ -2459,8 +2389,7 @@ String8 Str8FormatV(Arena* arena, String8 fmt, va_list args) {
 
       // NOTE: unknown
       default: {
-        LOG_ERROR("[STD] Unrecognized string format specifier: %c", format_char);
-        UNREACHABLE();
+        ASSERT(!"[STD] Unrecognized string format specifier");
       } break;
     }
 

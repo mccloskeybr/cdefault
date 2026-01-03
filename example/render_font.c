@@ -5,6 +5,7 @@
 #define SDF_FONT_HEIGHT 32.0f
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   TimeInit();
   DEBUG_ASSERT(WindowInit(1920, 1080, "render font cdefault"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);

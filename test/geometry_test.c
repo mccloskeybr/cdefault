@@ -2328,6 +2328,8 @@ void ConvexHull3IntersectSphere3Test() {
 }
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
+
   RUN_TEST(Line2EqTest);
   RUN_TEST(Line2MutateTest);
   RUN_TEST(Line2QueryTest);

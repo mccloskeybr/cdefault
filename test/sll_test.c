@@ -127,6 +127,7 @@ void SllQueuePopTest(void) {
 }
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   RUN_TEST(SllStackPushTest);
   RUN_TEST(SllStackPopTest);
   RUN_TEST(SllQueuePushBackTest);

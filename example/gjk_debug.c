@@ -37,6 +37,7 @@ void DrawPointCloud(V3* points, U32 points_size, V3 offset, V3 color, B32 wirefr
 }
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   TimeInit();
   DirSetCurrentToExeDir();
   ASSERT(WindowInit(1280, 720, "physics"));

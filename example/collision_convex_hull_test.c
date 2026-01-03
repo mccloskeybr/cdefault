@@ -13,6 +13,7 @@ static void DrawIntersectManifold(V2* hull_points, U32 hull_points_size, Interse
 }
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   TimeInit();
   ASSERT(WindowInit(1280, 720, "collision"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);

@@ -73,7 +73,7 @@ static S32 AudioEntry(void* user_data) {
 
     U8* temp_buffer = ARENA_PUSH_ARRAY(arena, U8, buffer.size);
     MutexLock(&audio_manager.mutex);
-    SoundEffect* effect = audio_manager.tail;
+    SoundEffect* effect = audio_manager.head;
     while (effect != NULL) {
       MEMORY_ZERO(temp_buffer, buffer.size);
       U32 read = stb_vorbis_get_samples_float_interleaved(
@@ -156,7 +156,7 @@ static void PickAppleLocation(Snake* snake) {
     apple_y = RandS32(NULL, 0, NUM_TILES);
 
     intersects_snake = false;
-    for (SnakeSegment* node = snake->tail; node != NULL; node = node->next) {
+    for (SnakeSegment* node = snake->head; node != NULL; node = node->next) {
       if (node->x == apple_x && node->y == apple_y) {
         intersects_snake = true;
         break;
@@ -188,7 +188,7 @@ static B32 MoveSnake(Snake* snake) {
     PickAppleLocation(snake);
   }
 
-  for (SnakeSegment* node = snake->tail; node != NULL; node = node->next) {
+  for (SnakeSegment* node = snake->head; node != NULL; node = node->next) {
     if (node->x == tail->x && node->y == tail->y) { return false; }
   }
 
@@ -197,10 +197,12 @@ static B32 MoveSnake(Snake* snake) {
 }
 
 int main(void) {
+  DEBUG_ASSERT(LogInitStdOut());
   TimeInit();
   RandSeed(NULL, 12345);
   ASSERT(WindowInit(WINDOW_WIDTH, WINDOW_HEIGHT, "snake"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
+  RendererDisableDepthTest();
 
   Notif audio_init_done;
   NotifInit(&audio_init_done);
@@ -254,7 +256,7 @@ int main(void) {
         DrawTile(i, j, GRID_COLOR);
       }
     }
-    for (SnakeSegment* node = snake.tail; node != NULL; node = node->next) {
+    for (SnakeSegment* node = snake.head; node != NULL; node = node->next) {
       DrawTile(node->x, node->y, SNAKE_COLOR);
     }
     DrawTile(apple_x, apple_y, APPLE_COLOR);
