@@ -53,12 +53,11 @@ B32 DirGetExe(Arena* arena, String8* file_path);     // NOTE: Gets the path to t
 B32 DirGetExeDir(Arena* arena, String8* file_path);  // NOTE: Gets the directory to the currently running executable.
 B32 DirListFiles(Arena* arena, String8 dir_path, String8List* file_paths); // NOTE: Given a path to a directory, returns the files in that directory.
 
-B32     PathPop(String8* path); // NOTE: Pops the right most part of the path off. E.g. /a/b/c -> /a/b
+B32     PathPop(String8 path, String8* dir_part, String8* file_part); // NOTE: Pops the right most part of the path off. E.g. /a/b/c -> /a/b
 String8 PathJoin(Arena* arena, String8List path_parts);
 
-FileHandle* FileHandleAllocate(Arena* arena);
-B32 FileHandleOpenStdOut(FileHandle* file);                              // NOTE: Opens a file to stdout / the console.
-B32 FileHandleOpen(FileHandle* file, String8 file_path, FileMode mode);  // NOTE: Opens a file. Mode must include read and / or write. Implicitly places a shared or exclusive lock depending on the mode.
+B32 FileHandleOpenStdOut(FileHandle** file);                              // NOTE: Opens a file to stdout / the console.
+B32 FileHandleOpen(FileHandle** file, String8 file_path, FileMode mode);  // NOTE: Opens a file. Mode must include read and / or write. Implicitly places a shared or exclusive lock depending on the mode.
 B32 FileHandleClose(FileHandle* file);                               // NOTE: Closes a file, releases any locks held on that file.
 B32 FileHandleStat(FileHandle* file, FileStats* stats);              // NOTE: Like FileStat, but on a FileHandle instead of a path.
 B32 FileHandleSeek(FileHandle* file, S32 distance, FileSeekPos pos); // NOTE: Seeks to a given position in the file.
@@ -67,12 +66,12 @@ B32 FileHandleWrite(FileHandle* file, U8* buffer, S32 buffer_size);  // NOTE: Wr
 
 B32 LogInitStdOut();
 B32 LogInitFile(String8 file_path);
-#define LOG_NO_PREFIX(fmt, ...)  Log(LogLevel_NoPrefix, Str8CStr(FILENAME), __LINE__, Str8Lit(fmt), ##__VA_ARGS__)
-#define LOG_INFO(fmt, ...)       Log(LogLevel_Info,     Str8CStr(FILENAME), __LINE__, Str8Lit(fmt), ##__VA_ARGS__)
-#define LOG_WARN(fmt, ...)       Log(LogLevel_Warning,  Str8CStr(FILENAME), __LINE__, Str8Lit(fmt), ##__VA_ARGS__)
-#define LOG_ERROR(fmt, ...)      Log(LogLevel_Error,    Str8CStr(FILENAME), __LINE__, Str8Lit(fmt), ##__VA_ARGS__)
+#define LOG_NO_PREFIX(fmt, ...)  Log(LogLevel_NoPrefix, Str8Lit(__FILE__), __LINE__, Str8Lit(fmt), ##__VA_ARGS__)
+#define LOG_INFO(fmt, ...)       Log(LogLevel_Info,     Str8Lit(__FILE__), __LINE__, Str8Lit(fmt), ##__VA_ARGS__)
+#define LOG_WARN(fmt, ...)       Log(LogLevel_Warning,  Str8Lit(__FILE__), __LINE__, Str8Lit(fmt), ##__VA_ARGS__)
+#define LOG_ERROR(fmt, ...)      Log(LogLevel_Error,    Str8Lit(__FILE__), __LINE__, Str8Lit(fmt), ##__VA_ARGS__)
 #ifndef NDEBUG
-#  define LOG_DEBUG(fmt, ...)    Log(LogLevel_Debug,    Str8CStr(FILENAME), __LINE__, Str8Lit(fmt), ##__VA_ARGS__)
+#  define LOG_DEBUG(fmt, ...)    Log(LogLevel_Debug,    Str8Lit(__FILE__), __LINE__, Str8Lit(fmt), ##__VA_ARGS__)
 #else
 #  define LOG_DEBUG(fmt, ...)
 #endif
@@ -129,7 +128,7 @@ B32 WIN_FileStat(String8 file_path, FileStats* stats) {
   BOOL status = GetFileAttributesExA((LPCSTR) file_path_cstr, GetFileExInfoStandard, &attributes);
   ArenaRelease(temp_arena);
   if (!status) {
-    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to stat file: %.*s", file_path.size, file_path.str);
+    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to stat file: %S", file_path);
     return false;
   }
   stats->size = (((U32) attributes.nFileSizeHigh) << 16) | attributes.nFileSizeLow;
@@ -141,7 +140,7 @@ B32 WIN_FileStat(String8 file_path, FileStats* stats) {
 B32 WIN_FileHandleStat(FileHandle* file, FileStats* stats) {
   BY_HANDLE_FILE_INFORMATION attributes;
   if (!GetFileInformationByHandle(file->handle, &attributes)) {
-    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to stat file: %.*s", file->file_path.size, file->file_path.str);
+    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to stat file: %S", file->file_path);
     return false;
   }
   stats->size = (((U32) attributes.nFileSizeHigh) << 16) | attributes.nFileSizeLow;
@@ -189,7 +188,7 @@ B32 WIN_DirSetCurrent(String8 file_path) {
   BOOL result = SetCurrentDirectory((LPCSTR) file_path_cstr);
   ArenaRelease(temp_arena);
   if (!result) {
-    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to set current directory: %.*s", file_path.size, file_path.str);
+    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to set current directory: %S", file_path);
     return false;
   }
   return true;
@@ -210,7 +209,7 @@ B32 WIN_DirListFiles(Arena* arena, String8 dir_path, String8List* file_paths) {
   WIN32_FIND_DATAA find_data;
   HANDLE handle = FindFirstFileA((char*) query_path_cstr, &find_data);
   if (handle == INVALID_HANDLE_VALUE) {
-    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to read contents of directory: %.*s", dir_path.size, dir_path.str);
+    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to read contents of directory: %S", dir_path);
     goto win_dir_list_files_exit;
   }
 
@@ -232,19 +231,26 @@ win_dir_list_files_exit:
   return success;
 }
 
-B32 WIN_FileHandleOpenStdOut(FileHandle* file) {
-  MEMORY_ZERO_STRUCT(file);
-  file->handle = CreateFileA("CON", GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-  if (file->handle == INVALID_HANDLE_VALUE) {
+B32 WIN_FileHandleOpenStdOut(FileHandle** file) {
+  HANDLE handle = CreateFileA("CON", GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (handle == INVALID_HANDLE_VALUE) {
     WIN_IO_LOG_ERROR(GetLastError(), "[IO] Failed to open handle to stdout.");
     return false;
   }
-  file->file_path  = Str8Lit("stdout");
-  file->is_writing = true;
+  Arena* arena = ArenaAllocate();
+  *file = ARENA_PUSH_STRUCT(arena, FileHandle);
+  MEMORY_ZERO_STRUCT(*file);
+  (*file)->arena      = arena;
+  (*file)->handle     = handle;
+  (*file)->file_path  = Str8Lit("stdout");
+  (*file)->is_writing = true;
   return true;
 }
 
-B32 WIN_FileHandleOpen(FileHandle* file, String8 file_path, FileMode mode) {
+B32 WIN_FileHandleOpen(FileHandle** file, String8 file_path, FileMode mode) {
+  B32 success  = false;
+  Arena* arena = ArenaAllocate();
+
   DWORD desired_access = 0;
   B32 read  = mode & FileMode_Read;
   B32 write = mode & FileMode_Write;
@@ -265,28 +271,33 @@ B32 WIN_FileHandleOpen(FileHandle* file, String8 file_path, FileMode mode) {
   DWORD share_mode = 0;
   if (!write && read) { share_mode |= FILE_SHARE_READ; }
 
-  Arena* temp_arena = ArenaAllocate();
-  U8* file_path_cstr = CStrFromStr8(temp_arena, file_path);
-  file->handle = CreateFileA((const char*) file_path_cstr, desired_access, FILE_SHARE_READ, NULL, disposition, FILE_ATTRIBUTE_NORMAL, NULL);
-  ArenaRelease(temp_arena);
-  if (file->handle == INVALID_HANDLE_VALUE) {
-    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to open file: %.*s", file_path.size, file_path.str);
-    return false;
+  U8* file_path_cstr = CStrFromStr8(arena, file_path);
+  HANDLE handle = CreateFileA((const char*) file_path_cstr, desired_access, FILE_SHARE_READ, NULL, disposition, FILE_ATTRIBUTE_NORMAL, NULL);
+  ArenaClear(arena);
+  if (handle == INVALID_HANDLE_VALUE) {
+    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to open file: %S", file_path);
+    goto win_file_handle_open_exit;
   }
-  file->arena = ArenaAllocate();
-  file->file_path = Str8Copy(file->arena, file_path);
-  Str8ReplaceAllChar(&file->file_path, '/', '\\');
-  file->is_writing = write;
-  return true;
+  *file = ARENA_PUSH_STRUCT(arena, FileHandle);
+  MEMORY_ZERO_STRUCT(*file);
+  (*file)->arena      = arena;
+  (*file)->handle     = handle;
+  (*file)->file_path  = Str8Copy((*file)->arena, file_path);
+  (*file)->is_writing = write;
+  Str8ReplaceAllChar(&(*file)->file_path, '/', '\\');
+  success = true;
+win_file_handle_open_exit:
+  if (!success) { ArenaRelease(arena); }
+  return success;
 }
 
 B32 WIN_FileHandleClose(FileHandle* file) {
   if (file->is_writing && !FlushFileBuffers(file->handle)) {
-    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to flush file: %.*s", file->file_path.size, file->file_path.str);
+    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to flush file: %S", file->file_path);
     return false;
   }
   if (!CloseHandle(file->handle)) {
-    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to close file: %.*s", file->file_path.size, file->file_path.str);
+    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to close file: %S", file->file_path);
     return false;
   }
   ArenaRelease(file->arena);
@@ -302,7 +313,7 @@ B32 WIN_FileHandleSeek(FileHandle* file, S32 distance, FileSeekPos pos) {
     default: UNIMPLEMENTED(); break;
   }
   if (SetFilePointer(file->handle, distance, NULL, move_method) == INVALID_SET_FILE_POINTER) {
-    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to seek: %.*s", file->file_path.size, file->file_path.str);
+    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to seek: %S", file->file_path);
     return false;
   }
   return true;
@@ -312,7 +323,7 @@ B32 WIN_FileHandleRead(FileHandle* file, U8* buffer, S32 buffer_size, S32* bytes
   DWORD read;
   BOOL result = ReadFile(file->handle, (LPVOID) buffer, buffer_size, &read, NULL);
   if (!result) {
-    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to read file: %.*s", file->file_path.size, file->file_path.str);
+    WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to read file: %S", file->file_path);
     return false;
   }
   if (bytes_read != NULL) { *bytes_read = read; }
@@ -329,11 +340,11 @@ B32 WIN_FileHandleWrite(FileHandle* file, U8* buffer, S32 buffer_size) {
     DWORD w;
     BOOL result = WriteFile(file->handle, buffer + total, buffer_size - total, &w, NULL);
     if (!result) {
-      WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to write to file: %.*s", file->file_path.size, file->file_path.str);
+      WIN_IO_LOG_ERROR_EX(GetLastError(), "[IO] Failed to write to file: %S", file->file_path);
       return false;
     }
     if (w == 0) {
-      LOG_ERROR("[IO] Attempt to write returned 0 bytes: %.*s", file->file_path.size, file->file_path.str);
+      LOG_ERROR("[IO] Attempt to write returned 0 bytes: %S", file->file_path);
       return false;
     }
     total += w;
@@ -371,7 +382,7 @@ B32 LINUX_FileStat(String8 file_path, FileStats* stats) {
   S32 result = stat(file_path_cstr, &st);
   ArenaRelease(temp_arena);
   if (result == -1) {
-    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to stat file: %.*s", file_path.size, file_path.str);
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to stat file: %S", file_path);
     return false;
   }
   stats->size = st.st_size;
@@ -383,7 +394,7 @@ B32 LINUX_FileStat(String8 file_path, FileStats* stats) {
 B32 LINUX_FileHandleStat(FileHandle* file, FileStats* stats) {
   struct stat st;
   if (fstat(file->fd, &st) == -1) {
-    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to stat file: %.*s", file->file_path.size, file->file_path.str);
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to stat file: %S", file->file_path);
     return false;
   }
   stats->size = st.st_size;
@@ -432,7 +443,7 @@ B32 LINUX_DirSetCurrent(String8 file_path) {
   S32 result = chdir(file_path_cstr);
   ArenaRelease(temp_arena);
   if (result == -1) {
-    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to set current directory: %.*s", file_path.size, file_path.str);
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to set current directory: %S", file_path);
     return false;
   }
   return true;
@@ -446,7 +457,7 @@ B32 LINUX_DirListFiles(Arena* arena, String8 dir_path, String8List* file_paths) 
   CStrReplaceAllChar(dir_path_cstr, '\\', '/');
   DIR* d = opendir(dir_path_cstr);
   if (d == NULL) {
-    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to read contents of directory: %.*s", dir_path.size, dir_path.str);
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to read contents of directory: %S", dir_path);
     goto linux_dir_list_files_exit;
   }
 
@@ -461,7 +472,7 @@ B32 LINUX_DirListFiles(Arena* arena, String8 dir_path, String8List* file_paths) 
     String8 file_path = PathJoin(temp_arena, path_parts);
     Str8ReplaceAllChar(&file_path, '\\', '/');
     if (stat(CStrFromStr8(temp_arena, file_path), &dir_stat) != 0) {
-      LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to stat file %.*s", file_path.size, file_path.str);
+      LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to stat file %S", file_path);
       continue;
     }
     if (dir_stat.st_mode & S_IFDIR) { continue; }
@@ -475,17 +486,22 @@ linux_dir_list_files_exit:
   return success;
 }
 
-B32 LINUX_FileHandleOpenStdOut(FileHandle* file) {
+B32 LINUX_FileHandleOpenStdOut(FileHandle** file) {
   MEMORY_ZERO_STRUCT(file);
-  file->fd = dup(STDOUT_FILENO);
-  file->file_path = Str8Lit("stdout");
-  file->is_writing = true;
+  Arena* arena = ArenaAllocate();
+  *file = ARENA_PUSH_STRUCT(arena, FileHandle);
+  (*file)->arena      = arena;
+  (*file)->fd         = dup(STDOUT_FILENO);
+  (*file)->file_path  = Str8Lit("stdout");
+  (*file)->is_writing = true;
   return true;
 }
 
-B32 LINUX_FileHandleOpen(FileHandle* file, String8 file_path, FileMode mode) {
-  S32 flags = 0;
+B32 LINUX_FileHandleOpen(FileHandle** file, String8 file_path, FileMode mode) {
+  B32 success  = false;
+  Arena* arena = ArenaAllocate();
 
+  S32 flags = 0;
   B32 read  = mode & FileMode_Read;
   B32 write = mode & FileMode_Write;
   DEBUG_ASSERT(read || write);
@@ -495,13 +511,12 @@ B32 LINUX_FileHandleOpen(FileHandle* file, String8 file_path, FileMode mode) {
 
   if (mode & FileMode_Truncate) { flags |= O_TRUNC; }
   if (mode & FileMode_Create)   { flags |= O_CREAT; }
-  Arena* temp_arena = ArenaAllocate();
-  U8* file_path_cstr = CStrFromStr8(temp_arena, file_path);
-  file->fd = open(file_path_cstr, flags, 0770);
-  ArenaRelease(temp_arena);
-  if (file->fd == -1) {
-    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to open file: %.*s", file_path.size, file_path.str);
-    return false;
+  U8* file_path_cstr = CStrFromStr8(arena, file_path);
+  S32 fd = open(file_path_cstr, flags, 0770);
+  ArenaClear(arena);
+  if (fd == -1) {
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to open file: %S", file_path);
+    goto linux_file_handle_open_exit;
   }
 
   // NOTE: exclusive access, unless in read-only mode, in which case allow shared reads.
@@ -515,27 +530,33 @@ B32 LINUX_FileHandleOpen(FileHandle* file, String8 file_path, FileMode mode) {
   lock.l_whence = SEEK_SET;
   lock.l_start = 0;
   lock.l_len = 0;
-  if (fcntl(file->fd, F_SETLK, &lock) == -1) {
-    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to set read lock on file: %.*s", file_path.size, file_path.str);
-    DEBUG_ASSERT(close(file->fd) == 0);
-    return false;
+  if (fcntl(fd, F_SETLK, &lock) == -1) {
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to set read lock on file: %S", file_path);
+    DEBUG_ASSERT(close(fd) == 0);
+    goto linux_file_handle_open_exit;
   }
 
-  file->arena = ArenaAllocate();
-  file->file_path = Str8Copy(file->arena, file_path);
-  Str8ReplaceAllChar(&file->file_path, '\\', '/');
-  file->is_writing = write;
-  return true;
+  *file = ARENA_PUSH_STRUCT(arena, FileHandle);
+  MEMORY_ZERO_STRUCT(*file);
+  (*file)->arena      = arena;
+  (*file)->fd         = fd;
+  (*file)->file_path  = Str8Copy((*file)->arena, file_path);
+  (*file)->is_writing = write;
+  Str8ReplaceAllChar(&(*file)->file_path, '\\', '/');
+  success = true;
+linux_file_handle_open_exit:
+  if (!success) { ArenaRelease(arena); }
+  return success;
 }
 
 B32 LINUX_FileHandleClose(FileHandle* file) {
   if (file->is_writing && (fsync(file->fd) == -1)) {
-    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to flush file: %.*s", file->file_path.size, file->file_path.str);
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to flush file: %S", file->file_path);
     return false;
   }
   if (close(file->fd) == -1) {
     // NOTE: linux docs warn against retrying close(), so log but don't report this error.
-    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to close file, ignoring: %.*s", file->file_path.size, file->file_path.str);
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to close file, ignoring: %S", file->file_path);
   }
   ArenaRelease(file->arena);
   return true;
@@ -550,7 +571,7 @@ B32 LINUX_FileHandleSeek(FileHandle* file, S32 distance, FileSeekPos pos) {
     default: UNIMPLEMENTED(); break;
   }
   if (lseek(file->fd, distance, whence) == -1) {
-    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to seek for file: %.*s", file->file_path.size, file->file_path.str);
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to seek for file: %S", file->file_path);
     return false;
   }
   return true;
@@ -559,7 +580,7 @@ B32 LINUX_FileHandleSeek(FileHandle* file, S32 distance, FileSeekPos pos) {
 B32 LINUX_FileHandleRead(FileHandle* file, U8* buffer, S32 buffer_size, S32* bytes_read) {
   S32 r = read(file->fd, buffer, buffer_size);
   if (r == -1) {
-    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to read file: %.*s", file->file_path.size, file->file_path.str);
+    LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to read file: %S", file->file_path);
     return false;
   }
   if (bytes_read != NULL) { *bytes_read = r; }
@@ -575,11 +596,11 @@ B32 LINUX_FileHandleWrite(FileHandle* file, U8* buffer, S32 buffer_size) {
   while (total < (U32) buffer_size) {
     U32 w = write(file->fd, buffer + total, buffer_size - total);
     if (w == -1) {
-      LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to write file: %.*s", file->file_path.size, file->file_path.str);
+      LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to write file: %S", file->file_path);
       return false;
     }
     if (w == 0) {
-      LOG_ERROR("[IO] Attempt to write returned 0 bytes: %.*s", file->file_path.size, file->file_path.str);
+      LOG_ERROR("[IO] Attempt to write returned 0 bytes: %S", file->file_path);
       return false;
     }
     total += w;
@@ -603,43 +624,43 @@ B32 FileStat(String8 file_path, FileStats* stats) {
 
 B32 FileReadAll(Arena* arena, String8 file_path, U8** buffer, S32* buffer_size) {
   B32 success = false;
-  FileHandle handle;
+  FileHandle* handle;
   if (!FileHandleOpen(&handle, file_path, FileMode_Read)) { return false; }
   FileStats stats;
-  if (!FileHandleStat(&handle, &stats)) { goto file_read_all_exit; }
+  if (!FileHandleStat(handle, &stats)) { goto file_read_all_exit; }
   *buffer = ARENA_PUSH_ARRAY(arena, U8, stats.size);
   S32 bytes_read;
-  if (!FileHandleRead(&handle, *buffer, stats.size, &bytes_read)) {
+  if (!FileHandleRead(handle, *buffer, stats.size, &bytes_read)) {
     ARENA_POP_ARRAY(arena, U8, stats.size);
     goto file_read_all_exit;
   }
   if (buffer_size != NULL) { *buffer_size = bytes_read; }
   success = true;
 file_read_all_exit:
-  DEBUG_ASSERT(FileHandleClose(&handle));
+  DEBUG_ASSERT(FileHandleClose(handle));
   return success;
 }
 
 B32 FileDump(String8 file_path, U8* buffer, S32 buffer_size) {
   B32 success = false;
-  FileHandle handle;
+  FileHandle* handle;
   if (!FileHandleOpen(&handle, file_path, FileMode_Write | FileMode_Create | FileMode_Truncate)) { return false; }
-  if (!FileHandleWrite(&handle, buffer, buffer_size)) { goto file_dump_exit; }
+  if (!FileHandleWrite(handle, buffer, buffer_size)) { goto file_dump_exit; }
   success = true;
 file_dump_exit:
-  DEBUG_ASSERT(FileHandleClose(&handle));
+  DEBUG_ASSERT(FileHandleClose(handle));
   return success;
 }
 
 B32 FileAppend(String8 file_path, U8* buffer, S32 buffer_size) {
   B32 success = false;
-  FileHandle handle;
+  FileHandle* handle;
   if (!FileHandleOpen(&handle, file_path, FileMode_Write | FileMode_Create)) { return false; }
-  if (!FileHandleSeek(&handle, 0, FileSeekPos_End)) { goto file_append_exit; }
-  if (!FileHandleWrite(&handle, buffer, buffer_size)) { goto file_append_exit; }
+  if (!FileHandleSeek(handle, 0, FileSeekPos_End)) { goto file_append_exit; }
+  if (!FileHandleWrite(handle, buffer, buffer_size)) { goto file_append_exit; }
   success = true;
 file_append_exit:
-  DEBUG_ASSERT(FileHandleClose(&handle));
+  DEBUG_ASSERT(FileHandleClose(handle));
   return success;
 }
 
@@ -661,7 +682,7 @@ B32 DirGetExe(Arena* arena, String8* file_path) {
 
 B32 DirGetExeDir(Arena* arena, String8* file_path) {
   B32 result = DirGetExe(arena, file_path);
-  if (result) { PathPop(file_path); }
+  if (result) { PathPop(*file_path, file_path, NULL); }
   return result;
 }
 
@@ -689,11 +710,18 @@ B32 DirListFiles(Arena* arena, String8 dir_path, String8List* file_paths) {
   return CDEFAULT_IO_BACKEND_FN(DirListFiles(arena, dir_path, file_paths));
 }
 
-B32 PathPop(String8* path) {
-  Str8ReplaceAllChar(path, '\\', '/');
-  S32 result = Str8FindReverse(*path, 0, Str8Lit("/"));
+B32 PathPop(String8 path, String8* dir_part, String8* file_part) {
+  S32 result;
+  result = Str8FindReverse(path, 0, Str8Lit("/"));
   if (result >= 0) {
-    *path = Str8Substring(*path, 0, result);
+    if (dir_part != NULL)  { *dir_part  = Str8Substring(path, 0, result);             }
+    if (file_part != NULL) { *file_part = Str8Substring(path, result + 1, path.size); }
+    return true;
+  }
+  result = Str8FindReverse(path, 0, Str8Lit("\\"));
+  if (result >= 0) {
+    if (dir_part != NULL)  { *dir_part  = Str8Substring(path, 0, result);             }
+    if (file_part != NULL) { *file_part = Str8Substring(path, result + 1, path.size); }
     return true;
   }
   return false;
@@ -730,15 +758,11 @@ B32 FileHandleStat(FileHandle* file, FileStats* stats) {
   return CDEFAULT_IO_BACKEND_FN(FileHandleStat(file, stats));
 }
 
-FileHandle* FileHandleAllocate(Arena* arena) {
-  return ARENA_PUSH_STRUCT(arena, FileHandle);
-}
-
-B32 FileHandleOpenStdOut(FileHandle* file) {
+B32 FileHandleOpenStdOut(FileHandle** file) {
   return CDEFAULT_IO_BACKEND_FN(FileHandleOpenStdOut(file));
 }
 
-B32 FileHandleOpen(FileHandle* file, String8 file_path, FileMode mode) {
+B32 FileHandleOpen(FileHandle** file, String8 file_path, FileMode mode) {
   return CDEFAULT_IO_BACKEND_FN(FileHandleOpen(file, file_path, mode));
 }
 
@@ -770,15 +794,14 @@ static LogConfig _cdef_log_config;
 static void LogInitCommon(LogConfig* c) {
   DEBUG_ASSERT(!c->is_initialized);
   MEMORY_ZERO_STRUCT(c);
-  c->arena  = ArenaAllocate();
-  c->handle = FileHandleAllocate(c->arena);
+  c->arena = ArenaAllocate();
   MutexInit(&c->mtx);
 }
 
 B32 LogInitStdOut() {
   LogConfig* c = &_cdef_log_config;
   LogInitCommon(c);
-  if (!FileHandleOpenStdOut(c->handle)) { return false; }
+  if (!FileHandleOpenStdOut(&c->handle)) { return false; }
   c->is_initialized = true;
   return true;
 }
@@ -786,30 +809,34 @@ B32 LogInitStdOut() {
 B32 LogInitFile(String8 file_path) {
   LogConfig* c = &_cdef_log_config;
   LogInitCommon(c);
-  if (!FileHandleOpen(c->handle, file_path, FileMode_Write | FileMode_Create | FileMode_Truncate)) { return false; }
+  if (!FileHandleOpen(&c->handle, file_path, FileMode_Write | FileMode_Create | FileMode_Truncate)) { return false; }
   c->is_initialized = true;
   return true;
 }
 
-static void LogV(LogLevel level, String8 filename, U32 loc, String8 fmt, va_list args) {
+static void LogV(LogLevel level, String8 file, U32 loc, String8 fmt, va_list args) {
   LogConfig* c = &_cdef_log_config;
-  DEBUG_ASSERT(c->is_initialized);
+  if (!c->is_initialized) { return; }
+
+  String8 file_name;
+  if (!PathPop(file, NULL, &file_name)) { file_name = file; }
+
   U64 arena_base = ArenaPos(c->arena);
 
   // TODO: make highlighting optional.
-  String8 prefix_text;
+  String8 level_text;
   switch (level) {
     case LogLevel_NoPrefix: break;
-    case LogLevel_Debug:   { prefix_text = Str8Lit(ANSI_COLOR_BLUE "DEBUG" ANSI_COLOR_RESET);  } break;
-    case LogLevel_Info:    { prefix_text = Str8Lit("INFO");                                    } break;
-    case LogLevel_Warning: { prefix_text = Str8Lit(ANSI_COLOR_YELLOW "WARN" ANSI_COLOR_RESET); } break;
-    case LogLevel_Error:   { prefix_text = Str8Lit(ANSI_COLOR_RED "ERROR" ANSI_COLOR_RESET);   } break;
+    case LogLevel_Debug:   { level_text = Str8Lit(ANSI_COLOR_BLUE "DEBUG" ANSI_COLOR_RESET);  } break;
+    case LogLevel_Info:    { level_text = Str8Lit("INFO");                                    } break;
+    case LogLevel_Warning: { level_text = Str8Lit(ANSI_COLOR_YELLOW "WARN" ANSI_COLOR_RESET); } break;
+    case LogLevel_Error:   { level_text = Str8Lit(ANSI_COLOR_RED "ERROR" ANSI_COLOR_RESET);   } break;
     default: UNREACHABLE();
   }
 
   String8 prefix = Str8Lit("");
   if (level != LogLevel_NoPrefix) {
-    prefix = Str8Format(c->arena, "[%S | %S:%d]: ", prefix_text, filename, loc);
+    prefix = Str8Format(c->arena, "[%S | %S:%d]: ", level_text, file_name, loc);
   }
   String8 message = Str8FormatV(c->arena, fmt, args);
   String8 suffix  = Str8Lit("\n");
@@ -823,10 +850,10 @@ static void LogV(LogLevel level, String8 filename, U32 loc, String8 fmt, va_list
   ArenaPopTo(c->arena, arena_base);
 }
 
-void Log(LogLevel level, String8 filename, U32 loc, String8 fmt, ...) {
+void Log(LogLevel level, String8 file, U32 loc, String8 fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  LogV(level, filename, loc, fmt, args);
+  LogV(level, file, loc, fmt, args);
   va_end(args);
 }
 

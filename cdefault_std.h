@@ -56,7 +56,6 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdarg.h>
-#include <stdio.h>
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Types
@@ -101,21 +100,21 @@ typedef double   F64;
 #define F32_MIN_POSITIVE 1.175494351e-38f
 #define F32_POS_INFINITY (((F32)+1.0f)/((F32)0.0f));
 #define F32_NEG_INFINITY (((F32)-1.0f)/((F32)0.0f));
-#define F64_MIN -1.7976931348623157e+308f
-#define F64_MAX 1.7976931348623157e+308f
-#define F64_NAN (((F64)0.0f)/((F64)0.0f));
-#define F64_MIN_POSITIVE 2.2250738585072014e-308f
-#define F64_POS_INFINITY (((F64)+1.0f)/((F64)0.0f));
-#define F64_NEG_INFINITY (((F64)-1.0f)/((F64)0.0f));
+#define F64_MIN -1.7976931348623157e+308
+#define F64_MAX 1.7976931348623157e+308
+#define F64_NAN (((F64)0.0)/((F64)0.0));
+#define F64_MIN_POSITIVE 2.2250738585072014e-308
+#define F64_POS_INFINITY (((F64)+1.0)/((F64)0.0));
+#define F64_NEG_INFINITY (((F64)-1.0)/((F64)0.0));
 
-#define F32_PI    3.14159265358979323846264338327950288f
-#define F32_TAU   6.28318530717958647692528676655900576f
-#define F32_E     2.71828182845904523536028747135266249f
-#define F32_SQRT2 1.41421356237309504880168872420969808f
-#define F64_PI    F32_PI
-#define F64_TAU   F32_TAU
-#define F64_E     F32_E
-#define F64_SQRT2 F32_SQRT2
+#define F32_PI    ((F32) F64_PI)
+#define F32_TAU   ((F32) F64_TAU)
+#define F32_E     ((F32) F64_E)
+#define F32_SQRT2 ((F32) F64_SQRT2)
+#define F64_PI    3.14159265358979323846264338327950288
+#define F64_TAU   6.28318530717958647692528676655900576
+#define F64_E     2.71828182845904523536028747135266249
+#define F64_SQRT2 1.41421356237309504880168872420969808
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Gen purpose macros
@@ -131,10 +130,6 @@ typedef double   F64;
 
 #define STRINGIFY(x) #x
 #define GLUE(a, b) a ## b
-// TODO: comptime? don't use stdlib fns?
-#define FILENAME (strrchr(__FILE__, '/')  ? strrchr(__FILE__, '/')  + 1 : \
-                 (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : \
-                 __FILE__))
 
 #define STATIC_ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
@@ -205,8 +200,6 @@ U32 U32CountBits(U32 x); // E.g. 1111 -> 4.
 #  define TRAP() __debugbreak()
 #elif defined(COMPILER_MSVC)
 #  define TRAP() __builtin_trap()
-#else
-#  error Unknown trap intrinsic for this compiler.
 #endif
 #define STATIC_ASSERT(exp, msg) static_assert((exp), msg)
 #define UNIMPLEMENTED() ASSERT(false)
@@ -222,16 +215,12 @@ U32 U32CountBits(U32 x); // E.g. 1111 -> 4.
 #  define PACKED_STRUCT(s) __pragma(pack(push, 1)) struct s __pragma(pack(pop))
 #elif defined(COMPILER_GCC) || defined(COMPILER_CLANG)
 #  define PACKED_STRUCT(s) struct __attribute__((packed)) s
-#else
-#  error PACKED_STRUCT not defined for this compiler.
 #endif
 
 #if defined(COMPILER_MSVC) || defined(COMPILER_CLANG)
 #  define ALIGN_OF(T) __alignof(T)
 #elif defined(COMPILER_GCC)
 #  define ALIGN_OF(T) __alignof__(T)
-#else
-#  error ALIGN_OF not defined for this compiler.
 #endif
 #define ALIGN_POW_2(x, b) (((x) + (b) - 1) & (~((b) - 1)))
 
@@ -244,21 +233,26 @@ U32 U32CountBits(U32 x); // E.g. 1111 -> 4.
 // NOTE: Memory
 ///////////////////////////////////////////////////////////////////////////////
 
-#define MEMORY_COPY(dst, src, size) memcpy((dst), (src), (size))
-#define MEMORY_MOVE(dst, src, size) memmove((dst), (src), (size))
-#define MEMORY_SET(dst, byte, size) memset((dst), (byte), (size))
-#define MEMORY_COMPARE(a, b, size)  memcmp((a), (b), (size))
+#define MEMORY_MOVE_SIZE(dst, src, size)   memmove((dst), (src), (size))
+#define MEMORY_MOVE_STRUCT(dst, src)       MEMORY_MOVE_SIZE((dst), (src), sizeof(*(src)))
+#define MEMORY_MOVE_STATIC_ARRAY(dst, src) MEMORY_MOVE_SIZE((dst), (src), sizeof(src))
+#define MEMORY_MOVE_ARRAY(dst, src, count) MEMORY_MOVE_SIZE((dst), (src), sizeof(*(src)) * count)
 
-#define MEMORY_COPY_STRUCT(d, s)       MEMORY_COPY((d), (s), sizeof(*(d)))
-#define MEMORY_COPY_STATIC_ARRAY(d, s) MEMORY_COPY((d), (s), sizeof(d))
+#define MEMORY_COPY_SIZE(dst, src, size)   memcpy((dst), (src), (size))
+#define MEMORY_COPY_STRUCT(dst, src)       MEMORY_COPY_SIZE((dst), (src), sizeof(*(src)))
+#define MEMORY_COPY_STATIC_ARRAY(dst, src) MEMORY_COPY_SIZE((dst), (src), sizeof(src))
+#define MEMORY_COPY_ARRAY(dst, src, count) MEMORY_COPY_SIZE((dst), (src), sizeof(*(src)) * count)
 
-#define MEMORY_ZERO(dest, size)     MEMORY_SET(dest, 0, size)
-#define MEMORY_ZERO_STRUCT(s)       MEMORY_ZERO((s), sizeof(*(s)))
-#define MEMORY_ZERO_STATIC_ARRAY(a) MEMORY_ZERO((a), sizeof(a))
+#define MEMORY_SET_SIZE(dst, byte, size) memset((dst), (byte), (size))
+#define MEMORY_ZERO_SIZE(dst, size)      MEMORY_SET_SIZE(dst, 0, size)
+#define MEMORY_ZERO_STRUCT(strct)        MEMORY_ZERO_SIZE((strct), sizeof(*(strct)))
+#define MEMORY_ZERO_STATIC_ARRAY(arr)    MEMORY_ZERO_SIZE((arr), sizeof(arr))
+#define MEMORY_ZERO_ARRAY(arr, count)    MEMORY_ZERO_SIZE((arr), sizeof(*(arr)) * count)
 
-#define IS_MEMORY_EQUAL(a, b, size)       (MEMORY_COMPARE((a), (b), (size)) == 0)
-#define IS_MEMORY_EQUAL_STRUCT(a, b)      IS_MEMORY_EQUAL((a), (b), sizeof(*(a)))
-#define IS_MEMORY_EQUAL_STATIC_ARRAY(a,b) IS_MEMORY_EQUAL((a), (b), sizeof(a))
+#define IS_MEMORY_EQUAL_SIZE(a, b, size)   (memcmp((a), (b), (size)) == 0)
+#define IS_MEMORY_EQUAL_STRUCT(a, b)       IS_MEMORY_EQUAL_SIZE((a), (b), sizeof(*(a)))
+#define IS_MEMORY_EQUAL_STATIC_ARRAY(a, b) IS_MEMORY_EQUAL_SIZE((a), (b), sizeof(a))
+#define IS_MEMORY_EQUAL_ARRAY(a, b, count) IS_MEMORY_EQUAL_SIZE((a), (b), sizeof(*(a)) * count)
 
 void* MemoryReserve(U64 size);
 B32   MemoryCommit(void* ptr, U64 size);
@@ -500,7 +494,7 @@ void  MemoryDecommit(void* ptr, U64 size);
 #define DA_COPY_EX(arena, a_data, a_size, a_capacity, b_data, b_size, b_capacity) \
   DA_RESERVE_EX(arena, b_data, b_capacity, a_size);                               \
   b_size = a_size;                                                                \
-  MEMORY_COPY(b_data, a_data, (a_size) * sizeof(*(a_data)))
+  MEMORY_COPY_ARRAY(b_data, a_data, a_size)
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: Arena
@@ -712,9 +706,9 @@ B32  CStrStartsWith(U8* a, U8* b);
 B32  CStrEndsWith(U8* a, U8* b);
 void CStrToUpper(U8* s);
 void CStrToLower(U8* s);
-U8*  CStrFormatV(Arena* arena, U8* fmt, va_list args);
-U8*  _CStrFormat(Arena* arena, U8* fmt, ...);
-#define CStrFormat(a, fmt, ...) _CStrFormat(a, (U8) fmt, ##__VA_ARGS__)
+U8*  CStrFormatV(Arena* arena, String8 fmt, va_list args);
+U8*  _CStrFormat(Arena* arena, String8 fmt, ...);
+#define CStrFormat(a, fmt, ...) _CStrFormat(a, Str8Lit(fmt), ##__VA_ARGS__)
 
 String8 Str8(U8* str, S32 size);
 String8 Str8Range(U8* str, U8* one_past_last);
@@ -1547,7 +1541,7 @@ U8* CStrFromStr8(Arena* arena, String8 s) {
   if (s.size < 0) { return (U8*) ""; }
   S32 size = s.size + 1;
   U8* result = ARENA_PUSH_ARRAY(arena, U8, size);
-  MEMORY_COPY(result, s.str, size * sizeof(U8));
+  MEMORY_COPY_ARRAY(result, s.str, size);
   result[s.size] = '\0';
   return result;
 }
@@ -1555,7 +1549,7 @@ U8* CStrFromStr8(Arena* arena, String8 s) {
 U8* CStrCopy(Arena* arena, U8* src) {
   U32 size_with_null_terminator = CStrSize(src) + 1;
   U8* result = ARENA_PUSH_ARRAY(arena, U8, size_with_null_terminator);
-  MEMORY_COPY(result, src, size_with_null_terminator * sizeof(U8));
+  MEMORY_COPY_ARRAY(result, src, size_with_null_terminator);
   return result;
 }
 
@@ -1563,7 +1557,7 @@ U8* CStrSubstring(Arena* arena, U8* s, S32 start, S32 one_past_last) {
   if (one_past_last < start) { one_past_last = start; }
   S32 size = one_past_last - start;
   U8* result = ARENA_PUSH_ARRAY(arena, U8, size + 1);
-  MEMORY_COPY(result, (s + start), size * sizeof(U8));
+  MEMORY_COPY_ARRAY(result, (s + start), size);
   result[size] = '\0';
   return result;
 }
@@ -1573,8 +1567,8 @@ U8* CStrConcat(Arena* arena, U8* a, U8* b) {
   U32 b_size = CStrSize(b);
   U32 size = a_size + b_size + 1;
   U8* result = ARENA_PUSH_ARRAY(arena, U8, size * sizeof(U8));
-  MEMORY_COPY(result, a, a_size * sizeof(U8));
-  MEMORY_COPY(result + a_size, b, b_size * sizeof(U8));
+  MEMORY_COPY_ARRAY(result, a, a_size);
+  MEMORY_COPY_ARRAY(result + a_size, b, b_size);
   result[a_size + b_size] = '\0';
   return result;
 }
@@ -1717,19 +1711,15 @@ void CStrToLower(U8* s) {
   while (s[i] != '\0') { s[i] = CharToLower(s[i]); i++; }
 }
 
-U8* CStrFormatV(Arena* arena, U8* fmt, va_list args) {
-  va_list args_copy;
-  va_copy(args_copy, args);
-  U32 size = vsnprintf(NULL, 0, (const char* const) fmt, args_copy) + 1;
-  va_end(args_copy);
-  U8* result = ARENA_PUSH_ARRAY(arena, U8, size);
-  va_copy(args_copy, args);
-  vsnprintf((char* const) result, size, (char* const) fmt, args_copy);
-  va_end(args_copy);
+U8* CStrFormatV(Arena* arena, String8 fmt, va_list args) {
+  Arena* temp_arena = ArenaAllocate();
+  String8 result_str8 = Str8FormatV(temp_arena, fmt, args);
+  U8* result = CStrFromStr8(arena, result_str8);
+  ArenaRelease(temp_arena);
   return result;
 }
 
-U8* _CStrFormat(Arena* arena, U8* fmt, ...) {
+U8* _CStrFormat(Arena* arena, String8 fmt, ...) {
   va_list args;
   va_start(args, fmt);
   U8* result = CStrFormatV(arena, fmt, args);
@@ -1766,7 +1756,7 @@ String8 Str8Copy(Arena* arena, String8 string) {
   MEMORY_ZERO_STRUCT(&result);
   result.size = string.size;
   result.str = ARENA_PUSH_ARRAY(arena, U8, string.size);
-  MEMORY_COPY(result.str, string.str, string.size);
+  MEMORY_COPY_ARRAY(result.str, string.str, string.size);
   return result;
 }
 
@@ -1980,8 +1970,8 @@ String8 Str8Concat(Arena* arena, String8 a, String8 b) {
   MEMORY_ZERO_STRUCT(&result);
   result.size = a.size + b.size;
   result.str = ARENA_PUSH_ARRAY(arena, U8, a.size + b.size);
-  MEMORY_COPY(result.str, a.str, a.size);
-  MEMORY_COPY(result.str + a.size, b.str, b.size);
+  MEMORY_COPY_ARRAY(result.str, a.str, a.size);
+  MEMORY_COPY_ARRAY(result.str + a.size, b.str, b.size);
   return result;
 }
 
@@ -2170,7 +2160,7 @@ static B32 Str8FmtNext(String8* fmt, U8* c) {
   return true;
 }
 
-#define TRY_PULL_CHAR(eval) if (!(eval)) { ASSERT(!"[STD] Format string is malformed, ran out of chars"); }
+#define TRY_PULL_CHAR(eval) if (!(eval)) { ASSERT(!"Format string is malformed, ran out of chars"); }
 String8 Str8FormatV(Arena* arena, String8 fmt, va_list args) {
   Str8FmtStream stream = Str8FmtStreamAssign(arena);
 
@@ -2226,7 +2216,7 @@ String8 Str8FormatV(Arena* arena, String8 fmt, va_list args) {
           TRY_PULL_CHAR(Str8FmtNext(&fmt, &format_char));
         } while (CharIsDigit(format_char));
       } else {
-        ASSERT(!"[STD] String format precision specifier is malformed");
+        ASSERT(!"String format precision specifier is malformed");
       }
     }
 
@@ -2376,7 +2366,7 @@ String8 Str8FormatV(Arena* arena, String8 fmt, va_list args) {
           case '3': { arg_size = 3; } break;
           case '4': { arg_size = 4; } break;
           default: {
-            ASSERT(!"[STD] Unrecognized vector string format specifier");
+            ASSERT(!"Unrecognized vector string format specifier");
           } break;
         }
         Str8FmtBufferPushStr8(&temp, Str8Lit("{ "));
@@ -2389,7 +2379,7 @@ String8 Str8FormatV(Arena* arena, String8 fmt, va_list args) {
 
       // NOTE: unknown
       default: {
-        ASSERT(!"[STD] Unrecognized string format specifier");
+        ASSERT(!"Unrecognized string format specifier");
       } break;
     }
 
@@ -2450,7 +2440,7 @@ String8 Str8ListJoin(Arena* arena, String8List* list) {
   result.str = ARENA_PUSH_ARRAY(arena, U8, size);
   size = 0;
   for (String8ListNode* node = list->head; node != NULL; node = node->next) {
-    MEMORY_COPY(result.str + size, node->string.str, node->string.size);
+    MEMORY_COPY_ARRAY(result.str + size, node->string.str, node->string.size);
     size += node->string.size;
   }
   return result;
@@ -2492,9 +2482,9 @@ S32 Str8Hash(String8 s) {
 ///////////////////////////////////////////////////////////////////////////////
 
 static inline void SortSwap(void* a, void* b, void* temp_buffer, U32 item_size) {
-  MEMORY_COPY(temp_buffer, a, item_size);
-  MEMORY_COPY(a, b, item_size);
-  MEMORY_COPY(b, temp_buffer, item_size);
+  MEMORY_COPY_SIZE(temp_buffer, a, item_size);
+  MEMORY_COPY_SIZE(a, b, item_size);
+  MEMORY_COPY_SIZE(b, temp_buffer, item_size);
 }
 
 static inline U32 SortPartition(void* items, U32 item_size, S32 low_idx, S32 high_idx, SortCompare_Fn* compare_fn, void* temp_buffer) {

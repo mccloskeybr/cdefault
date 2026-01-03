@@ -9,6 +9,7 @@ int main(void) {
   TimeInit();
   DEBUG_ASSERT(WindowInit(1920, 1080, "render font cdefault"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
+  RendererDisableDepthTest();
   DirSetCurrentToExeDir();
   Arena* font_arena = ArenaAllocate();
 

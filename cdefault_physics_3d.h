@@ -206,7 +206,7 @@ static Collider3* Collider3Allocate() {
 
 static void Collider3ConvexHullUpdateWorldPoints(Collider3* collider) {
   DEBUG_ASSERT(collider->type == Collider3Type_ConvexHull);
-  MEMORY_COPY(collider->convex_hull.points_world, collider->convex_hull.points_local, collider->convex_hull.points_size * sizeof(V3));
+  MEMORY_COPY_ARRAY(collider->convex_hull.points_world, collider->convex_hull.points_local, collider->convex_hull.points_size);
   ConvexHull3Offset(collider->convex_hull.points_world, collider->convex_hull.points_size, &collider->convex_hull.center);
 }
 
@@ -529,8 +529,8 @@ Collider3* Physics3RegisterColliderConvexHull(V3* points, U32 points_size) {
   collider->convex_hull.arena = ArenaAllocate();
   collider->convex_hull.points_local = ARENA_PUSH_ARRAY(collider->convex_hull.arena, V3, points_size);
   collider->convex_hull.points_world = ARENA_PUSH_ARRAY(collider->convex_hull.arena, V3, points_size);
-  MEMORY_COPY(collider->convex_hull.points_local, points, points_size * sizeof(V3));
-  MEMORY_COPY(collider->convex_hull.points_world, points, points_size * sizeof(V3));
+  MEMORY_COPY_ARRAY(collider->convex_hull.points_local, points, points_size);
+  MEMORY_COPY_ARRAY(collider->convex_hull.points_world, points, points_size);
   collider->convex_hull.points_size = points_size;
   ConvexHull3GetEnclosingSphere3(points, points_size, &collider->convex_hull.center, &collider->broad_sphere_radius);
   V3 neg_center;

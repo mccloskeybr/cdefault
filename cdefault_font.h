@@ -1150,7 +1150,7 @@ B32 FontAtlasBakeBitmap(Arena* atlas_arena, Arena* bitmap_arena, Font* font, Fon
     goto font_atlas_bake_bitmap_end;
   }
   bitmap->data = ARENA_PUSH_ARRAY(bitmap_arena, U8, bitmap->width * bitmap->height);
-  MEMORY_ZERO(bitmap->data, sizeof(U8) * bitmap->width * bitmap->height);
+  MEMORY_ZERO_ARRAY(bitmap->data, bitmap->width * bitmap->height);
 
   // NOTE: bake glyph bitmap
   U32 bitmap_x = pad;
@@ -1280,7 +1280,7 @@ B32 FontAtlasBakeSdf(Arena* atlas_arena, Arena* bitmap_arena, Font* font, FontAt
     goto font_atlas_bake_sdf_end;
   }
   bitmap->data = ARENA_PUSH_ARRAY(bitmap_arena, U8, bitmap->width * bitmap->height);
-  MEMORY_ZERO(bitmap->data, sizeof(U8) * bitmap->width * bitmap->height);
+  MEMORY_ZERO_ARRAY(bitmap->data, bitmap->width * bitmap->height);
 
   U32 sdf_y = sdf_pad.y;
   U32 sdf_x = sdf_pad.x;
@@ -1322,7 +1322,7 @@ B32 FontAtlasBakeSdf(Arena* atlas_arena, Arena* bitmap_arena, Font* font, FontAt
       U16 bmp_glyph_width  = bmp_glyph_max.x - bmp_glyph_min.x;
       U16 bmp_glyph_height = bmp_glyph_max.y - bmp_glyph_min.y;
       U8* bmp_glyph_bytes  = ARENA_PUSH_ARRAY(temp_arena, U8, bmp_glyph_width * bmp_glyph_height);
-      MEMORY_ZERO(bmp_glyph_bytes, sizeof(U8) * (bmp_glyph_width * bmp_glyph_height));
+      MEMORY_ZERO_ARRAY(bmp_glyph_bytes, bmp_glyph_width * bmp_glyph_height);
       DEBUG_ASSERT(FontGlyphShapeRasterize(
             &glyph_shape, &bmp_glyph_bytes, bmp_glyph_width, bmp_glyph_height,
             sdf_kernel.x, sdf_kernel.y, bmp_glyph_width - sdf_kernel.x, bmp_glyph_height - sdf_kernel.y));

@@ -23,4 +23,3 @@ cl %FLAGS% physics_2d_test.c /Fobuild/physics_2d_test.obj /Febin/physics_2d_test
 cl %FLAGS% physics_3d_test.c /Fobuild/physics_3d_test.obj /Febin/physics_3d_test.exe /link %LIBS%
 cl %FLAGS% gjk_debug.c /Fobuild/gjk_debug.obj /Febin/gjk_debug.exe /link %LIBS%
 cl %FLAGS% file.c /Fobuild/file.obj /Febin/file.exe /link %LIBS%
-cl %FLAGS% log.c /Fobuild/log.obj /Febin/log.exe /link %LIBS%

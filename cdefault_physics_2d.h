@@ -213,7 +213,7 @@ static Collider2* Collider2Allocate() {
 
 static void Collider2ConvexHullUpdateWorldPoints(Collider2* collider) {
   DEBUG_ASSERT(collider->type == Collider2Type_ConvexHull);
-  MEMORY_COPY(collider->convex_hull.points_world, collider->convex_hull.points_local, collider->convex_hull.points_size * sizeof(V2));
+  MEMORY_COPY_ARRAY(collider->convex_hull.points_world, collider->convex_hull.points_local, collider->convex_hull.points_size);
   ConvexHull2RotateAboutPoint(collider->convex_hull.points_world, collider->convex_hull.points_size, &(V2) {0, 0}, collider->angle_rad);
   ConvexHull2Offset(collider->convex_hull.points_world, collider->convex_hull.points_size, &collider->convex_hull.center);
 }
@@ -620,8 +620,8 @@ Collider2* Physics2RegisterColliderConvexHull(V2* points, U32 points_size) {
   collider->convex_hull.arena = ArenaAllocate();
   collider->convex_hull.points_local = ARENA_PUSH_ARRAY(collider->convex_hull.arena, V2, points_size);
   collider->convex_hull.points_world = ARENA_PUSH_ARRAY(collider->convex_hull.arena, V2, points_size);
-  MEMORY_COPY(collider->convex_hull.points_local, points, points_size * sizeof(V2));
-  MEMORY_COPY(collider->convex_hull.points_world, points, points_size * sizeof(V2));
+  MEMORY_COPY_ARRAY(collider->convex_hull.points_local, points, points_size);
+  MEMORY_COPY_ARRAY(collider->convex_hull.points_world, points, points_size);
   collider->convex_hull.points_size = points_size;
   ConvexHull2GetEnclosingCircle2(points, points_size, &collider->convex_hull.center, &collider->broad_circle_radius);
   V2 neg_center;

@@ -78,7 +78,6 @@ int main(void) {
 
     V2 mouse_pos;
     WindowGetMousePositionV(&mouse_pos);
-    RendererCastRayV(mouse_pos, &mouse_pos);
     if (WindowIsMouseButtonJustPressed(MouseButton_Left)) {
       AddColliderCircle(mouse_pos);
     } else if (WindowIsMouseButtonJustPressed(MouseButton_Right)) {

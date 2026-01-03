@@ -194,7 +194,7 @@ B32 ModelLoadObj(Arena* arena, Model* model, U8* file_data, U32 file_data_size) 
     U32 to_pop = vertex_overfit * sizeof(V3); // for points (always present)
     if (obj_normals_size > 0) {
       V3* new_normals = (V3*) mesh->points + mesh->vertices_size;
-      MEMORY_MOVE(new_normals, mesh->normals, mesh->vertices_size * sizeof(V3));
+      MEMORY_MOVE_ARRAY(new_normals, mesh->normals, mesh->vertices_size);
       mesh->normals = new_normals;
       to_pop += vertex_overfit * sizeof(V3);
     }
@@ -202,7 +202,7 @@ B32 ModelLoadObj(Arena* arena, Model* model, U8* file_data, U32 file_data_size) 
       V2* new_uvs;
       if (obj_normals_size > 0) { new_uvs = (V2*) (mesh->normals + mesh->vertices_size); }
       else                      { new_uvs = (V2*) (mesh->points + mesh->vertices_size);  }
-      MEMORY_MOVE(new_uvs, mesh->uvs, mesh->vertices_size * sizeof(V2));
+      MEMORY_MOVE_ARRAY(new_uvs, mesh->uvs, mesh->vertices_size);
       mesh->uvs = new_uvs;
       to_pop += vertex_overfit * sizeof(V2);
     }
@@ -605,7 +605,7 @@ static B32 GltfMeshParse(Arena* arena, JsonValue* value, GltfAccessor* accessors
     }
     mesh->vertices_size = position->count;
     mesh->points = ARENA_PUSH_ARRAY(arena, V3, position->count);
-    MEMORY_MOVE(mesh->points, position->f32_arr, sizeof(F32) * 3 * position->count);
+    MEMORY_MOVE_ARRAY(mesh->points, position->f32_arr, 3 * position->count);
 
     // NOTE: normals
     F32 normal_idx;
@@ -628,7 +628,7 @@ static B32 GltfMeshParse(Arena* arena, JsonValue* value, GltfAccessor* accessors
         goto gltf_mesh_parse_exit;
       }
       mesh->normals = ARENA_PUSH_ARRAY(arena, V3, normal->count);
-      MEMORY_MOVE(mesh->normals, normal->f32_arr, sizeof(F32) * 3 * normal->count);
+      MEMORY_MOVE_ARRAY(mesh->normals, normal->f32_arr, 3 * normal->count);
     }
 
     // NOTE: UVs
@@ -652,7 +652,7 @@ static B32 GltfMeshParse(Arena* arena, JsonValue* value, GltfAccessor* accessors
         goto gltf_mesh_parse_exit;
       }
       mesh->uvs = ARENA_PUSH_ARRAY(arena, V2, texcoord->count);
-      MEMORY_MOVE(mesh->uvs, texcoord->f32_arr, sizeof(F32) * 2 * texcoord->count);
+      MEMORY_MOVE_ARRAY(mesh->uvs, texcoord->f32_arr, 2 * texcoord->count);
       // NOTE: correct image y coordinate (since cdefault coords are low -> high, not high -> low)
       for (U32 i = 0; i < texcoord->count; i++) { mesh->uvs[i].v = 1 - mesh->uvs[i].v; }
     }

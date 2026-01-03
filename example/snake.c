@@ -69,13 +69,13 @@ static S32 AudioEntry(void* user_data) {
   String8 buffer;
   while (true) {
     if (!AudioStreamAcquireBuffer(audio_manager.stream, &buffer.str, &buffer.size)) { continue; }
-    MEMORY_ZERO(buffer.str, buffer.size);
+    MEMORY_ZERO_ARRAY(buffer.str, buffer.size);
 
     U8* temp_buffer = ARENA_PUSH_ARRAY(arena, U8, buffer.size);
     MutexLock(&audio_manager.mutex);
     SoundEffect* effect = audio_manager.head;
     while (effect != NULL) {
-      MEMORY_ZERO(temp_buffer, buffer.size);
+      MEMORY_ZERO_ARRAY(temp_buffer, buffer.size);
       U32 read = stb_vorbis_get_samples_float_interleaved(
           effect->vorbis, spec.channels, (F32*) temp_buffer, buffer.size / sizeof(F32));
       for (S32 i = 0; i < buffer.size / sizeof(F32); i++) {

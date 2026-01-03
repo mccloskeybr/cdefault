@@ -16,6 +16,7 @@ int main(void) {
   TimeInit();
   ASSERT(WindowInit(1280, 720, "collision"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
+  RendererDisableDepthTest();
 
   V2 circle_center;
   F32 circle_radius;
@@ -77,7 +78,6 @@ int main(void) {
 
     V2 mouse_pos;
     WindowGetMousePositionV(&mouse_pos);
-    RendererCastRayV(mouse_pos, &mouse_pos);
     circle_center = mouse_pos;
 
     DrawCircleV(other_circle_center, other_circle_radius, V3_BLUE);

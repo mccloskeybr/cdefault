@@ -2442,7 +2442,7 @@ void ConvexHull3FromAabb3(V3 hull_points[8], U32 hull_indices[36], V3* aabb_cent
       1, 5, 6,   1, 6, 2,
       0, 3, 7,   0, 7, 4,
     };
-    MEMORY_MOVE(hull_indices, static_hull_indices, sizeof(U32) * 36);
+    MEMORY_MOVE_STATIC_ARRAY(hull_indices, static_hull_indices);
   }
 }
 

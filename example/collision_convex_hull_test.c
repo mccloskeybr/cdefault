@@ -17,6 +17,7 @@ int main(void) {
   TimeInit();
   ASSERT(WindowInit(1280, 720, "collision"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
+  RendererDisableDepthTest();
 
   V2 hull_points[6] = {
     {0, 0},
@@ -81,7 +82,6 @@ int main(void) {
 
     V2 mouse_pos;
     WindowGetMousePositionV(&mouse_pos);
-    RendererCastRayV(mouse_pos, &mouse_pos);
     ConvexHull2SetCenter(hull_points, STATIC_ARRAY_SIZE(hull_points), &mouse_pos);
 
     DrawCircleV(circle_center, circle_radius, V3_BLUE);

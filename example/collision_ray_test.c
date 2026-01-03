@@ -6,6 +6,7 @@ int main(void) {
   TimeInit();
   ASSERT(WindowInit(1280, 720, "collision"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
+  RendererDisableDepthTest();
 
   V2 ray_start, ray_dir;
   ray_start.x = 0;
@@ -67,7 +68,6 @@ int main(void) {
 
     V2 mouse_pos;
     WindowGetMousePositionV(&mouse_pos);
-    RendererCastRayV(mouse_pos, &mouse_pos);
 
     if (WindowIsMouseButtonJustPressed(MouseButton_Left)) {
       ray_start = mouse_pos;

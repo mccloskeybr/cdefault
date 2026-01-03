@@ -1479,7 +1479,7 @@ UiInteraction UiPlotLines(U32 id, F32* values, U32 values_count, V2 size) {
   graph->color = c->style.background_color;
   graph->graph_values = ARENA_PUSH_ARRAY(c->widget_arena, F32, values_count);
   graph->graph_values_count = values_count;
-  MEMORY_MOVE(graph->graph_values, values, values_count * sizeof(F32));
+  MEMORY_MOVE_ARRAY(graph->graph_values, values, values_count);
   UiWidgetEnd();
   return UiWidgetGetInteraction(graph);
 }
@@ -1497,7 +1497,7 @@ UiInteraction UiPlotBar(U32 id, F32* values, U32 values_count, V2 size) {
   graph->color = c->style.background_color;
   graph->graph_values = ARENA_PUSH_ARRAY(c->widget_arena, F32, values_count);
   graph->graph_values_count = values_count;
-  MEMORY_MOVE(graph->graph_values, values, values_count * sizeof(F32));
+  MEMORY_MOVE_ARRAY(graph->graph_values, values, values_count);
   UiWidgetEnd();
   return UiWidgetGetInteraction(graph);
 }

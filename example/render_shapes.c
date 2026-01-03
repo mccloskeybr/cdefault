@@ -6,6 +6,7 @@ int main(void) {
   TimeInit();
   ASSERT(WindowInit(1920, 1080, "render shapes example"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
+  RendererDisableDepthTest();
 
   V3 red = { 1, 0, 0 };
   V3 blue = { 0, 0, 1 };
@@ -19,7 +20,6 @@ int main(void) {
 
     V2 mouse_pos;
     WindowGetMousePositionV(&mouse_pos);
-    RendererCastRayV(mouse_pos, &mouse_pos);
     theta += 0.005f;
     scale = F32Abs(F32Cos(TimeSecondsSinceStart()));
 

@@ -7,6 +7,7 @@ int main(void) {
   DirSetCurrentToExeDir();
   ASSERT(WindowInit(1920, 1080, "render image example"));
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
+  RendererDisableDepthTest();
 
   Arena* arena = ArenaAllocate();
 

@@ -620,7 +620,7 @@ B32 ImageLoadPng(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
   // NOTE: addl. height for png filtering information (+1 byte per-row)
   U32 decompressed_pixels_size = ((width * height * 4) + height) * sizeof(U8);
   U8* decompressed_pixels = ARENA_PUSH_ARRAY(temp_arena, U8, decompressed_pixels_size);
-  MEMORY_ZERO(decompressed_pixels, decompressed_pixels_size);
+  MEMORY_ZERO_SIZE(decompressed_pixels, decompressed_pixels_size);
   U8* dest = decompressed_pixels;
   U32 bfinal = 0;
   while (bfinal != 1) {
@@ -772,7 +772,7 @@ B32 ImageLoadPng(Arena* arena, Image* image, ImageFormat format, U8* file_data, 
   temp_image.width  = width;
   temp_image.height = height;
   temp_image.data   = ARENA_PUSH_ARRAY(temp_arena, U8, width * height * 4 * sizeof(U8));
-  MEMORY_ZERO(temp_image.data, width * height * 4 * sizeof(U8));
+  MEMORY_ZERO_ARRAY(temp_image.data, width * height * 4);
 
   // NOTE: apply png filters
   U32 zeroes = 0;
@@ -905,7 +905,7 @@ void ImageConvert(Arena* arena, Image* to, Image* from, ImageFormat to_format) {
   U32 bytes_per_pixel = ImageBytesPerPixel(to->format);
   to->data = ARENA_PUSH_ARRAY(arena, U8, to->width * to->height * bytes_per_pixel);
   if (to->format == from->format) {
-    MEMORY_COPY(to->data, from->data, to->width * to->height * bytes_per_pixel);
+    MEMORY_COPY_SIZE(to->data, from->data, to->width * to->height * bytes_per_pixel);
     return;
   }
   for (U32 i = 0; i < to->height; i++) {

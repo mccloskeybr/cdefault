@@ -72,7 +72,7 @@ struct Sound {
   U32 samples_pos;
 };
 
-B32 SoundOpenFile(Arena* arena, Sound* sound, String8 file_path);
+B32 SoundOpenFile(Sound* sound, String8 file_path);
 B32 SoundOpenFileHandle(Sound* sound, FileHandle* file);
 B32 SoundGetSamplesInterleaved(Sound* sound, U8* sample_bytes, S32 sample_bytes_size, S32* sample_bytes_read);
 B32 SoundRestart(Sound* sound);
@@ -191,9 +191,9 @@ B32 SoundGetSamplesInterleaved(Sound* sound, U8* sample_bytes, S32 sample_bytes_
   }
 }
 
-B32 SoundOpenFile(Arena* arena, Sound* sound, String8 file_path) {
-  FileHandle* file = FileHandleAllocate(arena);;
-  if (!FileHandleOpen(file, file_path, FileMode_Read)) { return false; }
+B32 SoundOpenFile(Sound* sound, String8 file_path) {
+  FileHandle* file;
+  if (!FileHandleOpen(&file, file_path, FileMode_Read)) { return false; }
   return SoundOpenFileHandle(sound, file);
 }
 
