@@ -236,23 +236,23 @@ U32 U32CountBits(U32 x); // E.g. 1111 -> 4.
 #define MEMORY_MOVE_SIZE(dst, src, size)   memmove((dst), (src), (size))
 #define MEMORY_MOVE_STRUCT(dst, src)       MEMORY_MOVE_SIZE((dst), (src), sizeof(*(src)))
 #define MEMORY_MOVE_STATIC_ARRAY(dst, src) MEMORY_MOVE_SIZE((dst), (src), sizeof(src))
-#define MEMORY_MOVE_ARRAY(dst, src, count) MEMORY_MOVE_SIZE((dst), (src), sizeof(*(src)) * count)
+#define MEMORY_MOVE_ARRAY(dst, src, count) MEMORY_MOVE_SIZE((dst), (src), sizeof(*(src)) * (count))
 
 #define MEMORY_COPY_SIZE(dst, src, size)   memcpy((dst), (src), (size))
 #define MEMORY_COPY_STRUCT(dst, src)       MEMORY_COPY_SIZE((dst), (src), sizeof(*(src)))
 #define MEMORY_COPY_STATIC_ARRAY(dst, src) MEMORY_COPY_SIZE((dst), (src), sizeof(src))
-#define MEMORY_COPY_ARRAY(dst, src, count) MEMORY_COPY_SIZE((dst), (src), sizeof(*(src)) * count)
+#define MEMORY_COPY_ARRAY(dst, src, count) MEMORY_COPY_SIZE((dst), (src), sizeof(*(src)) * (count))
 
-#define MEMORY_SET_SIZE(dst, byte, size) memset((dst), (byte), (size))
-#define MEMORY_ZERO_SIZE(dst, size)      MEMORY_SET_SIZE(dst, 0, size)
-#define MEMORY_ZERO_STRUCT(strct)        MEMORY_ZERO_SIZE((strct), sizeof(*(strct)))
-#define MEMORY_ZERO_STATIC_ARRAY(arr)    MEMORY_ZERO_SIZE((arr), sizeof(arr))
-#define MEMORY_ZERO_ARRAY(arr, count)    MEMORY_ZERO_SIZE((arr), sizeof(*(arr)) * count)
+#define MEMORY_SET_SIZE(dst, byte, size)   memset((dst), (byte), (size))
+#define MEMORY_ZERO_SIZE(dst, size)        MEMORY_SET_SIZE(dst, 0, size)
+#define MEMORY_ZERO_STRUCT(strct)          MEMORY_ZERO_SIZE((strct), sizeof(*(strct)))
+#define MEMORY_ZERO_STATIC_ARRAY(arr)      MEMORY_ZERO_SIZE((arr), sizeof(arr))
+#define MEMORY_ZERO_ARRAY(arr, count)      MEMORY_ZERO_SIZE((arr), sizeof(*(arr)) * (count))
 
 #define IS_MEMORY_EQUAL_SIZE(a, b, size)   (memcmp((a), (b), (size)) == 0)
 #define IS_MEMORY_EQUAL_STRUCT(a, b)       IS_MEMORY_EQUAL_SIZE((a), (b), sizeof(*(a)))
 #define IS_MEMORY_EQUAL_STATIC_ARRAY(a, b) IS_MEMORY_EQUAL_SIZE((a), (b), sizeof(a))
-#define IS_MEMORY_EQUAL_ARRAY(a, b, count) IS_MEMORY_EQUAL_SIZE((a), (b), sizeof(*(a)) * count)
+#define IS_MEMORY_EQUAL_ARRAY(a, b, count) IS_MEMORY_EQUAL_SIZE((a), (b), sizeof(*(a)) * (count))
 
 void* MemoryReserve(U64 size);
 B32   MemoryCommit(void* ptr, U64 size);
