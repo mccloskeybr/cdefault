@@ -454,8 +454,8 @@ audio_stream_open_end:
 }
 
 static HRESULT WASAPI_NotificationClientQueryInterface(IMMNotificationClient* client, REFIID iid, void** ppv) {
-  if (!IS_MEMORY_EQUAL_SIZE(iid, &IID_IUnknown, sizeof(*iid)) &&
-      !IS_MEMORY_EQUAL_SIZE(iid, &_wasapi_IID_IMMNotificationClient, sizeof(*iid))) {
+  if (!MEMORY_IS_EQUAL_SIZE((void*) iid, (void*) &IID_IUnknown, sizeof(*iid)) &&
+      !MEMORY_IS_EQUAL_SIZE((void*) iid, (void*) &_wasapi_IID_IMMNotificationClient, sizeof(*iid))) {
     return E_NOINTERFACE;
   }
   *ppv = client;

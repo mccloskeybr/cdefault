@@ -18,7 +18,7 @@ void M2TrivialOpTest(void) {
   M2 add;
   M2AddM2(&add, &test, &other);
   // TODO: test fn, loop over array for equality. or mat expect fns.
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STRUCT(&add, &expected_add));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STRUCT(&add, &expected_add));
 
   M2 expected_sub = {
     9, 8,
@@ -26,7 +26,7 @@ void M2TrivialOpTest(void) {
   };
   M2 sub;
   M2SubM2(&sub, &test, &other);
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STRUCT(&sub, &expected_sub));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STRUCT(&sub, &expected_sub));
 
   M2 expected_mf32 = {
     20, 20,
@@ -34,7 +34,7 @@ void M2TrivialOpTest(void) {
   };
   M2 mf32;
   M2MultF32(&mf32, 2, &test);
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STRUCT(&mf32, &expected_mf32));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STRUCT(&mf32, &expected_mf32));
 }
 
 void M2TransposeTest(void) {
@@ -48,7 +48,7 @@ void M2TransposeTest(void) {
   };
   M2 m_t;
   M2Transpose(&m_t, &m);
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STRUCT(&m_t, &expected_m_t));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STRUCT(&m_t, &expected_m_t));
 }
 
 void M2MultTest(void) {
@@ -73,7 +73,7 @@ void M2MultTest(void) {
   };
   M2 mult_m2;
   M2MultM2(&mult_m2, &m, &m2);
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STRUCT(&mult_m2, &expected_mult_m2));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STRUCT(&mult_m2, &expected_mult_m2));
 }
 
 void M2DetTest(void) {
@@ -95,7 +95,7 @@ void M2InvertTest(void) {
   };
   M2 test_inv;
   M2Invert(&test_inv, &test);
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STRUCT(&test_inv, &expected_test_inv));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STRUCT(&test_inv, &expected_test_inv));
 }
 
 void M3TrivialOpTest(void) {
@@ -117,7 +117,7 @@ void M3TrivialOpTest(void) {
   };
   M3 add;
   M3AddM3(&add, &test, &other);
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STRUCT(&add, &expected_add));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STRUCT(&add, &expected_add));
 
   M3 expected_sub = {
     9, 8, 7,
@@ -126,7 +126,7 @@ void M3TrivialOpTest(void) {
   };
   M3 sub;
   M3SubM3(&sub, &test, &other);
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STRUCT(&sub, &expected_sub));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STRUCT(&sub, &expected_sub));
 
   M3 expected_mf32 = {
     20, 20, 20,
@@ -135,7 +135,7 @@ void M3TrivialOpTest(void) {
   };
   M3 mf32;
   M3MultF32(&mf32, 2, &test);
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STRUCT(&mf32, &expected_mf32));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STRUCT(&mf32, &expected_mf32));
 }
 
 void M3TransposeTest(void) {
@@ -151,7 +151,7 @@ void M3TransposeTest(void) {
   };
   M3 m_t;
   M3Transpose(&m_t, &m);
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STRUCT(&m_t, &expected_m_t));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STRUCT(&m_t, &expected_m_t));
 }
 
 void M3MultTest(void) {
@@ -179,7 +179,7 @@ void M3MultTest(void) {
   };
   M3 mult_m2;
   M3MultM3(&mult_m2, &m, &m2);
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STRUCT(&mult_m2, &expected_mult_m2));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STRUCT(&mult_m2, &expected_mult_m2));
 }
 
 void M3DetTest(void) {
@@ -204,7 +204,7 @@ void M3InvertTest(void) {
   };
   M3 test_inv;
   M3Invert(&test_inv, &test);
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STRUCT(&test_inv, &expected_test_inv));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STRUCT(&test_inv, &expected_test_inv));
 }
 
 void M4DetTest(void) {
@@ -256,10 +256,10 @@ void M4InvertTest(void) {
   };
   M4 test_inv;
   M4Invert(&test_inv, &test);
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STRUCT(&test_inv, &expected_test_inv));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STRUCT(&test_inv, &expected_test_inv));
   M4 ident_check;
   M4MultM4(&ident_check, &test, &test_inv);
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STRUCT(&ident_check, &M4_IDENTITY));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STRUCT(&ident_check, &M4_IDENTITY));
 }
 
 int main(void) {

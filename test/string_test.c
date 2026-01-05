@@ -113,11 +113,11 @@ void CStrToLowerTest(void) {
 void Str8CreateTest(void) {
   String8 literal = Str8Lit("hello");
   EXPECT_U32_EQ(literal.size, 5);
-  EXPECT_TRUE(IS_MEMORY_EQUAL(literal.str, "hello", 5));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_SIZE(literal.str, "hello", 5));
 
   literal = Str8CStr("hello");
   EXPECT_U32_EQ(literal.size, 5);
-  EXPECT_TRUE(IS_MEMORY_EQUAL(literal.str, "hello", 5));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_SIZE(literal.str, "hello", 5));
 }
 
 void Str8TrimTest(void) {

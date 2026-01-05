@@ -16,34 +16,34 @@ void ArenaAllocateTest(void) {
 }
 
 void ArenaAllocateOverflowTest(void) {
-  Arena* arena = _ArenaAllocate(PAGE_SIZE * 2, PAGE_SIZE);
+  Arena* arena = _ArenaAllocate(CDEFAULT_ARENA_COMMIT_SIZE * 2, CDEFAULT_ARENA_COMMIT_SIZE);
 
   // NOTE: fill first arena to end.
-  ARENA_PUSH_ARRAY(arena, U8, PAGE_SIZE - sizeof(Arena));
-  EXPECT_U64_EQ(arena->pos, PAGE_SIZE);
-  EXPECT_U64_EQ(arena->reserve_size, PAGE_SIZE * 2);
-  EXPECT_U64_EQ(arena->commit_size, PAGE_SIZE);
-  EXPECT_U64_EQ(arena->commit, PAGE_SIZE);
+  ARENA_PUSH_ARRAY(arena, U8, CDEFAULT_ARENA_COMMIT_SIZE - sizeof(Arena));
+  EXPECT_U64_EQ(arena->pos, CDEFAULT_ARENA_COMMIT_SIZE);
+  EXPECT_U64_EQ(arena->reserve_size, CDEFAULT_ARENA_COMMIT_SIZE * 2);
+  EXPECT_U64_EQ(arena->commit_size, CDEFAULT_ARENA_COMMIT_SIZE);
+  EXPECT_U64_EQ(arena->commit, CDEFAULT_ARENA_COMMIT_SIZE);
 
   // NOTE: push second arena, fill to end.
-  ARENA_PUSH_ARRAY(arena, U8, PAGE_SIZE);
-  EXPECT_U64_EQ(arena->pos, PAGE_SIZE * 2);
-  EXPECT_U64_EQ(arena->reserve_size, PAGE_SIZE * 2);
-  EXPECT_U64_EQ(arena->commit_size, PAGE_SIZE);
-  EXPECT_U64_EQ(arena->commit, PAGE_SIZE * 2);
+  ARENA_PUSH_ARRAY(arena, U8, CDEFAULT_ARENA_COMMIT_SIZE);
+  EXPECT_U64_EQ(arena->pos, CDEFAULT_ARENA_COMMIT_SIZE * 2);
+  EXPECT_U64_EQ(arena->reserve_size, CDEFAULT_ARENA_COMMIT_SIZE * 2);
+  EXPECT_U64_EQ(arena->commit_size, CDEFAULT_ARENA_COMMIT_SIZE);
+  EXPECT_U64_EQ(arena->commit, CDEFAULT_ARENA_COMMIT_SIZE * 2);
 
   ArenaRelease(arena);
 }
 
 void ArenaAllocateLargeSizeTest(void) {
-  Arena* arena = _ArenaAllocate(PAGE_SIZE * 3, PAGE_SIZE);
+  Arena* arena = _ArenaAllocate(CDEFAULT_ARENA_COMMIT_SIZE * 3, CDEFAULT_ARENA_COMMIT_SIZE);
 
   // NOTE: fill double the commit size
-  ARENA_PUSH_ARRAY(arena, U8, PAGE_SIZE * 2);
-  EXPECT_U64_EQ(arena->pos, PAGE_SIZE * 2 + sizeof(Arena));
-  EXPECT_U64_EQ(arena->reserve_size, PAGE_SIZE * 3);
-  EXPECT_U64_EQ(arena->commit_size, PAGE_SIZE);
-  EXPECT_U64_EQ(arena->commit, PAGE_SIZE * 3);
+  ARENA_PUSH_ARRAY(arena, U8, CDEFAULT_ARENA_COMMIT_SIZE * 2);
+  EXPECT_U64_EQ(arena->pos, CDEFAULT_ARENA_COMMIT_SIZE * 2 + sizeof(Arena));
+  EXPECT_U64_EQ(arena->reserve_size, CDEFAULT_ARENA_COMMIT_SIZE * 3);
+  EXPECT_U64_EQ(arena->commit_size, CDEFAULT_ARENA_COMMIT_SIZE);
+  EXPECT_U64_EQ(arena->commit, CDEFAULT_ARENA_COMMIT_SIZE * 3);
 
   ArenaRelease(arena);
 }

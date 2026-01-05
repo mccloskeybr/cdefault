@@ -115,7 +115,7 @@ void PushBETest(void) {
     0x44, 0x55, 0x66, 0x77,
     0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF
   };
-  EXPECT_TRUE(IS_MEMORY_EQUAL(buffer, expected_buffer, 15));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_SIZE(buffer, expected_buffer, 15));
 }
 
 void PushLETest(void) {
@@ -132,7 +132,7 @@ void PushLETest(void) {
     0x44, 0x55, 0x66, 0x77,
     0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF
   };
-  EXPECT_TRUE(IS_MEMORY_EQUAL(buffer, expected_buffer, 15));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_SIZE(buffer, expected_buffer, 15));
 }
 
 int main(void) {

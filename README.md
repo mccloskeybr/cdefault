@@ -9,7 +9,7 @@ NOTE: Windows is explicitly supported. Linux is partially supported. I'll get ar
 
 *  `cdefault_audio.h`      - Unified API for playing audio on operating systems.
 *  `cdefault_font.h`       - TTF file parser & font rasterizer (supports generating single-channel bitmap and SDF atlases).
-*  `cdefault_geometry.h`   - Structs and functions for 2/3D geometry, with a focus on collision detection.
+*  `cdefault_geometry.h`   - Structs and functions for 2/3D geometry, with a focus on collision detection (incl. GJK / EPA).
 *  `cdefault_image.h`      - Image file importer (.png, .bmp).
 *  `cdefault_io.h`         - Filesytem and logging API.
 *  `cdefault_json.h`       - JSON serializer / deserializer.

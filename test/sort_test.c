@@ -5,21 +5,21 @@ void SortS8AscTest(void) {
   S8 arr[10] = { 3, 6, 2, 0, 8, 9, 1, 7, 5, 4 };
   SORT_ASC(S8, arr, 10);
   S8 expected_arr[10] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STATIC_ARRAY(arr, expected_arr));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STATIC_ARRAY(arr, expected_arr));
 }
 
 void SortS64AscTest(void) {
   S64 arr[10] = { 3, 6, 2, 0, 8, 9, 1, 7, 5, 4 };
   SORT_ASC(S64, arr, 10);
   S64 expected_arr[10] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STATIC_ARRAY(arr, expected_arr));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STATIC_ARRAY(arr, expected_arr));
 }
 
 void SortF32AscTest(void) {
   F32 arr[10] = { 3, 6, 2, 0, 8, 9, 1, 7, 5, 4 };
   SORT_ASC(F32, arr, 10);
   F32 expected_arr[10] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STATIC_ARRAY(arr, expected_arr));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STATIC_ARRAY(arr, expected_arr));
 }
 
 void SortStr8AscTest(void) {
@@ -45,21 +45,21 @@ void SortS8DescTest(void) {
   S8 arr[10] = { 3, 6, 2, 0, 8, 9, 1, 7, 5, 4 };
   SORT_DESC(S8, arr, 10);
   S8 expected_arr[10] = { 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 };
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STATIC_ARRAY(arr, expected_arr));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STATIC_ARRAY(arr, expected_arr));
 }
 
 void SortS64DescTest(void) {
   S64 arr[10] = { 3, 6, 2, 0, 8, 9, 1, 7, 5, 4 };
   SORT_DESC(S64, arr, 10);
   S64 expected_arr[10] = { 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 };
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STATIC_ARRAY(arr, expected_arr));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STATIC_ARRAY(arr, expected_arr));
 }
 
 void SortF32DescTest(void) {
   F32 arr[10] = { 3, 6, 2, 0, 8, 9, 1, 7, 5, 4 };
   SORT_DESC(F32, arr, 10);
   F32 expected_arr[10] = { 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 };
-  EXPECT_TRUE(IS_MEMORY_EQUAL_STATIC_ARRAY(arr, expected_arr));
+  EXPECT_TRUE(MEMORY_IS_EQUAL_STATIC_ARRAY(arr, expected_arr));
 }
 
 void SortStr8DescTest(void) {
