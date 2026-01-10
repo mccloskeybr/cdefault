@@ -824,8 +824,10 @@ S32 SortCompareString8Desc(void* a, void* b); // NOTE: Lexicographic ordering
 // NOTE: Bin read / write
 ///////////////////////////////////////////////////////////////////////////////
 
-// NOTE: Endian swaps.
+// NOTE: Endian fns.
 
+B32  IsHostBigEndian();
+B32  IsHostLittleEndian();
 U16  BinSwap16(U16 x);
 U32  BinSwap32(U32 x);
 U64  BinSwap64(U64 x);
@@ -2625,6 +2627,15 @@ S32 SortCompareString8Desc(void* a, void* b) {
 // NOTE: Bin read / write Implementation
 ///////////////////////////////////////////////////////////////////////////////
 
+B32 IsHostBigEndian() {
+  return !IsHostLittleEndian();
+}
+
+B32 IsHostLittleEndian() {
+  U16 x = 1;
+  return *(U8*)&x == 1;
+}
+
 U16 BinSwap16(U16 x) {
   return (x << 8) | (x >> 8);
 }
@@ -2637,28 +2648,92 @@ U32 BinSwap32(U32 x) {
 }
 
 U64 BinSwap64(U64 x) {
-  x = ((x & 0xff00ff00ff00fff0ull) >> 8)  |
+  x = ((x & 0xff00ff00ff00ff00ull) >> 8)  |
       ((x & 0x00ff00ff00ff00ffull) << 8);
   x = ((x & 0xffff0000ffff0000ull) >> 16) |
       ((x & 0x0000ffff0000ffffull) << 16);
   return (x >> 32) | (x << 32);
 }
 
-U8 BinRead8(U8* bytes)     { return *bytes;                   }
-U16 BinRead16LE(U8* bytes) { return *(U16*) bytes;            }
-U16 BinRead16BE(U8* bytes) { return BinSwap16(*(U16*) bytes); }
-U32 BinRead32LE(U8* bytes) { return *(U32*) bytes;            }
-U32 BinRead32BE(U8* bytes) { return BinSwap32(*(U32*) bytes); }
-U64 BinRead64LE(U8* bytes) { return *(U64*) bytes;            }
-U64 BinRead64BE(U8* bytes) { return BinSwap64(*(U64*) bytes); }
+U8 BinRead8(U8* bytes) {
+  return *bytes;
+}
 
-void BinWrite8(U8* bytes, U8 x) { *bytes = x;                       }
-void BinWrite16LE(U8* bytes, U16 x) { *(U16*) bytes = x;            }
-void BinWrite16BE(U8* bytes, U16 x) { *(U16*) bytes = BinSwap16(x); }
-void BinWrite32LE(U8* bytes, U32 x) { *(U32*) bytes = x;            }
-void BinWrite32BE(U8* bytes, U32 x) { *(U32*) bytes = BinSwap32(x); }
-void BinWrite64LE(U8* bytes, U64 x) { *(U64*) bytes = x;            }
-void BinWrite64BE(U8* bytes, U64 x) { *(U64*) bytes = BinSwap64(x); }
+U16 BinRead16LE(U8* bytes) {
+  U16 result;
+  MEMORY_COPY_SIZE(&result, bytes, sizeof(U16));
+  if (IsHostBigEndian()) { result = BinSwap16(result); }
+  return result;
+}
+
+U16 BinRead16BE(U8* bytes) {
+  U16 result;
+  MEMORY_COPY_SIZE(&result, bytes, sizeof(U16));
+  if (IsHostLittleEndian()) { result = BinSwap16(result); }
+  return result;
+}
+
+U32 BinRead32LE(U8* bytes) {
+  U32 result;
+  MEMORY_COPY_SIZE(&result, bytes, sizeof(U32));
+  if (IsHostBigEndian()) { result = BinSwap32(result); }
+  return result;
+}
+
+U32 BinRead32BE(U8* bytes) {
+  U32 result;
+  MEMORY_COPY_SIZE(&result, bytes, sizeof(U32));
+  if (IsHostLittleEndian()) { result = BinSwap32(result); }
+  return result;
+}
+
+U64 BinRead64LE(U8* bytes) {
+  U64 result;
+  MEMORY_COPY_SIZE(&result, bytes, sizeof(U64));
+  if (IsHostBigEndian()) { result = BinSwap64(result); }
+  return result;
+}
+
+U64 BinRead64BE(U8* bytes) {
+  U64 result;
+  MEMORY_COPY_SIZE(&result, bytes, sizeof(U64));
+  if (IsHostLittleEndian()) { result = BinSwap64(result); }
+  return result;
+}
+
+void BinWrite8(U8* bytes, U8 x) {
+  *bytes = x;
+}
+
+void BinWrite16LE(U8* bytes, U16 x) {
+  if (IsHostBigEndian()) { x = BinSwap16(x); }
+  MEMORY_COPY_SIZE(bytes, &x, sizeof(U16));
+}
+
+void BinWrite16BE(U8* bytes, U16 x) {
+  if (IsHostLittleEndian()) { x = BinSwap16(x); }
+  MEMORY_COPY_SIZE(bytes, &x, sizeof(U16));
+}
+
+void BinWrite32LE(U8* bytes, U32 x) {
+  if (IsHostBigEndian()) { x = BinSwap32(x); }
+  MEMORY_COPY_SIZE(bytes, &x, sizeof(U32));
+}
+
+void BinWrite32BE(U8* bytes, U32 x) {
+  if (IsHostLittleEndian()) { x = BinSwap32(x); }
+  MEMORY_COPY_SIZE(bytes, &x, sizeof(U32));
+}
+
+void BinWrite64LE(U8* bytes, U64 x) {
+  if (IsHostBigEndian()) { x = BinSwap64(x); }
+  MEMORY_COPY_SIZE(bytes, &x, sizeof(U64));
+}
+
+void BinWrite64BE(U8* bytes, U64 x) {
+  if (IsHostLittleEndian()) { x = BinSwap64(x); }
+  MEMORY_COPY_SIZE(bytes, &x, sizeof(U64));
+}
 
 BinStream BinStreamAssign(U8* bytes, U32 bytes_size) {
   BinStream result;
@@ -2950,7 +3025,9 @@ B32 BinStreamPush64BE(BinStream* stream, U64 x) {
 }
 
 B32 BinStreamPushStr8(BinStream* stream, String8 str) {
-  for (U32 i = 0; i < str.size; i++) { if (!BinStreamPush8(stream, str.str[i])) { return false; } }
+  for (U32 i = 0; i < str.size; i++) {
+    if (!BinStreamPush8(stream, str.str[i])) { return false; }
+  }
   return true;
 }
 
