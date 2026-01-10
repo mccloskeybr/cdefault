@@ -47,6 +47,8 @@ B32 ModelLoadGlb(Arena* arena, Model* model, U8* file_data, U32 file_data_size);
 #ifdef CDEFAULT_MODEL_IMPLEMENTATION
 #undef CDEFAULT_MODEL_IMPLEMENTATION
 
+#define MODEL_LOG_OUT_OF_CHARS() LOG_ERROR("[FONT] Ran out of characters in model file.")
+
 B32 ModelLoadObj(Arena* arena, Model* model, U8* file_data, U32 file_data_size) {
   MEMORY_ZERO_STRUCT(model);
   Arena* temp_arena = ArenaAllocate();
@@ -282,7 +284,7 @@ B32 GltfAccessorGet(GltfAccessor* head, U32 index, GltfAccessor** result) {
   return true;
 }
 
-#define MODEL_TRY_PARSE(eval) if (!eval) { LOG_ERROR("[MESH] Ran out of characters in mesh GLTF file."); return false; }
+#define BIN_CATCH MODEL_LOG_OUT_OF_CHARS(); return false;
 static B32 GltfBufferParse(JsonValue* value, BinStream buffer, GltfBuffer* result) {
   JsonObject obj;
   if (!JsonValueGetObject(value, &obj)) {
@@ -307,13 +309,13 @@ static B32 GltfBufferParse(JsonValue* value, BinStream buffer, GltfBuffer* resul
     return false;
   }
 
-  MODEL_TRY_PARSE(BinStreamSeek(&buffer, byte_offset));
+  BIN_TRY(BinStreamSeek(&buffer, byte_offset));
   MEMORY_ZERO_STRUCT(result);
   result->bytes  = BinStreamDecay(&buffer);
   result->length = byte_length;
   return true;
 }
-#undef MODEL_TRY_PARSE
+#undef BIN_CATCH
 
 static B32 GltfImageParse(JsonValue* value, GltfBuffer* buffers, GltfBuffer* result) {
   JsonObject obj;
@@ -391,7 +393,7 @@ static B32 GltfMaterialParse(JsonValue* value, GltfBuffer* textures, GltfBuffer*
   return true;
 }
 
-#define MODEL_TRY_PARSE(eval) if (!eval) { LOG_ERROR("[MESH] Ran out of characters in mesh GLTF file."); goto gltf_accessor_parse_exit; }
+#define BIN_CATCH LOG_ERROR("[MESH] Ran out of characters in mesh GLTF file."); goto gltf_accessor_parse_exit;
 static B32 GltfAccessorParse(Arena* arena, JsonValue* value, GltfBuffer* buffers, GltfAccessor* result) {
   B32 success = false;
   U64 arena_base = ArenaPos(arena);
@@ -499,16 +501,12 @@ static B32 GltfAccessorParse(Arena* arena, JsonValue* value, GltfBuffer* buffers
   // TODO: better way to do this?
   for (U32 i = 0; i < result->count * component_count; i++) {
     switch (result->component_type) {
-      case GltfAccessorComponentType_S8:  { MODEL_TRY_PARSE(BinStreamPullS8(&s, &result->s8_arr[i]));     } break;
-      case GltfAccessorComponentType_U8:  { MODEL_TRY_PARSE(BinStreamPullU8(&s, &result->u8_arr[i]));     } break;
-      case GltfAccessorComponentType_S16: { MODEL_TRY_PARSE(BinStreamPullS16LE(&s, &result->s16_arr[i])); } break;
-      case GltfAccessorComponentType_U16: { MODEL_TRY_PARSE(BinStreamPullU16LE(&s, &result->u16_arr[i])); } break;
-      case GltfAccessorComponentType_U32: { MODEL_TRY_PARSE(BinStreamPullU32LE(&s, &result->u32_arr[i])); } break;
-      case GltfAccessorComponentType_F32: {
-        U32 component;
-        MODEL_TRY_PARSE(BinStreamPullU32LE(&s, &component));
-        result->f32_arr[i] = *(F32*)&component;
-      } break;
+      case GltfAccessorComponentType_S8:  { BIN_TRY(BinStreamPullS8(&s, &result->s8_arr[i]));     } break;
+      case GltfAccessorComponentType_U8:  { BIN_TRY(BinStreamPullU8(&s, &result->u8_arr[i]));     } break;
+      case GltfAccessorComponentType_S16: { BIN_TRY(BinStreamPullS16LE(&s, &result->s16_arr[i])); } break;
+      case GltfAccessorComponentType_U16: { BIN_TRY(BinStreamPullU16LE(&s, &result->u16_arr[i])); } break;
+      case GltfAccessorComponentType_U32: { BIN_TRY(BinStreamPullU32LE(&s, &result->u32_arr[i])); } break;
+      case GltfAccessorComponentType_F32: { BIN_TRY(BinStreamPullF32LE(&s, &result->f32_arr[i])); } break;
       default: UNREACHABLE();
     }
   }
@@ -518,7 +516,7 @@ gltf_accessor_parse_exit:
   if (!success) { ArenaPopTo(arena, arena_base); }
   return success;
 }
-#undef MODEL_TRY_PARSE
+#undef BIN_CATCH
 
 static B32 GltfMeshParse(Arena* arena, JsonValue* value, GltfAccessor* accessors, GltfBuffer* materials, Mesh** result) {
   *result = NULL;
@@ -678,7 +676,7 @@ gltf_mesh_parse_exit:
   return success;
 }
 
-#define MODEL_TRY_PARSE(eval) if (!eval) { LOG_ERROR("[MESH] Ran out of characters in mesh GLTF file."); goto mesh_load_glb_exit; }
+#define BIN_CATCH MODEL_LOG_OUT_OF_CHARS(); goto mesh_load_glb_exit;
 B32 ModelLoadGlb(Arena* arena, Model* model, U8* file_data, U32 file_data_size) {
   MEMORY_ZERO_STRUCT(model);
   U64 arena_base = ArenaPos(arena);
@@ -689,19 +687,19 @@ B32 ModelLoadGlb(Arena* arena, Model* model, U8* file_data, U32 file_data_size) 
 
   // NOTE: header
   U32 magic_number, version;
-  MODEL_TRY_PARSE(BinStreamPullU32LE(&s, &magic_number));
+  BIN_TRY(BinStreamPullU32LE(&s, &magic_number));
   if (magic_number != 0x46546C67) { return false; }
-  MODEL_TRY_PARSE(BinStreamPullU32LE(&s, &version));
+  BIN_TRY(BinStreamPullU32LE(&s, &version));
   if (version != 2) {
     LOG_WARN("[MESH] For GLTF, only version 2 is supported, detected version: %d", version);
     goto mesh_load_glb_exit;
   }
-  MODEL_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U32)));
+  BIN_TRY(BinStreamSkip(&s, 1, sizeof(U32)));
 
   // NOTE: json blob
   U32 json_chunk_size, json_chunk_type;
-  MODEL_TRY_PARSE(BinStreamPullU32LE(&s, &json_chunk_size));
-  MODEL_TRY_PARSE(BinStreamPullU32LE(&s, &json_chunk_type));
+  BIN_TRY(BinStreamPullU32LE(&s, &json_chunk_size));
+  BIN_TRY(BinStreamPullU32LE(&s, &json_chunk_type));
   if (json_chunk_type != 0x4E4F534A) {
     LOG_ERROR("[MESH] in GLTF file, JSON chunk expected but not observed.");
     goto mesh_load_glb_exit;
@@ -721,14 +719,14 @@ B32 ModelLoadGlb(Arena* arena, Model* model, U8* file_data, U32 file_data_size) 
   }
 
   // NOTE: bin blob
-  MODEL_TRY_PARSE(BinStreamSkip(&s, json_chunk_size, sizeof(U8)));
+  BIN_TRY(BinStreamSkip(&s, json_chunk_size, sizeof(U8)));
   if (BinStreamRemaining(&s) == 0) {
     LOG_ERROR("[MESH] GLTF loader only supports a single embedded bin chunk (no external chunks).");
     goto mesh_load_glb_exit;
   }
   U32 bin_chunk_size, bin_chunk_type;
-  MODEL_TRY_PARSE(BinStreamPullU32LE(&s, &bin_chunk_size));
-  MODEL_TRY_PARSE(BinStreamPullU32LE(&s, &bin_chunk_type));
+  BIN_TRY(BinStreamPullU32LE(&s, &bin_chunk_size));
+  BIN_TRY(BinStreamPullU32LE(&s, &bin_chunk_type));
   if (bin_chunk_type != 0x004E4942) {
     LOG_ERROR("[MESH] in GLTF file, failed to parse bin chunk.");
     goto mesh_load_glb_exit;
@@ -829,7 +827,7 @@ mesh_load_glb_exit:
   if (!success) { ArenaPopTo(arena, arena_base); }
   return success;
 }
-#undef MODEL_TRY_PARSE
+#undef BIN_CATCH
 
 B32 ModelLoad(Arena* arena, Model* model, U8* file_data, U32 file_data_size) {
   if (ModelLoadGlb(arena, model, file_data, file_data_size)) { return true; }
@@ -847,5 +845,7 @@ mesh_load_file_exit:
   ArenaRelease(file_arena);
   return success;
 }
+
+#undef MODEL_LOG_OUT_OF_CHARS
 
 #endif // CDEFAULT_MODEL_IMPLEMENTATION

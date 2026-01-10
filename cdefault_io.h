@@ -41,9 +41,9 @@ struct FileStats {
 };
 
 B32 FileStat(String8 file_path, FileStats* stats); // NOTE: Retrieves stats / info on the file with the given path.
-B32 FileReadAll(Arena* arena, String8 file_path, U8** buffer, S32* buffer_size); // NOTE: Places the data in file_path in *buffer.
-B32 FileDump(String8 file_path, U8* buffer, S32 buffer_size);   // NOTE: Replaces data in file_path with buffer (removes any \0 suffix).
-B32 FileAppend(String8 file_path, U8* buffer, S32 buffer_size); // NOTE: Appends the data with buffer (removes any \0 suffix). If you will append many times, prefer opening a FileHandle manually.
+B32 FileReadAll(Arena* arena, String8 file_path, U8** buffer, U32* buffer_size); // NOTE: Places the data in file_path in *buffer.
+B32 FileDump(String8 file_path, U8* buffer, U32 buffer_size);   // NOTE: Replaces data in file_path with buffer (removes any \0 suffix).
+B32 FileAppend(String8 file_path, U8* buffer, U32 buffer_size); // NOTE: Appends the data with buffer (removes any \0 suffix). If you will append many times, prefer opening a FileHandle manually.
 B32 FileCopy(String8 src_path, String8 dest_path); // NOTE: Replaces all data in dest_path with the data in src_path.
 
 B32 DirSetCurrentToExeDir();      // NOTE: Sets the current working directory to wherever the executable is.
@@ -61,8 +61,8 @@ B32 FileHandleOpen(FileHandle** file, String8 file_path, FileMode mode);  // NOT
 B32 FileHandleClose(FileHandle* file);                               // NOTE: Closes a file, releases any locks held on that file.
 B32 FileHandleStat(FileHandle* file, FileStats* stats);              // NOTE: Like FileStat, but on a FileHandle instead of a path.
 B32 FileHandleSeek(FileHandle* file, S32 distance, FileSeekPos pos); // NOTE: Seeks to a given position in the file.
-B32 FileHandleRead(FileHandle* file, U8* buffer, S32 buffer_size, S32* bytes_read); // NOTE: Reads / places buffer_size bytes into buffer, stopping if EOF is observed. Num bytes read is placed into bytes_read.
-B32 FileHandleWrite(FileHandle* file, U8* buffer, S32 buffer_size);  // NOTE: Writes / places buffer_size bytes from buffer into the file.
+B32 FileHandleRead(FileHandle* file, U8* buffer, U32 buffer_size, U32* bytes_read); // NOTE: Reads / places buffer_size bytes into buffer, stopping if EOF is observed. Num bytes read is placed into bytes_read.
+B32 FileHandleWrite(FileHandle* file, U8* buffer, U32 buffer_size);  // NOTE: Writes / places buffer_size bytes from buffer into the file.
 
 B32 LogInitStdOut();
 B32 LogInitFile(String8 file_path);
@@ -319,7 +319,7 @@ B32 WIN_FileHandleSeek(FileHandle* file, S32 distance, FileSeekPos pos) {
   return true;
 }
 
-B32 WIN_FileHandleRead(FileHandle* file, U8* buffer, S32 buffer_size, S32* bytes_read) {
+B32 WIN_FileHandleRead(FileHandle* file, U8* buffer, U32 buffer_size, U32* bytes_read) {
   DWORD read;
   BOOL result = ReadFile(file->handle, (LPVOID) buffer, buffer_size, &read, NULL);
   if (!result) {
@@ -330,13 +330,9 @@ B32 WIN_FileHandleRead(FileHandle* file, U8* buffer, S32 buffer_size, S32* bytes
   return true;
 }
 
-B32 WIN_FileHandleWrite(FileHandle* file, U8* buffer, S32 buffer_size) {
-  if (buffer_size < 0) {
-    LOG_ERROR("[IO] Attempting to write a buffer size of: %d.", buffer_size);
-    return false;
-  }
+B32 WIN_FileHandleWrite(FileHandle* file, U8* buffer, U32 buffer_size) {
   DWORD total = 0;
-  while (total < (U32) buffer_size) {
+  while (total < buffer_size) {
     DWORD w;
     BOOL result = WriteFile(file->handle, buffer + total, buffer_size - total, &w, NULL);
     if (!result) {
@@ -577,7 +573,7 @@ B32 LINUX_FileHandleSeek(FileHandle* file, S32 distance, FileSeekPos pos) {
   return true;
 }
 
-B32 LINUX_FileHandleRead(FileHandle* file, U8* buffer, S32 buffer_size, S32* bytes_read) {
+B32 LINUX_FileHandleRead(FileHandle* file, U8* buffer, U32 buffer_size, U32* bytes_read) {
   S32 r = read(file->fd, buffer, buffer_size);
   if (r == -1) {
     LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to read file: %S", file->file_path);
@@ -587,13 +583,9 @@ B32 LINUX_FileHandleRead(FileHandle* file, U8* buffer, S32 buffer_size, S32* byt
   return true;
 }
 
-B32 LINUX_FileHandleWrite(FileHandle* file, U8* buffer, S32 buffer_size) {
-  if (buffer_size < 0) {
-    LOG_ERROR("[IO] Attempting to write a buffer size of: %d.", buffer_size);
-    return false;
-  }
+B32 LINUX_FileHandleWrite(FileHandle* file, U8* buffer, U32 buffer_size) {
   U32 total = 0;
-  while (total < (U32) buffer_size) {
+  while (total < buffer_size) {
     U32 w = write(file->fd, buffer + total, buffer_size - total);
     if (w == -1) {
       LINUX_IO_LOG_ERROR_EX(errno, "[IO] Failed to write file: %S", file->file_path);
@@ -622,14 +614,14 @@ B32 FileStat(String8 file_path, FileStats* stats) {
   return CDEFAULT_IO_BACKEND_FN(FileStat(file_path, stats));
 }
 
-B32 FileReadAll(Arena* arena, String8 file_path, U8** buffer, S32* buffer_size) {
+B32 FileReadAll(Arena* arena, String8 file_path, U8** buffer, U32* buffer_size) {
   B32 success = false;
   FileHandle* handle;
   if (!FileHandleOpen(&handle, file_path, FileMode_Read)) { return false; }
   FileStats stats;
   if (!FileHandleStat(handle, &stats)) { goto file_read_all_exit; }
   *buffer = ARENA_PUSH_ARRAY(arena, U8, stats.size);
-  S32 bytes_read;
+  U32 bytes_read;
   if (!FileHandleRead(handle, *buffer, stats.size, &bytes_read)) {
     ARENA_POP_ARRAY(arena, U8, stats.size);
     goto file_read_all_exit;
@@ -641,7 +633,7 @@ file_read_all_exit:
   return success;
 }
 
-B32 FileDump(String8 file_path, U8* buffer, S32 buffer_size) {
+B32 FileDump(String8 file_path, U8* buffer, U32 buffer_size) {
   B32 success = false;
   FileHandle* handle;
   if (!FileHandleOpen(&handle, file_path, FileMode_Write | FileMode_Create | FileMode_Truncate)) { return false; }
@@ -652,7 +644,7 @@ file_dump_exit:
   return success;
 }
 
-B32 FileAppend(String8 file_path, U8* buffer, S32 buffer_size) {
+B32 FileAppend(String8 file_path, U8* buffer, U32 buffer_size) {
   B32 success = false;
   FileHandle* handle;
   if (!FileHandleOpen(&handle, file_path, FileMode_Write | FileMode_Create)) { return false; }
@@ -774,11 +766,11 @@ B32 FileHandleSeek(FileHandle* file, S32 distance, FileSeekPos pos) {
   return CDEFAULT_IO_BACKEND_FN(FileHandleSeek(file, distance, pos));
 }
 
-B32 FileHandleRead(FileHandle* file, U8* buffer, S32 buffer_size, S32* bytes_read) {
+B32 FileHandleRead(FileHandle* file, U8* buffer, U32 buffer_size, U32* bytes_read) {
   return CDEFAULT_IO_BACKEND_FN(FileHandleRead(file, buffer, buffer_size, bytes_read));
 }
 
-B32 FileHandleWrite(FileHandle* file, U8* buffer, S32 buffer_size) {
+B32 FileHandleWrite(FileHandle* file, U8* buffer, U32 buffer_size) {
   return CDEFAULT_IO_BACKEND_FN(FileHandleWrite(file, buffer, buffer_size));
 }
 

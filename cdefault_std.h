@@ -671,7 +671,7 @@ F64  RandF64(RandomSeries* rand, F64 min, F64 max);
 typedef struct String8 String8;
 struct String8 {
   U8* str;
-  S32 size;
+  U32 size;
 };
 
 typedef struct String8ListNode String8ListNode;
@@ -714,13 +714,13 @@ U8*  CStrFormatV(Arena* arena, String8 fmt, va_list args);
 U8*  _CStrFormat(Arena* arena, String8 fmt, ...);
 #define CStrFormat(a, fmt, ...) _CStrFormat(a, Str8Lit(fmt), ##__VA_ARGS__)
 
-String8 Str8(U8* str, S32 size);
+String8 Str8(U8* str, U32 size);
 String8 Str8Range(U8* str, U8* one_past_last);
 String8 _Str8CStr(U8* c_str);
 #define Str8CStr(s) _Str8CStr((U8*) s)
 #define Str8Lit(s) Str8((U8*) s, sizeof(s) - 1)
 String8 Str8Copy(Arena* arena, String8 string);
-String8 Str8Substring(String8 s, S32 start, S32 one_past_last);
+String8 Str8Substring(String8 s, U32 start, U32 one_past_last);
 String8 Str8TrimFront(String8 s);
 String8 Str8TrimBack(String8 s);
 String8 Str8Trim(String8 s);
@@ -734,8 +734,8 @@ B32     Str8StartsWith(String8 a, String8 b); // NOTE: True iff a starts with b.
 B32     Str8StartsWithChar(String8 a, U8 b);
 B32     Str8EndsWith(String8 a, String8 b); // NOTE: True iff a ends with b.
 B32     Str8Eq(String8 a, String8 b);
-S32     Str8Find(String8 string, S32 start_pos, String8 needle); // NOTE: Returns -1 on failure.
-S32     Str8FindReverse(String8 string, S32 reverse_start_pos, String8 needle); // NOTE: Returns -1 on failure.
+S32     Str8Find(String8 string, U32 start_pos, String8 needle); // NOTE: Returns -1 on failure.
+S32     Str8FindReverse(String8 string, U32 reverse_start_pos, String8 needle); // NOTE: Returns -1 on failure.
 String8 Str8Concat(Arena* arena, String8 a, String8 b);
 String8 Str8FormatV(Arena* arena, String8 fmt, va_list args); // NOTE: can print String8s using the S modifier, V2-V4 using V2, V3, V4.
 String8 _Str8Format(Arena* arena, String8 fmt, ...);
@@ -824,15 +824,28 @@ S32 SortCompareString8Desc(void* a, void* b); // NOTE: Lexicographic ordering
 // NOTE: Bin read / write
 ///////////////////////////////////////////////////////////////////////////////
 
+// NOTE: Endian swaps.
+
+U16  BinSwap16(U16 x);
+U32  BinSwap32(U32 x);
+U64  BinSwap64(U64 x);
+
 // NOTE: Unsafe conversion from raw bytes to some sized representation.
 
-U8  BinRead8(U8* bytes);
-U16 BinRead16LE(U8* bytes);
-U16 BinRead16BE(U8* bytes);
-U32 BinRead32LE(U8* bytes);
-U32 BinRead32BE(U8* bytes);
-U64 BinRead64LE(U8* bytes);
-U64 BinRead64BE(U8* bytes);
+U8   BinRead8(U8* bytes);
+U16  BinRead16LE(U8* bytes);
+U16  BinRead16BE(U8* bytes);
+U32  BinRead32LE(U8* bytes);
+U32  BinRead32BE(U8* bytes);
+U64  BinRead64LE(U8* bytes);
+U64  BinRead64BE(U8* bytes);
+void BinWrite8(U8* bytes, U8 x);
+void BinWrite16LE(U8* bytes, U16 x);
+void BinWrite16BE(U8* bytes, U16 x);
+void BinWrite32LE(U8* bytes, U32 x);
+void BinWrite32BE(U8* bytes, U32 x);
+void BinWrite64LE(U8* bytes, U64 x);
+void BinWrite64BE(U8* bytes, U64 x);
 
 // NOTE: Safe wrapper around the above. Returns false when exceeding bounds.
 // Orients around a pos cursor, which is convenient for reading / writing file bin blobs.
@@ -847,7 +860,7 @@ struct BinStream {
 BinStream BinStreamAssign(U8* bytes, U32 bytes_size);
 void BinStreamInit(BinStream* stream, U8* bytes, U32 bytes_size);
 B32  BinStreamSeek(BinStream* stream, U32 pos);
-B32  BinStreamSkip(BinStream* stream, U32 num, S32 size);
+B32  BinStreamSkip(BinStream* stream, U32 num, U32 size);
 U8*  BinStreamDecay(BinStream* stream);
 U64  BinStreamRemaining(BinStream* stream);
 
@@ -865,6 +878,10 @@ B32 BinStreamPullS32LE(BinStream* stream, S32* result);
 B32 BinStreamPullS32BE(BinStream* stream, S32* result);
 B32 BinStreamPullS64LE(BinStream* stream, S64* result);
 B32 BinStreamPullS64BE(BinStream* stream, S64* result);
+B32 BinStreamPullF32LE(BinStream* stream, F32* result);
+B32 BinStreamPullF32BE(BinStream* stream, F32* result);
+B32 BinStreamPullF64LE(BinStream* stream, F64* result);
+B32 BinStreamPullF64BE(BinStream* stream, F64* result);
 B32 BinStreamPullStr8(BinStream* stream, U32 size, String8* result);
 
 B32 BinStreamPeekU8(BinStream* stream, S32 offset, U32 size, U8* result);
@@ -881,6 +898,10 @@ B32 BinStreamPeekS32LE(BinStream* stream, S32 offset, U32 size, S32* result);
 B32 BinStreamPeekS32BE(BinStream* stream, S32 offset, U32 size, S32* result);
 B32 BinStreamPeekS64LE(BinStream* stream, S32 offset, U32 size, S64* result);
 B32 BinStreamPeekS64BE(BinStream* stream, S32 offset, U32 size, S64* result);
+B32 BinStreamPeekF32LE(BinStream* stream, S32 offset, U32 size, F32* result);
+B32 BinStreamPeekF32BE(BinStream* stream, S32 offset, U32 size, F32* result);
+B32 BinStreamPeekF64LE(BinStream* stream, S32 offset, U32 size, F64* result);
+B32 BinStreamPeekF64BE(BinStream* stream, S32 offset, U32 size, F64* result);
 B32 BinStreamPeekStr8(BinStream* stream, S32 offset, U32 size, U32 str_size, String8* result);
 
 B32 BinStreamPush8(BinStream* stream, U8 x);
@@ -891,6 +912,20 @@ B32 BinStreamPush32BE(BinStream* stream, U32 x);
 B32 BinStreamPush64LE(BinStream* stream, U64 x);
 B32 BinStreamPush64BE(BinStream* stream, U64 x);
 B32 BinStreamPushStr8(BinStream* stream, String8 str);
+
+// NOTE: convenience macro to minimize writing e.g.
+// if (!BinStreamPullU8(...)) { goto my_super_duper_long_exit_label; }
+// if (!BinStreamPullU8(...)) { goto my_super_duper_long_exit_label; }
+// if (!BinStreamPullU8(...)) { goto my_super_duper_long_exit_label; }
+//
+// instead...
+// #define BIN_CATCH goto my_super_duper_long_exit_label;
+// BIN_TRY(BinStreamPullU8(...));
+// BIN_TRY(BinStreamPullU8(...));
+// BIN_TRY(BinStreamPullU8(...));
+// #undef BIN_CATCH
+// TODO: make generic TRY / CATCH...?
+#define BIN_TRY(eval) if (!eval) { BIN_CATCH; }
 
 #endif // CDEFAULT_H_
 
@@ -1757,7 +1792,7 @@ U8* _CStrFormat(Arena* arena, String8 fmt, ...) {
   return result;
 }
 
-String8 Str8(U8* str, S32 size) {
+String8 Str8(U8* str, U32 size) {
   String8 result;
   MEMORY_ZERO_STRUCT(&result);
   result.str = str;
@@ -1776,12 +1811,11 @@ String8 Str8Range(U8* str, U8* one_past_last) {
   String8 result;
   MEMORY_ZERO_STRUCT(&result);
   result.str = str;
-  result.size = (S32) (one_past_last - str);
+  result.size = one_past_last - str;
   return result;
 }
 
 String8 Str8Copy(Arena* arena, String8 string) {
-  DEBUG_ASSERT(string.size >= 0);
   String8 result;
   MEMORY_ZERO_STRUCT(&result);
   result.size = string.size;
@@ -1790,37 +1824,32 @@ String8 Str8Copy(Arena* arena, String8 string) {
   return result;
 }
 
-String8 Str8Substring(String8 s, S32 start, S32 one_past_last) {
-  DEBUG_ASSERT(s.size >= 0);
-  if (one_past_last < start) { one_past_last = start; }
-  start         = MIN(start, s.size);
-  one_past_last = MIN(one_past_last, s.size);
+String8 Str8Substring(String8 s, U32 start, U32 one_past_last) {
+  DEBUG_ASSERT(one_past_last >= start && start <= s.size && one_past_last <= s.size);
   return Str8(s.str + start, one_past_last - start);
 }
 
 String8 Str8TrimFront(String8 s) {
-  DEBUG_ASSERT(s.size >= 0);
-  S32 start = 0;
-  while (start < s.size && CharIsWhitespace(s.str[start])) { start++; }
+  U32 start = 0;
+  while (start < s.size && CharIsWhitespace(s.str[start])) { start += 1; }
   return Str8Substring(s, start, s.size);
 }
 
 String8 Str8TrimBack(String8 s) {
-  DEBUG_ASSERT(s.size >= 0);
-  S32 end = s.size - 1;
-  while (end >= 0 && CharIsWhitespace(s.str[end])) { --end; }
-  return Str8Substring(s, 0, end + 1);
+  U32 end = s.size;
+  while (end > 0 && CharIsWhitespace(s.str[end - 1])) { end -= 1; }
+  return Str8Substring(s, 0, end);
 }
 
 String8 Str8Trim(String8 s) {
-  DEBUG_ASSERT(s.size >= 0);
-  return Str8TrimBack(Str8TrimFront(s));
+  s = Str8TrimFront(s);
+  s = Str8TrimBack(s);
+  return s;
 }
 
 String8 Str8ReplaceAll(Arena* arena, String8 src, String8 from, String8 to) {
-  DEBUG_ASSERT(src.size >= 0 && from.size >= 0 && to.size >= 0);
   U32 result_size = 0;
-  S32 i = 0;
+  U32 i = 0;
   while (i < src.size) {
     String8 sub = Str8Substring(src, i, src.size);
     if (Str8StartsWith(sub, from)) {
@@ -1835,11 +1864,11 @@ String8 Str8ReplaceAll(Arena* arena, String8 src, String8 from, String8 to) {
   result.str = ARENA_PUSH_ARRAY(arena, U8, result_size);
   result.size = result_size;
   i = 0;
-  S32 k = 0;
+  U32 k = 0;
   while (i < src.size) {
     String8 sub = Str8Substring(src, i, src.size);
     if (Str8StartsWith(sub, from)) {
-      for (S32 j = 0; j < to.size; j++) {
+      for (U32 j = 0; j < to.size; j++) {
         result.str[k++] = to.str[j];
       }
       i += from.size;
@@ -1851,9 +1880,8 @@ String8 Str8ReplaceAll(Arena* arena, String8 src, String8 from, String8 to) {
 }
 
 B32 Str8ReplaceAllChar(String8* str, U8 from, U8 to) {
-  DEBUG_ASSERT(str->size >= 0);
   B32 result = false;
-  for (S32 i = 0; i < str->size; i++) {
+  for (U32 i = 0; i < str->size; i++) {
     if (str->str[i] == from) {
       result = true;
       str->str[i] = to;
@@ -1863,53 +1891,46 @@ B32 Str8ReplaceAllChar(String8* str, U8 from, U8 to) {
 }
 
 B32 Str8StartsWith(String8 a, String8 b) {
-  DEBUG_ASSERT(a.size >= 0 && b.size >= 0);
   if (a.size < b.size) { return false; }
-  for (S32 i = 0; i < b.size; ++i) {
+  for (U32 i = 0; i < b.size; ++i) {
     if (a.str[i] != b.str[i]) { return false; }
   }
   return true;
 }
 
 B32 Str8StartsWithChar(String8 a, U8 b) {
-  DEBUG_ASSERT(a.size >= 0);
   if (a.size == 0) { return false; }
   return a.str[0] == b;
 }
 
 B32 Str8EndsWith(String8 a, String8 b) {
-  DEBUG_ASSERT(a.size >= 0 && b.size >= 0);
   if (a.size < b.size) { return false; }
-  S32 a_offset = a.size - b.size;
-  for (S32 i = 0; i < b.size; ++i) {
+  U32 a_offset = a.size - b.size;
+  for (U32 i = 0; i < b.size; ++i) {
     if (a.str[a_offset + i] != b.str[i]) { return false; }
   }
   return true;
 }
 
 B32 Str8Eq(String8 a, String8 b) {
-  DEBUG_ASSERT(a.size >= 0 && b.size >= 0);
   if (a.size != b.size) { return false; }
   return Str8StartsWith(a, b);
 }
 
-S32 Str8Find(String8 string, S32 start_pos, String8 needle) {
-  DEBUG_ASSERT(string.size >= 0 && needle.size >= 0);
-  if (start_pos < 0) { return -1; }
+S32 Str8Find(String8 string, U32 start_pos, String8 needle) {
   if (string.size < start_pos + needle.size) { return -1; }
-  for (S32 i = 0; i < string.size - start_pos; ++i) {
-    S32 offset = start_pos + i;
+  for (U32 i = 0; i < string.size - start_pos; ++i) {
+    U32 offset = start_pos + i;
     String8 substr = Str8(string.str + offset, string.size - offset);
     if (Str8StartsWith(substr, needle)) { return offset; }
   }
   return -1;
 }
 
-S32 Str8FindReverse(String8 string, S32 reverse_start_pos, String8 needle) {
-  DEBUG_ASSERT(string.size >= 0 && needle.size >= 0);
+S32 Str8FindReverse(String8 string, U32 reverse_start_pos, String8 needle) {
   if (reverse_start_pos < 0) { return -1; }
   if (string.size < reverse_start_pos + needle.size) { return -1; }
-  for (S32 i = string.size - reverse_start_pos - needle.size; i > 0; --i) {
+  for (U32 i = string.size - reverse_start_pos - needle.size; i > 0; --i) {
     String8 substr = Str8(string.str, i + needle.size);
     if (Str8EndsWith(substr, needle)) { return i; }
   }
@@ -1918,22 +1939,21 @@ S32 Str8FindReverse(String8 string, S32 reverse_start_pos, String8 needle) {
 
 void Str8ToUpper(String8 s) {
   DEBUG_ASSERT(s.size >= 0);
-  for (S32 i = 0; i < s.size; ++i) {
+  for (U32 i = 0; i < s.size; ++i) {
     s.str[i] = CharToUpper(s.str[i]);
   }
 }
 
 void Str8ToLower(String8 s) {
   DEBUG_ASSERT(s.size >= 0);
-  for (S32 i = 0; i < s.size; ++i) {
+  for (U32 i = 0; i < s.size; ++i) {
     s.str[i] = CharToLower(s.str[i]);
   }
 }
 
 // TODO: support e notation
 S32 Str8ToF32(String8 s, F32* f32) {
-  DEBUG_ASSERT(s.size >= 0);
-  S32 i = 0;
+  U32 i = 0;
   F32 result = 0.0f;
   B32 found_f32 = false;
 
@@ -1970,8 +1990,7 @@ str8_to_f32_end:
 }
 
 S32 Str8ToS32(String8 s, S32* s32) {
-  DEBUG_ASSERT(s.size >= 0);
-  S32 i = 0;
+  U32 i = 0;
   S32 result = 0;
   B32 found_s32 = false;
 
@@ -1995,7 +2014,6 @@ S32 Str8ToS32(String8 s, S32* s32) {
 }
 
 String8 Str8Concat(Arena* arena, String8 a, String8 b) {
-  DEBUG_ASSERT(a.size >= 0 && b.size >= 0);
   String8 result;
   MEMORY_ZERO_STRUCT(&result);
   result.size = a.size + b.size;
@@ -2088,7 +2106,7 @@ static void Str8FmtBufferPushChar(Str8FmtBuffer* buffer, U8 c) {
 }
 
 static void Str8FmtBufferPushStr8(Str8FmtBuffer* buffer, String8 s) {
-  for (S32 i = 0; i < s.size; i++) { Str8FmtBufferPushChar(buffer, s.str[i]); }
+  for (U32 i = 0; i < s.size; i++) { Str8FmtBufferPushChar(buffer, s.str[i]); }
 }
 
 static void Str8FmtBufferPushU64Impl(Str8FmtBuffer* buffer, U64 value, Str8FmtBase base, U32 flags) {
@@ -2481,7 +2499,7 @@ String8List Str8Split(Arena* arena, String8 string, U8 c) {
   String8List list;
   MEMORY_ZERO_STRUCT(&list);
   U8* substring_start = string.str;
-  for (S32 i = 0; i < string.size; ++i) {
+  for (U32 i = 0; i < string.size; ++i) {
     if (string.str[i] == c) {
       Str8ListAppend(arena, &list, Str8Range(substring_start, &string.str[i]));
       substring_start = &string.str[++i];
@@ -2496,7 +2514,7 @@ String8List Str8Split(Arena* arena, String8 string, U8 c) {
 S32 Str8Hash(String8 s) {
   DEBUG_ASSERT(s.size >= 0);
   S32 hash = 0;
-  for (S32 i = 0; i < s.size; i++) {
+  for (U32 i = 0; i < s.size; i++) {
     hash += s.str[i];
     hash += hash << 10;
     hash ^= hash >> 6;
@@ -2562,7 +2580,7 @@ S32 SortCompareB64Asc(void* a, void* b) { return *(B64*) a - *(B64*) b; }
 S32 SortCompareString8Asc(void* a, void* b) {
   String8* a_cast = (String8*) a;
   String8* b_cast = (String8*) b;
-  S32 i = 0;
+  U32 i = 0;
   while (true) {
     if (i >= a_cast->size) { return -1 * (a_cast->size != b_cast->size); }
     if (i >= b_cast->size) { return +1; } // NOTE: contextually, a size != b size.
@@ -2591,7 +2609,7 @@ S32 SortCompareB64Desc(void* a, void* b) { return *(B64*) b - *(B64*) a; }
 S32 SortCompareString8Desc(void* a, void* b) {
   String8* a_cast = (String8*) a;
   String8* b_cast = (String8*) b;
-  S32 i = 0;
+  U32 i = 0;
   while (true) {
     if (i >= a_cast->size) { return +1 * (a_cast->size != b_cast->size); }
     if (i >= b_cast->size) { return -1; } // NOTE: contextually, a size != b size.
@@ -2607,45 +2625,40 @@ S32 SortCompareString8Desc(void* a, void* b) {
 // NOTE: Bin read / write Implementation
 ///////////////////////////////////////////////////////////////////////////////
 
-U8 BinRead8(U8* bytes) {
-  return *bytes;
+U16 BinSwap16(U16 x) {
+  return (x << 8) | (x >> 8);
 }
 
-U16 BinRead16LE(U8* bytes) {
-  U8 x = BinRead8(bytes);
-  U8 y = BinRead8(bytes + 1);
-  return (((U16) x) + (((U16) y) << 8));
+U32 BinSwap32(U32 x) {
+  return (x >> 24) |
+         ((x >> 8) & 0xff00) |
+         ((x & 0xff00) << 8) |
+         (x << 24);
 }
 
-U16 BinRead16BE(U8* bytes) {
-  U8 x = BinRead8(bytes);
-  U8 y = BinRead8(bytes + 1);
-  return ((((U16) x) << 8) + ((U16) y));
+U64 BinSwap64(U64 x) {
+  x = ((x & 0xff00ff00ff00fff0ull) >> 8)  |
+      ((x & 0x00ff00ff00ff00ffull) << 8);
+  x = ((x & 0xffff0000ffff0000ull) >> 16) |
+      ((x & 0x0000ffff0000ffffull) << 16);
+  return (x >> 32) | (x << 32);
 }
 
-U32 BinRead32LE(U8* bytes) {
-  U16 x = BinRead16LE(bytes);
-  U16 y = BinRead16LE(bytes + 2);
-  return (((U32) x) + (((U32) y) << 16));
-}
+U8 BinRead8(U8* bytes)     { return *bytes;                   }
+U16 BinRead16LE(U8* bytes) { return *(U16*) bytes;            }
+U16 BinRead16BE(U8* bytes) { return BinSwap16(*(U16*) bytes); }
+U32 BinRead32LE(U8* bytes) { return *(U32*) bytes;            }
+U32 BinRead32BE(U8* bytes) { return BinSwap32(*(U32*) bytes); }
+U64 BinRead64LE(U8* bytes) { return *(U64*) bytes;            }
+U64 BinRead64BE(U8* bytes) { return BinSwap64(*(U64*) bytes); }
 
-U32 BinRead32BE(U8* bytes) {
-  U16 x = BinRead16BE(bytes);
-  U16 y = BinRead16BE(bytes + 2);
-  return ((((U32) x) << 16) + ((U32) y));
-}
-
-U64 BinRead64LE(U8* bytes) {
-  U32 x = BinRead32LE(bytes);
-  U32 y = BinRead32LE(bytes + 4);
-  return (((U64) x) + (((U64) y) << 32));
-}
-
-U64 BinRead64BE(U8* bytes) {
-  U32 x = BinRead32BE(bytes);
-  U32 y = BinRead32BE(bytes + 4);
-  return ((((U64) x) << 32) + ((U64) y));
-}
+void BinWrite8(U8* bytes, U8 x) { *bytes = x;                       }
+void BinWrite16LE(U8* bytes, U16 x) { *(U16*) bytes = x;            }
+void BinWrite16BE(U8* bytes, U16 x) { *(U16*) bytes = BinSwap16(x); }
+void BinWrite32LE(U8* bytes, U32 x) { *(U32*) bytes = x;            }
+void BinWrite32BE(U8* bytes, U32 x) { *(U32*) bytes = BinSwap32(x); }
+void BinWrite64LE(U8* bytes, U64 x) { *(U64*) bytes = x;            }
+void BinWrite64BE(U8* bytes, U64 x) { *(U64*) bytes = BinSwap64(x); }
 
 BinStream BinStreamAssign(U8* bytes, U32 bytes_size) {
   BinStream result;
@@ -2665,7 +2678,7 @@ B32 BinStreamSeek(BinStream* stream, U32 pos) {
   return true;
 }
 
-B32 BinStreamSkip(BinStream* stream, U32 num, S32 size) {
+B32 BinStreamSkip(BinStream* stream, U32 num, U32 size) {
   if (stream->pos + (num * size) > stream->bytes_size) { return false; }
   stream->pos += num * size;
   return true;
@@ -2753,6 +2766,22 @@ B32 BinStreamPullS64LE(BinStream* stream, S64* result) {
 }
 
 B32 BinStreamPullS64BE(BinStream* stream, S64* result) {
+  return BinStreamPullU64BE(stream, (U64*) result);
+}
+
+B32 BinStreamPullF32LE(BinStream* stream, F32* result) {
+  return BinStreamPullU32LE(stream, (U32*) result);
+}
+
+B32 BinStreamPullF32BE(BinStream* stream, F32* result) {
+  return BinStreamPullU32BE(stream, (U32*) result);
+}
+
+B32 BinStreamPullF64LE(BinStream* stream, F64* result) {
+  return BinStreamPullU64LE(stream, (U64*) result);
+}
+
+B32 BinStreamPullF64BE(BinStream* stream, F64* result) {
   return BinStreamPullU64BE(stream, (U64*) result);
 }
 
@@ -2847,6 +2876,22 @@ B32 BinStreamPeekS64BE(BinStream* stream, S32 offset, U32 size, S64* result) {
   return BinStreamPeekU64BE(stream, offset, size, (U64*) result);
 }
 
+B32 BinStreamPeekF32LE(BinStream* stream, S32 offset, U32 size, F32* result) {
+  return BinStreamPeekU32LE(stream, offset, size, (U32*) result);
+}
+
+B32 BinStreamPeekF32BE(BinStream* stream, S32 offset, U32 size, F32* result) {
+  return BinStreamPeekU32BE(stream, offset, size, (U32*) result);
+}
+
+B32 BinStreamPeekF64LE(BinStream* stream, S32 offset, U32 size, F64* result) {
+  return BinStreamPeekU64LE(stream, offset, size, (U64*) result);
+}
+
+B32 BinStreamPeekF64BE(BinStream* stream, S32 offset, U32 size, F64* result) {
+  return BinStreamPeekU64BE(stream, offset, size, (U64*) result);
+}
+
 B32 BinStreamPeekStr8(BinStream* stream, S32 offset, U32 size, U32 str_size, String8* result) {
   offset = offset * size;
   if (offset < 0 && stream->pos < (-1 * offset)) { return false; }
@@ -2856,61 +2901,56 @@ B32 BinStreamPeekStr8(BinStream* stream, S32 offset, U32 size, U32 str_size, Str
 }
 
 B32 BinStreamPush8(BinStream* stream, U8 x) {
-  if (stream->pos >= stream->bytes_size) { return false; }
-  stream->bytes[stream->pos++] = x;
+  if (stream->pos + 1 > stream->bytes_size) { return false; }
+  BinWrite8(stream->bytes + stream->pos, x);
+  stream->pos += 1;
   return true;
 }
 
 B32 BinStreamPush16LE(BinStream* stream, U16 x) {
-  U8 a = x & 0xff;
-  U8 b = (x >> 8) & 0xff;
-  if (!BinStreamPush8(stream, a)) { return false; }
-  if (!BinStreamPush8(stream, b)) { return false; }
+  if (stream->pos + 2 > stream->bytes_size) { return false; }
+  BinWrite16LE(stream->bytes + stream->pos, x);
+  stream->pos += 2;
   return true;
 }
 
 B32 BinStreamPush16BE(BinStream* stream, U16 x) {
-  U8 a = (x >> 8) & 0xff;
-  U8 b = x & 0xff;
-  if (!BinStreamPush8(stream, a)) { return false; }
-  if (!BinStreamPush8(stream, b)) { return false; }
+  if (stream->pos + 2 > stream->bytes_size) { return false; }
+  BinWrite16BE(stream->bytes + stream->pos, x);
+  stream->pos += 2;
   return true;
 }
 
 B32 BinStreamPush32LE(BinStream* stream, U32 x) {
-  U16 a = x & 0xffff;
-  U16 b = (x >> 16) & 0xffff;
-  if (!BinStreamPush16LE(stream, a)) { return false; }
-  if (!BinStreamPush16LE(stream, b)) { return false; }
+  if (stream->pos + 4 > stream->bytes_size) { return false; }
+  BinWrite32LE(stream->bytes + stream->pos, x);
+  stream->pos += 4;
   return true;
 }
 
 B32 BinStreamPush32BE(BinStream* stream, U32 x) {
-  U16 a = (x >> 16) & 0xffff;
-  U16 b = x & 0xffff;
-  if (!BinStreamPush16BE(stream, a)) { return false; }
-  if (!BinStreamPush16BE(stream, b)) { return false; }
+  if (stream->pos + 4 > stream->bytes_size) { return false; }
+  BinWrite32BE(stream->bytes + stream->pos, x);
+  stream->pos += 4;
   return true;
 }
 
 B32 BinStreamPush64LE(BinStream* stream, U64 x) {
-  U32 a = x & 0xffffffff;
-  U32 b = (x >> 32) & 0xffffffff;
-  if (!BinStreamPush32LE(stream, a)) { return false; }
-  if (!BinStreamPush32LE(stream, b)) { return false; }
+  if (stream->pos + 8 > stream->bytes_size) { return false; }
+  BinWrite64LE(stream->bytes + stream->pos, x);
+  stream->pos += 8;
   return true;
 }
 
 B32 BinStreamPush64BE(BinStream* stream, U64 x) {
-  U32 a = (x >> 32) & 0xffffffff;
-  U32 b = x & 0xffffffff;
-  if (!BinStreamPush32BE(stream, a)) { return false; }
-  if (!BinStreamPush32BE(stream, b)) { return false; }
+  if (stream->pos + 8 > stream->bytes_size) { return false; }
+  BinWrite64BE(stream->bytes + stream->pos, x);
+  stream->pos += 8;
   return true;
 }
 
 B32 BinStreamPushStr8(BinStream* stream, String8 str) {
-  for (S32 i = 0; i < str.size; i++) { if (!BinStreamPush8(stream, str.str[i])) { return false; } }
+  for (U32 i = 0; i < str.size; i++) { if (!BinStreamPush8(stream, str.str[i])) { return false; } }
   return true;
 }
 

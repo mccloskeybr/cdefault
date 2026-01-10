@@ -197,7 +197,7 @@ static void JsonObjectAppendToStr8List(Arena* arena, JsonObject* object, String8
 #define JSON_LOG_ERROR(orig_str, curr_str, err)    \
   JSON_LOG_ERROR_EX(orig_str, curr_str, "%s", err)
 
-static void JsonStrAdvance(String8* json_str, S32 size) {
+static void JsonStrAdvance(String8* json_str, U32 size) {
   DEBUG_ASSERT(size <= json_str->size);
   json_str->str  += size;
   json_str->size -= size;
@@ -233,7 +233,7 @@ static B32 JsonValueParse(Arena* arena, JsonValue* value, String8* orig_str, Str
   if (num_end != -1) {
     value->kind = JsonValueKind_Number;
     value->number = number;
-    JsonStrAdvance(json_str, num_end);
+    JsonStrAdvance(json_str, (U32) num_end);
 
   } else if (json_str->str[0] == '{') {
     value->kind = JsonValueKind_Object;
@@ -324,8 +324,8 @@ static B32 JsonObjectParse(Arena* arena, JsonObject* object, String8* orig_str, 
       JSON_LOG_ERROR(orig_str, json_str, "No end to json key");
       goto json_object_parse_end;
     }
-    node->key = Str8(key_str, key_end);
-    JsonStrAdvance(json_str, key_end + 1);
+    node->key = Str8(key_str, (U32) key_end);
+    JsonStrAdvance(json_str, ((U32) key_end) + 1);
 
     if (!JsonExpectChar(orig_str, json_str, ':')) { goto json_object_parse_end; }
     if (!JsonValueParse(arena, &node->value, orig_str, json_str)) { goto json_object_parse_end; }

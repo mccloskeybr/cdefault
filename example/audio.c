@@ -19,7 +19,7 @@ int main(void) {
   DEBUG_ASSERT(AudioStreamOpen(&stream, spec));
 
   String8 buffer;
-  S32 bytes_read;
+  U32 bytes_read;
   while(true) {
     DEBUG_ASSERT(AudioStreamAcquireBuffer(stream, &buffer.str, &buffer.size));
     DEBUG_ASSERT(SoundGetSamplesInterleaved(&sound, buffer.str, buffer.size, &bytes_read));

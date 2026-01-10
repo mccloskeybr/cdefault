@@ -1487,7 +1487,7 @@ void DrawStringBmp(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_hei
 }
 
 void DrawStringBmpV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, V2 pos, V3 color) {
-  for (S32 i = 0; i < str.size; i++) {
+  for (U32 i = 0; i < str.size; i++) {
     U8 curr = str.str[i];
     U8 next = i < str.size - 1 ? str.str[i + 1] : 0;
     V2 center, size, min_uv, max_uv;
@@ -1511,7 +1511,7 @@ void DrawStringSdfEx(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_h
 }
 
 void DrawStringSdfExV(String8 str, FontAtlas* atlas, U32 atlas_handle, F32 font_height, F32 threshold, F32 smoothing, V2 pos, V3 color) {
-  for (S32 i = 0; i < str.size; i++) {
+  for (U32 i = 0; i < str.size; i++) {
     U8 curr = str.str[i];
     U8 next = i < str.size - 1 ? str.str[i + 1] : 0;
     V2 center, size, min_uv, max_uv;

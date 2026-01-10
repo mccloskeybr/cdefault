@@ -74,12 +74,12 @@ struct Sound {
 
 B32 SoundOpenFile(Sound* sound, String8 file_path);
 B32 SoundOpenFileHandle(Sound* sound, FileHandle* file);
-B32 SoundGetSamplesInterleaved(Sound* sound, U8* sample_bytes, S32 sample_bytes_size, S32* sample_bytes_read);
+B32 SoundGetSamplesInterleaved(Sound* sound, U8* sample_bytes, U32 sample_bytes_size, U32* sample_bytes_read);
 B32 SoundRestart(Sound* sound);
 B32 SoundClose(Sound* sound);
 
 B32 SoundOpenWav(Sound* sound, FileHandle* file);
-B32 SoundGetSamplesInterleavedWav(Sound* sound, U8* sample_bytes, S32 sample_bytes_size, S32* sample_bytes_read);
+B32 SoundGetSamplesInterleavedWav(Sound* sound, U8* sample_bytes, U32 sample_bytes_size, U32* sample_bytes_read);
 
 #endif // CDEFAULT_SOUND_H_
 
@@ -89,7 +89,7 @@ B32 SoundGetSamplesInterleavedWav(Sound* sound, U8* sample_bytes, S32 sample_byt
 #define SOUND_LOG_OUT_OF_CHARS() LOG_ERROR("[FONT] Ran out of characters in image file.")
 
 // https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
-#define SOUND_TRY_PARSE(eval) if (!eval) { SOUND_LOG_OUT_OF_CHARS(); return false; }
+#define BIN_CATCH SOUND_LOG_OUT_OF_CHARS(); return false;
 B32 SoundOpenWav(Sound* sound, FileHandle* file) {
   MEMORY_ZERO_STRUCT(sound);
 
@@ -102,33 +102,33 @@ B32 SoundOpenWav(Sound* sound, FileHandle* file) {
 
   // NOTE: 128 is just an arbitrarily large amount that should contain all header versions.
   U8 bytes[128];
-  S32 bytes_read;
+  U32 bytes_read;
   if (!FileHandleRead(sound->file, bytes, STATIC_ARRAY_SIZE(bytes), &bytes_read)) { return false; }
 
   BinStream s;
   BinStreamInit(&s, bytes, bytes_read);
 
   String8 tag;
-  SOUND_TRY_PARSE(BinStreamPullStr8(&s, 4, &tag));
+  BIN_TRY(BinStreamPullStr8(&s, 4, &tag));
   if (!Str8Eq(tag, Str8Lit("RIFF"))) { return false; }
 
-  SOUND_TRY_PARSE(BinStreamSkip(&s, 4, sizeof(U8)));
+  BIN_TRY(BinStreamSkip(&s, 4, sizeof(U8)));
 
-  SOUND_TRY_PARSE(BinStreamPullStr8(&s, 4, &tag));
+  BIN_TRY(BinStreamPullStr8(&s, 4, &tag));
   if (!Str8Eq(tag, Str8Lit("WAVE"))) { return false; }
-  SOUND_TRY_PARSE(BinStreamPullStr8(&s, 4, &tag));
+  BIN_TRY(BinStreamPullStr8(&s, 4, &tag));
   if (!Str8Eq(tag, Str8Lit("fmt "))) { return false; }
 
   // NOTE: chunk_size can be variable depending on the WAV version.
   U32 chunk_size;
   U16 bin_fmt, bits_per_sample;
-  SOUND_TRY_PARSE(BinStreamPullU32LE(&s, &chunk_size));
-  SOUND_TRY_PARSE(BinStreamPullU16LE(&s, &bin_fmt));
-  SOUND_TRY_PARSE(BinStreamPullU16LE(&s, (U16*) &sound->channels));
-  SOUND_TRY_PARSE(BinStreamPullU32LE(&s, &sound->frequency));
-  SOUND_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U32)));
-  SOUND_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U16)));
-  SOUND_TRY_PARSE(BinStreamPullU16LE(&s, &bits_per_sample));
+  BIN_TRY(BinStreamPullU32LE(&s, &chunk_size));
+  BIN_TRY(BinStreamPullU16LE(&s, &bin_fmt));
+  BIN_TRY(BinStreamPullU16LE(&s, (U16*) &sound->channels));
+  BIN_TRY(BinStreamPullU32LE(&s, &sound->frequency));
+  BIN_TRY(BinStreamSkip(&s, 1, sizeof(U32)));
+  BIN_TRY(BinStreamSkip(&s, 1, sizeof(U16)));
+  BIN_TRY(BinStreamPullU16LE(&s, &bits_per_sample));
 
   // TODO: handle WAVE_FORMAT_EXTENSIBLE
   switch (bin_fmt) {
@@ -150,17 +150,17 @@ B32 SoundOpenWav(Sound* sound, FileHandle* file) {
     } break;
   }
 
-  SOUND_TRY_PARSE(BinStreamSeek(&s, 20 + chunk_size));
+  BIN_TRY(BinStreamSeek(&s, 20 + chunk_size));
 
   // NOTE: extra chunk may be here for non-PCM formats.
-  SOUND_TRY_PARSE(BinStreamPullStr8(&s, 4, &tag));
+  BIN_TRY(BinStreamPullStr8(&s, 4, &tag));
   if (Str8Eq(tag, Str8Lit("fact"))) {
-    SOUND_TRY_PARSE(BinStreamSkip(&s, 8, sizeof(U8)));
-    SOUND_TRY_PARSE(BinStreamPullStr8(&s, 4, &tag));
+    BIN_TRY(BinStreamSkip(&s, 8, sizeof(U8)));
+    BIN_TRY(BinStreamPullStr8(&s, 4, &tag));
   }
   if (!Str8Eq(tag, Str8Lit("data"))) { return false; }
 
-  SOUND_TRY_PARSE(BinStreamPullU32LE(&s, &sound->samples_byte_size));
+  BIN_TRY(BinStreamPullU32LE(&s, &sound->samples_byte_size));
   sound->sound_offset = s.pos;
   sound->samples_pos = 0;
   if (!FileHandleSeek(sound->file, sound->sound_offset, FileSeekPos_Begin)) {
@@ -169,8 +169,9 @@ B32 SoundOpenWav(Sound* sound, FileHandle* file) {
   }
   return true;
 }
+#undef BIN_CATCH
 
-B32 SoundGetSamplesInterleavedWav(Sound* sound, U8* sample_bytes, S32 sample_bytes_size, S32* sample_bytes_read) {
+B32 SoundGetSamplesInterleavedWav(Sound* sound, U8* sample_bytes, U32 sample_bytes_size, U32* sample_bytes_read) {
   DEBUG_ASSERT(sound->type == SoundFileType_WAV);
   if (sound->samples_pos >= sound->samples_byte_size) {
     *sample_bytes_read = 0;
@@ -184,7 +185,7 @@ B32 SoundGetSamplesInterleavedWav(Sound* sound, U8* sample_bytes, S32 sample_byt
   return true;
 }
 
-B32 SoundGetSamplesInterleaved(Sound* sound, U8* sample_bytes, S32 sample_bytes_size, S32* sample_bytes_read) {
+B32 SoundGetSamplesInterleaved(Sound* sound, U8* sample_bytes, U32 sample_bytes_size, U32* sample_bytes_read) {
   switch (sound->type) {
     case SoundFileType_WAV: { return SoundGetSamplesInterleavedWav(sound, sample_bytes, sample_bytes_size, sample_bytes_read); } break;
     default:                { UNREACHABLE(); return -1; } break;

@@ -58,8 +58,8 @@ B32  AudioStreamClose(AudioStreamHandle handle);
 
 // NOTE: Retrieves a byte stream in which audio data (conforming to spec) can be placed. Once data has
 // been placed, AudioStreamReleaseBuffer must be called.
-B32  AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, S32* buffer_size);
-B32  AudioStreamReleaseBuffer(AudioStreamHandle handle, U8* buffer, S32 buffer_size);
+B32  AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, U32* buffer_size);
+B32  AudioStreamReleaseBuffer(AudioStreamHandle handle, U8* buffer, U32 buffer_size);
 
 // NOTE: Waits until the audio stream has space for more audio data.
 B32  AudioStreamWait(AudioStreamHandle handle);
@@ -756,7 +756,7 @@ B32 WASAPI_AudioStreamClose(AudioStreamHandle handle) {
 }
 
 
-B32 WASAPI_AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, S32* buffer_size) {
+B32 WASAPI_AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, U32* buffer_size) {
   WASAPI_AudioContext* ctx = &_wasapi_ctx;
   if (!ctx->initialized) { return false; }
   LockWitness witness = MutexLock(&ctx->mutex);
@@ -773,7 +773,7 @@ B32 WASAPI_AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, S32* 
   return success;
 }
 
-B32 WASAPI_AudioStreamReleaseBuffer(AudioStreamHandle handle, U8* UNUSED(buffer), S32 buffer_size) {
+B32 WASAPI_AudioStreamReleaseBuffer(AudioStreamHandle handle, U8* UNUSED(buffer), U32 buffer_size) {
   WASAPI_AudioContext* ctx = &_wasapi_ctx;
   if (!ctx->initialized) { return false; }
   LockWitness witness = MutexLock(&ctx->mutex);
@@ -1416,11 +1416,11 @@ B32 AudioStreamClose(AudioStreamHandle handle) {
   return CDEFAULT_AUDIO_BACKEND_FN(AudioStreamClose(handle));
 }
 
-B32 AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, S32* buffer_size) {
+B32 AudioStreamAcquireBuffer(AudioStreamHandle handle, U8** buffer, U32* buffer_size) {
   return CDEFAULT_AUDIO_BACKEND_FN(AudioStreamAcquireBuffer(handle, buffer, buffer_size));
 }
 
-B32 AudioStreamReleaseBuffer(AudioStreamHandle handle, U8* buffer, S32 buffer_size) {
+B32 AudioStreamReleaseBuffer(AudioStreamHandle handle, U8* buffer, U32 buffer_size) {
   return CDEFAULT_AUDIO_BACKEND_FN(AudioStreamReleaseBuffer(handle, buffer, buffer_size));
 }
 

@@ -226,7 +226,7 @@ static void FontBboxScale(V2* min, V2* max, V2* scaled_min, V2* scaled_max, F32 
 
 // NOTE: this very simply determines the maximum glyph bbox and generates a width / height that fits all characters assuming that bbox.
 // this will be very bad if there is a lot of variance in glyph size, but seemed more desirable than e.g. having a dynamic bitmap size.
-#define FONT_TRY_PARSE(eval) if (!eval) { FONT_LOG_OUT_OF_CHARS(); return false; }
+#define BIN_CATCH FONT_LOG_OUT_OF_CHARS(); return false;
 static B32 FontSuggestAtlasSize(Font* font, FontCharSet* char_set, F32 scale, U32* width, U32* height, F32 pad_x, F32 pad_y) {
   F32 num_glyphs = 0;
   F32 max_glyph_width = 0;
@@ -253,12 +253,12 @@ static B32 FontSuggestAtlasSize(Font* font, FontCharSet* char_set, F32 scale, U3
       if (glyph_glyf_offset < 0) { continue; }
 
       S16 min_x, min_y, max_x, max_y;
-      FONT_TRY_PARSE(BinStreamSeek(&s, glyph_glyf_offset));
-      FONT_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U16)));
-      FONT_TRY_PARSE(BinStreamPullS16BE(&s, &min_x));
-      FONT_TRY_PARSE(BinStreamPullS16BE(&s, &min_y));
-      FONT_TRY_PARSE(BinStreamPullS16BE(&s, &max_x));
-      FONT_TRY_PARSE(BinStreamPullS16BE(&s, &max_y));
+      BIN_TRY(BinStreamSeek(&s, glyph_glyf_offset));
+      BIN_TRY(BinStreamSkip(&s, 1, sizeof(U16)));
+      BIN_TRY(BinStreamPullS16BE(&s, &min_x));
+      BIN_TRY(BinStreamPullS16BE(&s, &min_y));
+      BIN_TRY(BinStreamPullS16BE(&s, &max_x));
+      BIN_TRY(BinStreamPullS16BE(&s, &max_y));
 
       F32 scaled_min_x  = min_x * scale;
       F32 scaled_min_y  = min_y * scale;
@@ -278,26 +278,26 @@ static B32 FontSuggestAtlasSize(Font* font, FontCharSet* char_set, F32 scale, U3
   *height      = F32Ceil(num_rows * (max_glyph_height + pad_y));
   return true;
 }
-#undef FONT_TRY_PARSE
+#undef BIN_CATCH
 
 // NOTE: returns false on bad parse. may return true e.g. if there is no kern table, that kind of thing.
-#define FONT_TRY_PARSE(eval) if (!eval) { FONT_LOG_OUT_OF_CHARS(); return false; }
+#define BIN_CATCH FONT_LOG_OUT_OF_CHARS(); return false;
 static B32 FontAtlasBuildKernTable(Arena* arena, Font* font, FontAtlas* atlas, F32 scale, FontCharSet* char_set) {
   if (font->kern_offset == 0) { return true; }
 
   BinStream s;
   BinStreamInit(&s, font->data, font->data_size);
-  FONT_TRY_PARSE(BinStreamSeek(&s, font->kern_offset));
+  BIN_TRY(BinStreamSeek(&s, font->kern_offset));
 
   // NOTE: apple's documentation insists that, after coverage, there is a tupleIndex U16.
   // it fails to mention that this is only present for apple's super special tables. not everyone else's (microsoft / OTF).
   U16 num_tables, coverage, num_pairs;
-  FONT_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U16)));
-  FONT_TRY_PARSE(BinStreamPullU16BE(&s, &num_tables));
-  FONT_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U32)));
-  FONT_TRY_PARSE(BinStreamPullU16BE(&s, &coverage));
-  FONT_TRY_PARSE(BinStreamPullU16BE(&s, &num_pairs));
-  FONT_TRY_PARSE(BinStreamSkip(&s, 3, sizeof(U16)));
+  BIN_TRY(BinStreamSkip(&s, 1, sizeof(U16)));
+  BIN_TRY(BinStreamPullU16BE(&s, &num_tables));
+  BIN_TRY(BinStreamSkip(&s, 1, sizeof(U32)));
+  BIN_TRY(BinStreamPullU16BE(&s, &coverage));
+  BIN_TRY(BinStreamPullU16BE(&s, &num_pairs));
+  BIN_TRY(BinStreamSkip(&s, 3, sizeof(U16)));
 
   if (num_tables == 0) { return true; }
   U16 flags  = coverage & ~0xff;
@@ -327,11 +327,11 @@ static B32 FontAtlasBuildKernTable(Arena* arena, Font* font, FontAtlas* atlas, F
             S32 middle = (left + right) / 2;
             // NOTE: (middle * 3) + 0 = test_left, (middle * 3) + 1 = test_right (as U16s). so test = test_left << 16 | test_right (as U32).
             U32 test;
-            FONT_TRY_PARSE(BinStreamPeekU32BE(&s, middle * 3, sizeof(U16), &test));
+            BIN_TRY(BinStreamPeekU32BE(&s, middle * 3, sizeof(U16), &test));
             if      (needle < test) { right = middle - 1; }
             else if (needle > test) { left  = middle + 1; }
             else {
-              FONT_TRY_PARSE(BinStreamPeekS16BE(&s, (middle * 3) + 2, sizeof(U16), &advance));
+              BIN_TRY(BinStreamPeekS16BE(&s, (middle * 3) + 2, sizeof(U16), &advance));
               break;
             }
           }
@@ -350,7 +350,7 @@ static B32 FontAtlasBuildKernTable(Arena* arena, Font* font, FontAtlas* atlas, F
   }
   return true;
 }
-#undef FONT_TRY_PARSE
+#undef BIN_CATCH
 
 B32 FontAtlasBakeBitmapFromFile(Arena* atlas_arena, Arena* bitmap_arena, FontAtlas* atlas, Image* bitmap, F32 pixel_height, FontCharSet* char_set, String8 file_path) {
   B32 success = false;
@@ -380,7 +380,7 @@ font_atlas_bake_sdf_from_file_exit:
   return success;
 }
 
-#define FONT_TRY_PARSE(eval) if (!eval) { FONT_LOG_OUT_OF_CHARS(); return false; }
+#define BIN_CATCH FONT_LOG_OUT_OF_CHARS(); return false;
 B32 FontInit(Font* font, U8* data, U32 data_size) {
   MEMORY_ZERO_STRUCT(font);
   font->data = data;
@@ -391,9 +391,9 @@ B32 FontInit(Font* font, U8* data, U32 data_size) {
 
   // NOTE: parse header
   U16 num_tables;
-  FONT_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U32)));
-  FONT_TRY_PARSE(BinStreamPullU16BE(&s, &num_tables));
-  FONT_TRY_PARSE(BinStreamSkip(&s, 6, sizeof(U8)));
+  BIN_TRY(BinStreamSkip(&s, 1, sizeof(U32)));
+  BIN_TRY(BinStreamPullU16BE(&s, &num_tables));
+  BIN_TRY(BinStreamSkip(&s, 6, sizeof(U8)));
 
   // NOTE: parse top-level tables
   U32 cmap_offset = 0;
@@ -401,10 +401,10 @@ B32 FontInit(Font* font, U8* data, U32 data_size) {
   for (U32 i = 0; i < num_tables; i++) {
     String8 tag;
     U32 table_offset;
-    FONT_TRY_PARSE(BinStreamPullStr8(&s, 4, &tag));
-    FONT_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U32)));
-    FONT_TRY_PARSE(BinStreamPullU32BE(&s, &table_offset));
-    FONT_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U32)));
+    BIN_TRY(BinStreamPullStr8(&s, 4, &tag));
+    BIN_TRY(BinStreamSkip(&s, 1, sizeof(U32)));
+    BIN_TRY(BinStreamPullU32BE(&s, &table_offset));
+    BIN_TRY(BinStreamSkip(&s, 1, sizeof(U32)));
     if      (Str8Eq(tag, Str8Lit("cmap"))) { cmap_offset = table_offset;       }
     else if (Str8Eq(tag, Str8Lit("maxp"))) { maxp_offset = table_offset;       }
     else if (Str8Eq(tag, Str8Lit("loca"))) { font->loca_offset = table_offset; }
@@ -443,16 +443,16 @@ B32 FontInit(Font* font, U8* data, U32 data_size) {
     return false;
   }
 
-  FONT_TRY_PARSE(BinStreamSeek(&s, cmap_offset));
-  FONT_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U16)));
+  BIN_TRY(BinStreamSeek(&s, cmap_offset));
+  BIN_TRY(BinStreamSkip(&s, 1, sizeof(U16)));
   U16 num_cmap_subtables;
-  FONT_TRY_PARSE(BinStreamPullU16BE(&s, &num_cmap_subtables));
+  BIN_TRY(BinStreamPullU16BE(&s, &num_cmap_subtables));
   for (U16 i = 0; i < num_cmap_subtables; i++) {
     U16 plat_id, plat_spec_id;
     U32 index_offset;
-    FONT_TRY_PARSE(BinStreamPullU16BE(&s, &plat_id));
-    FONT_TRY_PARSE(BinStreamPullU16BE(&s, &plat_spec_id));
-    FONT_TRY_PARSE(BinStreamPullU32BE(&s, &index_offset));
+    BIN_TRY(BinStreamPullU16BE(&s, &plat_id));
+    BIN_TRY(BinStreamPullU16BE(&s, &plat_spec_id));
+    BIN_TRY(BinStreamPullU32BE(&s, &index_offset));
     if (plat_id == FONT_PID_MICROSOFT_ENCODING) {
       if (plat_spec_id == FONT_MICROSOFT_EID_UNICODE_BMP ||
           plat_spec_id == FONT_MICROSOFT_EID_UNICODE_FULL) {
@@ -467,10 +467,10 @@ B32 FontInit(Font* font, U8* data, U32 data_size) {
     return false;
   }
 
-  FONT_TRY_PARSE(BinStreamSeek(&s, font->head_offset));
-  FONT_TRY_PARSE(BinStreamSkip(&s, 50, sizeof(U8)));
+  BIN_TRY(BinStreamSeek(&s, font->head_offset));
+  BIN_TRY(BinStreamSkip(&s, 50, sizeof(U8)));
   U16 index_to_loc_format;
-  FONT_TRY_PARSE(BinStreamPullU16BE(&s, &index_to_loc_format));
+  BIN_TRY(BinStreamPullU16BE(&s, &index_to_loc_format));
   switch (index_to_loc_format) {
     case 0: { font->loc_format = LocFormat_U16; } break;
     case 1: { font->loc_format = LocFormat_U32; } break;
@@ -480,40 +480,40 @@ B32 FontInit(Font* font, U8* data, U32 data_size) {
     } break;
   }
 
-  FONT_TRY_PARSE(BinStreamSeek(&s, maxp_offset));
-  FONT_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U32)));
-  FONT_TRY_PARSE(BinStreamPullU16BE(&s, &font->num_glyphs));
+  BIN_TRY(BinStreamSeek(&s, maxp_offset));
+  BIN_TRY(BinStreamSkip(&s, 1, sizeof(U32)));
+  BIN_TRY(BinStreamPullU16BE(&s, &font->num_glyphs));
 
-  FONT_TRY_PARSE(BinStreamSeek(&s, font->hhea_offset));
-  FONT_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U32)));
-  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &font->ascent));
-  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &font->descent));
+  BIN_TRY(BinStreamSeek(&s, font->hhea_offset));
+  BIN_TRY(BinStreamSkip(&s, 1, sizeof(U32)));
+  BIN_TRY(BinStreamPullS16BE(&s, &font->ascent));
+  BIN_TRY(BinStreamPullS16BE(&s, &font->descent));
   font->descent = F32Abs(font->descent);
 
   return true;
 }
-#undef FONT_TRY_PARSE
+#undef BIN_CATCH
 
-#define FONT_TRY_PARSE(eval) if (!eval) { FONT_LOG_OUT_OF_CHARS(); return false; }
+#define BIN_CATCH FONT_LOG_OUT_OF_CHARS(); return false;
 B32 FontGetGlyphIndex(Font* font, U32 codepoint, U32* glyph_index) {
   *glyph_index = 0;
   BinStream s;
   BinStreamInit(&s, font->data, font->data_size);
-  FONT_TRY_PARSE(BinStreamSeek(&s, font->cmap_subtable_offset));
+  BIN_TRY(BinStreamSeek(&s, font->cmap_subtable_offset));
 
   U16 cmap_format;
-  FONT_TRY_PARSE(BinStreamPullU16BE(&s, &cmap_format));
+  BIN_TRY(BinStreamPullU16BE(&s, &cmap_format));
   switch (cmap_format) {
     case 0: {
       U16 length;
-      FONT_TRY_PARSE(BinStreamPullU16BE(&s, &length));
+      BIN_TRY(BinStreamPullU16BE(&s, &length));
       if (codepoint >= length) {
         LOG_ERROR("[FONT] Failed to determine codepoint glyph index, codepoint exceeds table length: %d, %d", codepoint, length);
         return false;
       }
-      FONT_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U16)));
-      FONT_TRY_PARSE(BinStreamSkip(&s, codepoint, sizeof(U8)));
-      FONT_TRY_PARSE(BinStreamPullU8(&s, (U8*) glyph_index));
+      BIN_TRY(BinStreamSkip(&s, 1, sizeof(U16)));
+      BIN_TRY(BinStreamSkip(&s, codepoint, sizeof(U8)));
+      BIN_TRY(BinStreamPullU8(&s, (U8*) glyph_index));
       return true;
     } break;
 
@@ -524,76 +524,76 @@ B32 FontGetGlyphIndex(Font* font, U32 codepoint, U32* glyph_index) {
       }
 
       U16 seg_count, search_range, entry_selector, range_shift;
-      FONT_TRY_PARSE(BinStreamSkip(&s, 2, sizeof(U16)));
-      FONT_TRY_PARSE(BinStreamPullU16BE(&s, &seg_count));
-      FONT_TRY_PARSE(BinStreamPullU16BE(&s, &search_range));
-      FONT_TRY_PARSE(BinStreamPullU16BE(&s, &entry_selector));
-      FONT_TRY_PARSE(BinStreamPullU16BE(&s, &range_shift));
+      BIN_TRY(BinStreamSkip(&s, 2, sizeof(U16)));
+      BIN_TRY(BinStreamPullU16BE(&s, &seg_count));
+      BIN_TRY(BinStreamPullU16BE(&s, &search_range));
+      BIN_TRY(BinStreamPullU16BE(&s, &entry_selector));
+      BIN_TRY(BinStreamPullU16BE(&s, &range_shift));
       seg_count    = seg_count / 2;
       search_range = search_range / 2;
 
       BinStream end_codes   = s;
-      FONT_TRY_PARSE(BinStreamSkip(&s, seg_count, sizeof(U16)));
-      FONT_TRY_PARSE(BinStreamSkip(&s, 1, sizeof(U16)));
+      BIN_TRY(BinStreamSkip(&s, seg_count, sizeof(U16)));
+      BIN_TRY(BinStreamSkip(&s, 1, sizeof(U16)));
       BinStream start_codes = s;
-      FONT_TRY_PARSE(BinStreamSkip(&s, seg_count, sizeof(U16)));
+      BIN_TRY(BinStreamSkip(&s, seg_count, sizeof(U16)));
       BinStream id_deltas   = s;
-      FONT_TRY_PARSE(BinStreamSkip(&s, seg_count, sizeof(U16)));
+      BIN_TRY(BinStreamSkip(&s, seg_count, sizeof(U16)));
       BinStream offsets     = s;
 
       U32 search = 0;
       U16 test_codepoint;
-      FONT_TRY_PARSE(BinStreamPeekU16BE(&end_codes, range_shift, sizeof(U8), &test_codepoint));
+      BIN_TRY(BinStreamPeekU16BE(&end_codes, range_shift, sizeof(U8), &test_codepoint));
       if (codepoint > test_codepoint) { search += range_shift; }
 
       while (entry_selector > 0) {
         search_range /= 2;
         U16 end;
-        FONT_TRY_PARSE(BinStreamPeekU16BE(&end_codes, search + (search_range * 2) - 2, sizeof(U8), &end));
+        BIN_TRY(BinStreamPeekU16BE(&end_codes, search + (search_range * 2) - 2, sizeof(U8), &end));
         if (codepoint > end) { search += search_range * 2; }
         entry_selector -= 1;
       }
 
       U16 item = search / 2;
       U16 start_code, end_code;
-      FONT_TRY_PARSE(BinStreamPeekU16BE(&start_codes, item, sizeof(U16), &start_code));
-      FONT_TRY_PARSE(BinStreamPeekU16BE(&end_codes, item, sizeof(U16), &end_code));
+      BIN_TRY(BinStreamPeekU16BE(&start_codes, item, sizeof(U16), &start_code));
+      BIN_TRY(BinStreamPeekU16BE(&end_codes, item, sizeof(U16), &end_code));
       if (codepoint < start_code || end_code < codepoint) {
         LOG_ERROR("[FONT] Failed to find valid character segment / glyph index for codepoint: %d", codepoint);
         return false;
       }
 
       U16 offset;
-      FONT_TRY_PARSE(BinStreamPeekU16BE(&offsets, item, sizeof(U16), &offset));
+      BIN_TRY(BinStreamPeekU16BE(&offsets, item, sizeof(U16), &offset));
       if (offset == 0) {
         S16 delta;
-        FONT_TRY_PARSE(BinStreamPeekS16BE(&id_deltas, item, sizeof(U16), &delta));
+        BIN_TRY(BinStreamPeekS16BE(&id_deltas, item, sizeof(U16), &delta));
         *glyph_index = codepoint + delta;
       } else {
         *glyph_index = 0;
-        FONT_TRY_PARSE(BinStreamPeekU16BE(&offsets, offset + (2 * (codepoint - start_code)) + (item * 2), sizeof(U8), (U16*) glyph_index));
+        BIN_TRY(BinStreamPeekU16BE(&offsets, offset + (2 * (codepoint - start_code)) + (item * 2), sizeof(U8), (U16*) glyph_index));
       }
       return true;
     } break;
 
     case 12:
     case 13: {
-      FONT_TRY_PARSE(BinStreamSkip(&s, 10, sizeof(U8)));
+      BIN_TRY(BinStreamSkip(&s, 10, sizeof(U8)));
       U32 number_groups;
-      FONT_TRY_PARSE(BinStreamPullU32BE(&s, &number_groups));
+      BIN_TRY(BinStreamPullU32BE(&s, &number_groups));
       BinStream groups = s;
       U32 low  = 0;
       U32 high = number_groups;
       while (low < high ) {
         U32 mid = low + ((high - low) / 2);
         U32 mid_start_char, mid_end_char;
-        FONT_TRY_PARSE(BinStreamPeekU32BE(&groups, (mid * 3) + 0, sizeof(U32), &mid_start_char));
-        FONT_TRY_PARSE(BinStreamPeekU32BE(&groups, (mid * 3) + 1, sizeof(U32), &mid_end_char));
+        BIN_TRY(BinStreamPeekU32BE(&groups, (mid * 3) + 0, sizeof(U32), &mid_start_char));
+        BIN_TRY(BinStreamPeekU32BE(&groups, (mid * 3) + 1, sizeof(U32), &mid_end_char));
         if      (codepoint < mid_start_char) { high = mid;    }
         else if (codepoint > mid_end_char)   { low = mid + 1; }
         else {
           U32 start_glyph;
-          FONT_TRY_PARSE(BinStreamPeekU32BE(&groups, (mid * 12) + 8, sizeof(U8), &start_glyph));
+          BIN_TRY(BinStreamPeekU32BE(&groups, (mid * 12) + 8, sizeof(U8), &start_glyph));
           if (cmap_format == 12) {
             *glyph_index = start_glyph + codepoint - mid_start_char;
             break;
@@ -615,9 +615,9 @@ B32 FontGetGlyphIndex(Font* font, U32 codepoint, U32* glyph_index) {
   LOG_ERROR("[FONT] Unimplemented cmap subtable format encountered: %d", cmap_format);
   return false;
 }
-#undef FONT_TRY_PARSE
+#undef BIN_CATCH
 
-#define FONT_TRY_PARSE(eval) if (!eval) { FONT_LOG_OUT_OF_CHARS(); return false; }
+#define BIN_CATCH FONT_LOG_OUT_OF_CHARS(); return false;
 B32 FontGetGlyphGlyfOffset(Font* font, U32 glyph_index, S32* glyf_offset) {
   *glyf_offset = 0;
   if (glyph_index > font->num_glyphs) {
@@ -628,21 +628,21 @@ B32 FontGetGlyphGlyfOffset(Font* font, U32 glyph_index, S32* glyf_offset) {
   U32 next_glyf_offset = 0;
   BinStream s;
   BinStreamInit(&s, font->data, font->data_size);
-  FONT_TRY_PARSE(BinStreamSeek(&s, font->loca_offset));
+  BIN_TRY(BinStreamSeek(&s, font->loca_offset));
   switch (font->loc_format) {
     case LocFormat_U16: {
       U16 curr_offset, next_offset;
-      FONT_TRY_PARSE(BinStreamSkip(&s, glyph_index, sizeof(U16)));
-      FONT_TRY_PARSE(BinStreamPullU16BE(&s, &curr_offset));
-      FONT_TRY_PARSE(BinStreamPullU16BE(&s, &next_offset));
+      BIN_TRY(BinStreamSkip(&s, glyph_index, sizeof(U16)));
+      BIN_TRY(BinStreamPullU16BE(&s, &curr_offset));
+      BIN_TRY(BinStreamPullU16BE(&s, &next_offset));
       *glyf_offset     = font->glyf_offset + (curr_offset * 2);
       next_glyf_offset = font->glyf_offset + (next_offset * 2);
     } break;
     case LocFormat_U32: {
       U32 curr_offset, next_offset;
-      FONT_TRY_PARSE(BinStreamSkip(&s, glyph_index, sizeof(U32)));
-      FONT_TRY_PARSE(BinStreamPullU32BE(&s, &curr_offset));
-      FONT_TRY_PARSE(BinStreamPullU32BE(&s, &next_offset));
+      BIN_TRY(BinStreamSkip(&s, glyph_index, sizeof(U32)));
+      BIN_TRY(BinStreamPullU32BE(&s, &curr_offset));
+      BIN_TRY(BinStreamPullU32BE(&s, &next_offset));
       *glyf_offset     = font->glyf_offset + curr_offset;
       next_glyf_offset = font->glyf_offset + next_offset;
     } break;
@@ -656,9 +656,9 @@ B32 FontGetGlyphGlyfOffset(Font* font, U32 glyph_index, S32* glyf_offset) {
   if (glyf_length == 0) { *glyf_offset = -1; }
   return true;
 }
-#undef FONT_TRY_PARSE
+#undef BIN_CATCH
 
-#define FONT_TRY_PARSE(eval) if (!eval) { FONT_LOG_OUT_OF_CHARS(); return false; }
+#define BIN_CATCH FONT_LOG_OUT_OF_CHARS(); return false;
 B32 FontGetGlyphSizeInfo(Font* font, U32 glyph_index, S32* advance, S32* left_side_bearing) {
   *advance = 0;
   *left_side_bearing = 0;
@@ -670,31 +670,31 @@ B32 FontGetGlyphSizeInfo(Font* font, U32 glyph_index, S32* advance, S32* left_si
   BinStream s;
   BinStreamInit(&s, font->data, font->data_size);
   U16 num_long_hor_metrics;
-  FONT_TRY_PARSE(BinStreamSeek(&s, font->hhea_offset));
-  FONT_TRY_PARSE(BinStreamSkip(&s, 34, sizeof(U8)));
-  FONT_TRY_PARSE(BinStreamPullU16BE(&s, &num_long_hor_metrics));
+  BIN_TRY(BinStreamSeek(&s, font->hhea_offset));
+  BIN_TRY(BinStreamSkip(&s, 34, sizeof(U8)));
+  BIN_TRY(BinStreamPullU16BE(&s, &num_long_hor_metrics));
   if (glyph_index < num_long_hor_metrics) {
-    FONT_TRY_PARSE(BinStreamSeek(&s, font->hmtx_offset));
-    FONT_TRY_PARSE(BinStreamSkip(&s, glyph_index * 2, sizeof(U16)));
-    FONT_TRY_PARSE(BinStreamPullS16BE(&s, (S16*) advance));
-    FONT_TRY_PARSE(BinStreamPullS16BE(&s, (S16*) left_side_bearing));
+    BIN_TRY(BinStreamSeek(&s, font->hmtx_offset));
+    BIN_TRY(BinStreamSkip(&s, glyph_index * 2, sizeof(U16)));
+    BIN_TRY(BinStreamPullS16BE(&s, (S16*) advance));
+    BIN_TRY(BinStreamPullS16BE(&s, (S16*) left_side_bearing));
 
   } else {
     // NOTE: e.g. for monospaced fonts
-    FONT_TRY_PARSE(BinStreamSeek(&s, font->hmtx_offset));
-    FONT_TRY_PARSE(BinStreamSkip(&s, 2 * (num_long_hor_metrics - 1), sizeof(U16)));
-    FONT_TRY_PARSE(BinStreamPullS16BE(&s, (S16*) advance));
+    BIN_TRY(BinStreamSeek(&s, font->hmtx_offset));
+    BIN_TRY(BinStreamSkip(&s, 2 * (num_long_hor_metrics - 1), sizeof(U16)));
+    BIN_TRY(BinStreamPullS16BE(&s, (S16*) advance));
 
-    FONT_TRY_PARSE(BinStreamSeek(&s, font->hmtx_offset));
-    FONT_TRY_PARSE(BinStreamSkip(&s, 2 * num_long_hor_metrics, sizeof(U16)));
-    FONT_TRY_PARSE(BinStreamSkip(&s, glyph_index - num_long_hor_metrics, sizeof(U16)));
-    FONT_TRY_PARSE(BinStreamPullS16BE(&s, (S16*) left_side_bearing));
+    BIN_TRY(BinStreamSeek(&s, font->hmtx_offset));
+    BIN_TRY(BinStreamSkip(&s, 2 * num_long_hor_metrics, sizeof(U16)));
+    BIN_TRY(BinStreamSkip(&s, glyph_index - num_long_hor_metrics, sizeof(U16)));
+    BIN_TRY(BinStreamPullS16BE(&s, (S16*) left_side_bearing));
   }
   return true;
 }
-#undef FONT_TRY_PARSE
+#undef BIN_CATCH
 
-#define FONT_TRY_PARSE(eval) if (!eval) { FONT_LOG_OUT_OF_CHARS(); goto font_get_glyph_shape_end; }
+#define BIN_CATCH FONT_LOG_OUT_OF_CHARS(); goto font_get_glyph_shape_end;
 B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShape* shape) {
   MEMORY_ZERO_STRUCT(shape);
   if (glyph_glyf_offset < 0) { return true; }
@@ -705,14 +705,14 @@ B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShap
 
   BinStream s;
   BinStreamInit(&s, font->data, font->data_size);
-  FONT_TRY_PARSE(BinStreamSeek(&s, glyph_glyf_offset));
+  BIN_TRY(BinStreamSeek(&s, glyph_glyf_offset));
 
   S16 contours_size, min_x, min_y, max_x, max_y;
-  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &contours_size));
-  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &min_x));
-  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &min_y));
-  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &max_x));
-  FONT_TRY_PARSE(BinStreamPullS16BE(&s, &max_y));
+  BIN_TRY(BinStreamPullS16BE(&s, &contours_size));
+  BIN_TRY(BinStreamPullS16BE(&s, &min_x));
+  BIN_TRY(BinStreamPullS16BE(&s, &min_y));
+  BIN_TRY(BinStreamPullS16BE(&s, &max_x));
+  BIN_TRY(BinStreamPullS16BE(&s, &max_y));
   shape->min.x = min_x;
   shape->min.y = min_y;
   shape->max.x = max_x;
@@ -724,13 +724,13 @@ B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShap
     shape->contours_size = contours_size;
 
     BinStream end_pts_of_contours = s;
-    FONT_TRY_PARSE(BinStreamSkip(&s, contours_size, sizeof(U16)));
+    BIN_TRY(BinStreamSkip(&s, contours_size, sizeof(U16)));
     U16 instructions_length;
-    FONT_TRY_PARSE(BinStreamPullU16BE(&s, &instructions_length));
-    FONT_TRY_PARSE(BinStreamSkip(&s, instructions_length, sizeof(U8)));
+    BIN_TRY(BinStreamPullU16BE(&s, &instructions_length));
+    BIN_TRY(BinStreamSkip(&s, instructions_length, sizeof(U8)));
 
     U16 num_vertices;
-    FONT_TRY_PARSE(BinStreamPeekU16BE(&end_pts_of_contours, contours_size - 1, sizeof(U16), &num_vertices));
+    BIN_TRY(BinStreamPeekU16BE(&end_pts_of_contours, contours_size - 1, sizeof(U16), &num_vertices));
     num_vertices += 1;
     U8*  pt_flags = ARENA_PUSH_ARRAY(temp_arena, U8, num_vertices);
     S16* pt_xs    = ARENA_PUSH_ARRAY(temp_arena, S16, num_vertices);
@@ -740,9 +740,9 @@ B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShap
     U8 flag_num_repeat = 0;
     for (U16 i = 0; i < num_vertices; i++) {
       if (flag_num_repeat == 0) {
-        FONT_TRY_PARSE(BinStreamPullU8(&s, &flags));
+        BIN_TRY(BinStreamPullU8(&s, &flags));
         if (FLAG_REPEAT(flags)) {
-          FONT_TRY_PARSE(BinStreamPullU8(&s, &flag_num_repeat));
+          BIN_TRY(BinStreamPullU8(&s, &flag_num_repeat));
         }
       } else {
         flag_num_repeat--;
@@ -759,13 +759,13 @@ B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShap
       U8 flags = pt_flags[i];
       if (FLAG_X_U8(flags)) {
         U8 dx;
-        FONT_TRY_PARSE(BinStreamPullU8(&s, &dx));
+        BIN_TRY(BinStreamPullU8(&s, &dx));
         if (FLAG_X_U8_SIGN_POS(flags)) { x += dx; }
         else                           { x -= dx; }
       } else {
         if (FLAG_X_U16_DELTA(flags)) {
           S16 dx;
-          FONT_TRY_PARSE(BinStreamPullS16BE(&s, &dx));
+          BIN_TRY(BinStreamPullS16BE(&s, &dx));
           x += dx;
         }
       }
@@ -777,13 +777,13 @@ B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShap
       U8 flags = pt_flags[i];
       if (FLAG_Y_U8(flags)) {
         U8 dy;
-        FONT_TRY_PARSE(BinStreamPullU8(&s, &dy));
+        BIN_TRY(BinStreamPullU8(&s, &dy));
         if (FLAG_Y_U8_SIGN_POS(flags)) { y += dy; }
         else                           { y -= dy; }
       } else {
         if (FLAG_Y_U16_DELTA(flags)) {
           S16 dy;
-          FONT_TRY_PARSE(BinStreamPullS16BE(&s, &dy));
+          BIN_TRY(BinStreamPullS16BE(&s, &dy));
           y += dy;
         }
       }
@@ -794,7 +794,7 @@ B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShap
     U16 contours_idx     = 0;
     U16 start_of_contour = 0;
     U16 end_of_contour;
-    FONT_TRY_PARSE(BinStreamPeekU16BE(&end_pts_of_contours, contours_idx, sizeof(U16), &end_of_contour));
+    BIN_TRY(BinStreamPeekU16BE(&end_pts_of_contours, contours_idx, sizeof(U16), &end_of_contour));
     while (true) {
       GlyphContour contour;
       MEMORY_ZERO_STRUCT(&contour);
@@ -869,7 +869,7 @@ B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShap
       shape->contours[contours_idx++] = contour;
       if (contours_idx >= contours_size) { break; }
       start_of_contour = end_of_contour + 1;
-      FONT_TRY_PARSE(BinStreamPeekU16BE(&end_pts_of_contours, contours_idx, sizeof(U16), &end_of_contour));
+      BIN_TRY(BinStreamPeekU16BE(&end_pts_of_contours, contours_idx, sizeof(U16), &end_of_contour));
     }
   } else if (contours_size < 0) {
     // NOTE: parse compound shape
@@ -879,15 +879,15 @@ B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShap
     BinStream h_copy = s;
     while (true) {
       U16 flags, compound_glyph_index;
-      FONT_TRY_PARSE(BinStreamPullU16BE(&h_copy, &flags));
-      FONT_TRY_PARSE(BinStreamPullU16BE(&h_copy, &compound_glyph_index));
+      BIN_TRY(BinStreamPullU16BE(&h_copy, &flags));
+      BIN_TRY(BinStreamPullU16BE(&h_copy, &compound_glyph_index));
       if (COMPOUND_FLAG_ARE_XY_VALS(flags)) {
-        if (COMPOUND_FLAG_ARE_U16(flags)) { FONT_TRY_PARSE(BinStreamSkip(&h_copy, 2, sizeof(U16))); }
-        else                              { FONT_TRY_PARSE(BinStreamSkip(&h_copy, 2, sizeof(U8)));  }
+        if (COMPOUND_FLAG_ARE_U16(flags)) { BIN_TRY(BinStreamSkip(&h_copy, 2, sizeof(U16))); }
+        else                              { BIN_TRY(BinStreamSkip(&h_copy, 2, sizeof(U8)));  }
       }
-      if      (COMPOUND_FLAG_SCALE(flags))      { FONT_TRY_PARSE(BinStreamSkip(&h_copy, 1, sizeof(U16))); }
-      else if (COMPOUND_FLAG_SEP_SCALES(flags)) { FONT_TRY_PARSE(BinStreamSkip(&h_copy, 2, sizeof(U16))); }
-      else if (COMPOUND_FLAG_2X2MAT(flags))     { FONT_TRY_PARSE(BinStreamSkip(&h_copy, 4, sizeof(U16))); }
+      if      (COMPOUND_FLAG_SCALE(flags))      { BIN_TRY(BinStreamSkip(&h_copy, 1, sizeof(U16))); }
+      else if (COMPOUND_FLAG_SEP_SCALES(flags)) { BIN_TRY(BinStreamSkip(&h_copy, 2, sizeof(U16))); }
+      else if (COMPOUND_FLAG_2X2MAT(flags))     { BIN_TRY(BinStreamSkip(&h_copy, 4, sizeof(U16))); }
 
       S32 compound_glyph_glyf_offset;
       if (!FontGetGlyphGlyfOffset(font, compound_glyph_index, &compound_glyph_glyf_offset)) {
@@ -897,9 +897,9 @@ B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShap
 
       BinStream compound_glyph_glyf_h;
       BinStreamInit(&compound_glyph_glyf_h, font->data, font->data_size);
-      FONT_TRY_PARSE(BinStreamSeek(&compound_glyph_glyf_h, compound_glyph_glyf_offset));
+      BIN_TRY(BinStreamSeek(&compound_glyph_glyf_h, compound_glyph_glyf_offset));
       S16 compound_glyph_contours_size;
-      FONT_TRY_PARSE(BinStreamPullS16BE(&compound_glyph_glyf_h, &compound_glyph_contours_size));
+      BIN_TRY(BinStreamPullS16BE(&compound_glyph_glyf_h, &compound_glyph_contours_size));
       if (compound_glyph_contours_size < 0) {
         LOG_ERROR("[FONT] Invalid state observed, compound glyph is made of additional compound glyphs.");
         goto font_get_glyph_shape_end;
@@ -915,20 +915,20 @@ B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShap
     U16 contours_idx = 0;
     while (true) {
       U16 flags, compound_glyph_index;
-      FONT_TRY_PARSE(BinStreamPullU16BE(&h_copy, &flags));
-      FONT_TRY_PARSE(BinStreamPullU16BE(&h_copy, &compound_glyph_index));
+      BIN_TRY(BinStreamPullU16BE(&h_copy, &flags));
+      BIN_TRY(BinStreamPullU16BE(&h_copy, &compound_glyph_index));
       F32 matrix[6]            = { 1, 0, 0, 1, 0, 0 };
       if (COMPOUND_FLAG_ARE_XY_VALS(flags)) {
         if (COMPOUND_FLAG_ARE_U16(flags)) {
           S16 m1, m2;
-          FONT_TRY_PARSE(BinStreamPullS16BE(&s, &m1));
-          FONT_TRY_PARSE(BinStreamPullS16BE(&s, &m2));
+          BIN_TRY(BinStreamPullS16BE(&s, &m1));
+          BIN_TRY(BinStreamPullS16BE(&s, &m2));
           matrix[4] = m1;
           matrix[5] = m2;
         } else {
           S8 m1, m2;
-          FONT_TRY_PARSE(BinStreamPullS8(&s, &m1));
-          FONT_TRY_PARSE(BinStreamPullS8(&s, &m2));
+          BIN_TRY(BinStreamPullS8(&s, &m1));
+          BIN_TRY(BinStreamPullS8(&s, &m2));
           matrix[4] = m1;
           matrix[5] = m2;
         }
@@ -938,25 +938,25 @@ B32 FontGetGlyphShape(Arena* arena, Font* font, S32 glyph_glyf_offset, GlyphShap
       }
       if (COMPOUND_FLAG_SCALE(flags)) {
         S16 scale;
-        FONT_TRY_PARSE(BinStreamPullS16BE(&s, &scale));
+        BIN_TRY(BinStreamPullS16BE(&s, &scale));
         matrix[0] = scale / 16384.0f;
         matrix[3] = scale / 16384.0f;
         matrix[1] = 0;
         matrix[2] = 0;
       } else if (COMPOUND_FLAG_SEP_SCALES(flags)) {
         S16 x_scale, y_scale;
-        FONT_TRY_PARSE(BinStreamPullS16BE(&s, &x_scale));
-        FONT_TRY_PARSE(BinStreamPullS16BE(&s, &y_scale));
+        BIN_TRY(BinStreamPullS16BE(&s, &x_scale));
+        BIN_TRY(BinStreamPullS16BE(&s, &y_scale));
         matrix[0] = x_scale / 16384.0f;
         matrix[3] = y_scale / 16384.0f;
         matrix[1] = 0;
         matrix[2] = 0;
       } else if (COMPOUND_FLAG_2X2MAT(flags)) {
         S16 m1, m2, m3, m4;
-        FONT_TRY_PARSE(BinStreamPullS16BE(&s, &m1));
-        FONT_TRY_PARSE(BinStreamPullS16BE(&s, &m2));
-        FONT_TRY_PARSE(BinStreamPullS16BE(&s, &m3));
-        FONT_TRY_PARSE(BinStreamPullS16BE(&s, &m4));
+        BIN_TRY(BinStreamPullS16BE(&s, &m1));
+        BIN_TRY(BinStreamPullS16BE(&s, &m2));
+        BIN_TRY(BinStreamPullS16BE(&s, &m3));
+        BIN_TRY(BinStreamPullS16BE(&s, &m4));
         matrix[0] = m1 / 16384.0f;
         matrix[1] = m2 / 16384.0f;
         matrix[2] = m3 / 16384.0f;
@@ -1008,7 +1008,7 @@ font_get_glyph_shape_end:
   ArenaRelease(temp_arena);
   return success;
 }
-#undef FONT_TRY_PARSE
+#undef BIN_CATCH
 
 B32 FontGlyphShapeRasterize(GlyphShape* glyph_shape, U8** bmp, U32 bmp_width, U32 bmp_height, U16 bmp_glyph_min_x, U16 bmp_glyph_min_y, U16 bmp_glyph_max_x, U16 bmp_glyph_max_y) {
   if (!((0 <= bmp_glyph_min_x && bmp_glyph_min_x <= bmp_width - 1) &&
@@ -1483,7 +1483,7 @@ B32 FontAtlasPlace(FontAtlas* atlas, U32 codepoint, U32 codepoint_next, F32 pixe
 
 B32 FontAtlasMeasureString(FontAtlas* atlas, F32 pixel_height, String8 str, V2* size) {
   V2 cursor = V2_ZEROES;
-  for (S32 i = 0; i < str.size; i++) {
+  for (U32 i = 0; i < str.size; i++) {
     U8 curr = str.str[i];
     U8 next = i < str.size - 1 ? str.str[i + 1] : 0;
     V2 center, char_size, min_uv, max_uv;
