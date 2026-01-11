@@ -903,8 +903,8 @@ void RendererSetProjection2D(M4 projection_2d) {
   V3 pos    = { 0, 0, 1 }; // NOTE: seat camera Z back so items can exist at z = 0.
   V3 target = V3_Z_NEG;
   V3 up     = V3_Y_POS;
-  M4 camera = M4LookAt(&pos, &target, &up);
-  M4MultM4(&r->world_to_camera_2d, &projection_2d, &camera);
+  M4 camera = M4LookAt(pos, target, up);
+  r->world_to_camera_2d = M4MultM4(projection_2d, camera);
 }
 
 void RendererSetProjection3D(M4 projection_3d) {
@@ -1080,11 +1080,9 @@ void RendererSetClearColorV(V4 color) {
   RendererSetClearColor(color.r, color.g, color.b, color.a);
 }
 
-static V3 UnprojectPoint(V3 p, M4* inv_vp) {
-  V4 v = { p.x, p.y, p.z, 1.0f };
-  V4 v2;
-  M4MultV4(&v2, inv_vp, &v);
-  V4DivF32(&v2, &v2, v2.w);
+static V3 UnprojectPoint(V3 p, M4 inv_vp) {
+  V4 v2 = M4MultV4(inv_vp, V4Assign(p.x, p.y, p.z, 1.0f));
+  v2    = V4DivF32(v2, v2.w);
   return (V3) { v2.x, v2.y, v2.z };
 }
 
@@ -1109,17 +1107,13 @@ void RendererCastRay3(F32 x, F32 y, V3* start, V3* dir) {
   x2 = CLAMP(-1, x2, 1);
   y2 = CLAMP(-1, y2, 1);
 
-  V3 target;
-  V3AddV3(&target, &r->camera_3d.pos, &r->camera_3d.look_dir);
-  M4 view = M4LookAt(&r->camera_3d.pos, &target, &r->camera_3d.up_dir);
-  M4 world_to_camera, world_to_camera_inv;
-  M4MultM4(&world_to_camera, &r->projection_3d, &view);
-  M4Invert(&world_to_camera_inv, &world_to_camera);
-  V3 n = UnprojectPoint((V3) { x2, y2, -1}, &world_to_camera_inv);
-  V3 f = UnprojectPoint((V3) { x2, y2, +1}, &world_to_camera_inv);
-  V3 delta;
-  V3SubV3(&delta, &f, &n);
-  V3Normalize(&delta, &delta);
+  V3 target              = V3AddV3(r->camera_3d.pos, r->camera_3d.look_dir);
+  M4 view                = M4LookAt(r->camera_3d.pos, target, r->camera_3d.up_dir);
+  M4 world_to_camera     = M4MultM4(r->projection_3d, view);
+  M4 world_to_camera_inv = M4Invert(world_to_camera);
+  V3 n = UnprojectPoint((V3) { x2, y2, -1}, world_to_camera_inv);
+  V3 f = UnprojectPoint((V3) { x2, y2, +1}, world_to_camera_inv);
+  V3 delta = V3Normalize(V3SubV3(f, n));
 
   if (start != NULL) { *start = n; }
   if (dir != NULL) { *dir = delta; }
@@ -1130,12 +1124,11 @@ void RendererCastRay3V(V2 pos, V3* start, V3* dir) {
 }
 
 void DrawLine2(F32 start_x, F32 start_y, F32 end_x, F32 end_y, F32 thickness, F32 red, F32 green, F32 blue) {
-  V2 start = { start_x, start_y };
-  V2 end   = { end_x, end_y };
-  V2 delta;
-  V2SubV2(&delta, &end, &start);
+  V2 start  = V2Assign(start_x, start_y);
+  V2 end    = V2Assign(end_x, end_y);
+  V2 delta  = V2SubV2(end, start);
   F32 theta = F32ArcTan2(delta.y, delta.x);
-  F32 width = V2Length(&delta);
+  F32 width = V2Length(delta);
   DrawRoundedRectangleRot(start.x + delta.x / 2, start.y + delta.y / 2, width, thickness, thickness / 2.0f, theta, red, green, blue);
 }
 
@@ -1148,15 +1141,11 @@ void DrawQuadBezier(F32 start_x, F32 start_y, F32 control_x, F32 control_y, F32 
   F32 y_prev = start_y;
   for (U32 i = 0; i <= resolution; i++) {
     F32 t = ((F32) i) / ((F32) resolution);
-    F32 x_1 = F32Lerp(start_x, control_x, t);
-    F32 y_1 = F32Lerp(start_y, control_y, t);
-    F32 x_2 = F32Lerp(control_x, end_x, t);
-    F32 y_2 = F32Lerp(control_y, end_y, t);
-    F32 x_3 = F32Lerp(x_1, x_2, t);
-    F32 y_3 = F32Lerp(y_1, y_2, t);
-    DrawLine2(x_prev, y_prev, x_3, y_3, thickness, red, green, blue);
-    x_prev = x_3;
-    y_prev = y_3;
+    F32 x_curr = F32QuadBezier(start_x, end_x, control_x, t);
+    F32 y_curr = F32QuadBezier(start_y, end_y, control_y, t);
+    DrawLine2(x_prev, y_prev, x_curr, y_curr, thickness, red, green, blue);
+    x_prev = x_curr;
+    y_prev = y_curr;
   }
 }
 
@@ -1211,12 +1200,10 @@ void DrawRoundedRectangleRot(F32 center_x, F32 center_y, F32 width, F32 height, 
   V3 color = { red, green, blue };
   V3 pos   = { center_x, center_y, 0 };
   V3 scale = { width, height, 1 };
-  V4 rot;
-  V4RotateAroundAxis(&rot, &V3_Z_POS, angle_rad);
-  M4 rect_to_world, rect_to_camera, rect_to_camera_t;
-  rect_to_world = M4FromTransform(&pos, &rot, &scale);
-  M4MultM4(&rect_to_camera, &r->world_to_camera_2d, &rect_to_world);
-  M4Transpose(&rect_to_camera_t, &rect_to_camera);
+  V4 rot   = V4RotateAroundAxis(V3_Z_POS, angle_rad);
+  M4 rect_to_world    = M4FromTransform(pos, rot, scale);
+  M4 rect_to_camera   = M4MultM4(r->world_to_camera_2d, rect_to_world);
+  M4 rect_to_camera_t = M4Transpose(rect_to_camera);
 
   g->glUseProgram(r->rect_shader);
   g->glUniformMatrix4fv(r->rect_camera_uniform, 1, GL_FALSE, (GLfloat*) &rect_to_camera_t);
@@ -1248,12 +1235,10 @@ void DrawRoundedRectangleFrameRot(F32 center_x, F32 center_y, F32 width, F32 hei
   V3 color = { red, green, blue };
   V3 pos   = { center_x, center_y, 0 };
   V3 scale = { width, height, 1 };
-  V4 rot;
-  V4RotateAroundAxis(&rot, &V3_Z_POS, angle_rad);
-  M4 frame_to_world, frame_to_camera, frame_to_camera_t;
-  frame_to_world = M4FromTransform(&pos, &rot, &scale);
-  M4MultM4(&frame_to_camera, &r->world_to_camera_2d, &frame_to_world);
-  M4Transpose(&frame_to_camera_t, &frame_to_camera);
+  V4 rot   = V4RotateAroundAxis(V3_Z_POS, angle_rad);
+  M4 frame_to_world    = M4FromTransform(pos, rot, scale);
+  M4 frame_to_camera   = M4MultM4(r->world_to_camera_2d, frame_to_world);
+  M4 frame_to_camera_t = M4Transpose(frame_to_camera);
 
   g->glUseProgram(r->frame_shader);
   g->glUniformMatrix4fv(r->frame_camera_uniform, 1, GL_FALSE, (GLfloat*) &frame_to_camera_t);
@@ -1312,14 +1297,13 @@ void DrawTriangle(F32 x1, F32 y1, F32 x2, F32 y2, F32 x3, F32 y3, F32 red, F32 g
   g->glEnableVertexAttribArray(0);
   g->glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(F32) * 2, (void*)(sizeof(F32) * 0));
 
-  V3 color = { red, green, blue };
-  V3 pos = { (x_min + x_max) / 2, (y_min + y_max) / 2.0f, 0 };
-  V3 scale = { x_scale, y_scale, 1 };
-  V4 rot = V4_QUAT_IDENT;
-  M4 tri_to_world, tri_to_camera, tri_to_camera_t;
-  tri_to_world = M4FromTransform(&pos, &rot, &scale);
-  M4MultM4(&tri_to_camera, &r->world_to_camera_2d, &tri_to_world);
-  M4Transpose(&tri_to_camera_t, &tri_to_camera);
+  V3 color = V3Assign(red, green, blue);
+  V3 pos   = V3Assign((x_min + x_max) / 2, (y_min + y_max) / 2.0f, 0);
+  V3 scale = V3Assign(x_scale, y_scale, 1);
+  V4 rot   = V4_QUAT_IDENT;
+  M4 tri_to_world    = M4FromTransform(pos, rot, scale);
+  M4 tri_to_camera   = M4MultM4(r->world_to_camera_2d, tri_to_world);
+  M4 tri_to_camera_t = M4Transpose(tri_to_camera);
 
   g->glUseProgram(r->tri_shader);
   g->glUniformMatrix4fv(r->tri_camera_uniform, 1, GL_FALSE, (GLfloat*) &tri_to_camera_t);
@@ -1378,12 +1362,10 @@ void DrawSubImageRot(U32 image_handle, F32 center_x, F32 center_y, F32 width, F3
   V2 max_uv = { max_uv_x, max_uv_y };
   V3 pos    = { center_x, center_y, 0 };
   V3 scale  = { width, height, 1 };
-  V4 rot;
-  V4RotateAroundAxis(&rot, &V3_Z_POS, angle_rad);
-  M4 image_to_world, image_to_camera, image_to_camera_t;
-  image_to_world = M4FromTransform(&pos, &rot, &scale);
-  M4MultM4(&image_to_camera, &r->world_to_camera_2d, &image_to_world);
-  M4Transpose(&image_to_camera_t, &image_to_camera);
+  V4 rot    = V4RotateAroundAxis(V3_Z_POS, angle_rad);
+  M4 image_to_world    = M4FromTransform(pos, rot, scale);
+  M4 image_to_camera   = M4MultM4(r->world_to_camera_2d, image_to_world);
+  M4 image_to_camera_t = M4Transpose(image_to_camera);
 
   g->glUseProgram(r->image_shader);
   g->glUniformMatrix4fv(r->image_camera_uniform, 1, GL_FALSE, (GLfloat*) &image_to_camera_t);
@@ -1412,12 +1394,10 @@ void DrawFontBmpCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 widt
   V2 max_uv = { max_uv_x, max_uv_y };
   V3 pos    = { center_x, center_y, 0 };
   V3 scale  = { width, height, 1 };
-  V4 rot;
-  V4RotateAroundAxis(&rot, &V3_Z_POS, 0);
-  M4 image_to_world, image_to_camera, image_to_camera_t;
-  image_to_world = M4FromTransform(&pos, &rot, &scale);
-  M4MultM4(&image_to_camera, &r->world_to_camera_2d, &image_to_world);
-  M4Transpose(&image_to_camera_t, &image_to_camera);
+  V4 rot    = V4RotateAroundAxis(V3_Z_POS, 0);
+  M4 image_to_world    = M4FromTransform(pos, rot, scale);
+  M4 image_to_camera   = M4MultM4(r->world_to_camera_2d, image_to_world);
+  M4 image_to_camera_t = M4Transpose(image_to_camera);
 
   g->glUseProgram(r->font_shader);
   g->glUniformMatrix4fv(r->font_camera_uniform, 1, GL_FALSE, (GLfloat*) &image_to_camera_t);
@@ -1452,12 +1432,10 @@ void DrawFontSdfCharacter(U32 image_handle, F32 center_x, F32 center_y, F32 widt
   V2 max_uv = { max_uv_x, max_uv_y };
   V3 pos    = { center_x, center_y, 0 };
   V3 scale  = { width, height, 1 };
-  V4 rot;
-  V4RotateAroundAxis(&rot, &V3_Z_POS, 0);
-  M4 image_to_world, image_to_camera, image_to_camera_t;
-  image_to_world = M4FromTransform(&pos, &rot, &scale);
-  M4MultM4(&image_to_camera, &r->world_to_camera_2d, &image_to_world);
-  M4Transpose(&image_to_camera_t, &image_to_camera);
+  V4 rot    = V4RotateAroundAxis(V3_Z_POS, 0);
+  M4 image_to_world    = M4FromTransform(pos, rot, scale);
+  M4 image_to_camera   = M4MultM4(r->world_to_camera_2d, image_to_world);
+  M4 image_to_camera_t = M4Transpose(image_to_camera);
 
   g->glUseProgram(r->font_sdf_shader);
   g->glUniformMatrix4fv(r->font_sdf_camera_uniform, 1, GL_FALSE, (GLfloat*) &image_to_camera_t);
@@ -1539,14 +1517,12 @@ void DrawLine3V(V3 start, V3 end, V3 color) {
   g->glEnableVertexAttribArray(0);
   g->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(F32), (void*)(sizeof(F32) * 0));
 
-  V3 camera_target;
-  V3AddV3(&camera_target, &r->camera_3d.pos, &r->camera_3d.look_dir);
-  M4 camera, world_to_camera, mesh_to_world, mesh_to_camera, mesh_to_camera_t;
-  camera = M4LookAt(&r->camera_3d.pos, &camera_target, &r->camera_3d.up_dir);
-  M4MultM4(&world_to_camera, &r->projection_3d, &camera);
-  mesh_to_world = M4FromTransform(&V3_ZEROES, &V4_QUAT_IDENT, &V3_ONES);
-  M4MultM4(&mesh_to_camera, &world_to_camera, &mesh_to_world);
-  M4Transpose(&mesh_to_camera_t, &mesh_to_camera);
+  V3 camera_target    = V3AddV3(r->camera_3d.pos, r->camera_3d.look_dir);
+  M4 camera           = M4LookAt(r->camera_3d.pos, camera_target, r->camera_3d.up_dir);
+  M4 world_to_camera  = M4MultM4(r->projection_3d, camera);
+  M4 mesh_to_world    = M4FromTransform(V3_ZEROES, V4_QUAT_IDENT, V3_ONES);
+  M4 mesh_to_camera   = M4MultM4(world_to_camera, mesh_to_world);
+  M4 mesh_to_camera_t = M4Transpose(mesh_to_camera);
 
   g->glUseProgram(r->line_shader);
   g->glUniformMatrix4fv(r->line_camera_uniform, 1, GL_FALSE, (GLfloat*) &mesh_to_camera_t);
@@ -1601,20 +1577,19 @@ void DrawTetrahedronV(V3 p1, V3 p2, V3 p3, V3 p4, V3 color) {
     U32 c = faces[i][2];
     U32 d = faces[i][3];
 
-    V3 ab, ac, ad, cross;
-    V3SubV3(&ab, &v[b], &v[a]);
-    V3SubV3(&ac, &v[c], &v[a]);
-    V3SubV3(&ad, &v[d], &v[a]);
-    V3CrossV3(&cross, &ab, &ac);
+    V3 ab = V3SubV3(v[b], v[a]);
+    V3 ac = V3SubV3(v[c], v[a]);
+    V3 ad = V3SubV3(v[d], v[a]);
+    V3 cross = V3CrossV3(ab, ac);
     // NOTE: if norm is pointing at 4th vertex, winding order is flipped
-    if (V3DotV3(&cross, &ad) > 0) {
+    if (V3DotV3(cross, ad) > 0) {
       SWAP(U32, b, c);
-      V3SubV3(&ab, &v[b], &v[a]);
-      V3SubV3(&ac, &v[c], &v[a]);
-      V3CrossV3(&cross, &ab, &ac);
+      ab    = V3SubV3(v[b], v[a]);
+      ac    = V3SubV3(v[c], v[a]);
+      cross = V3CrossV3(ab, ac);
     }
-    if (V3LengthSq(&cross) == 0) { return; }
-    V3Normalize(&cross, &cross);
+    if (V3LengthSq(cross) == 0) { return; }
+    cross = V3Normalize(cross);
 
     U32 idx = i * 3;
     points[idx + 0] = v[a];
@@ -1674,14 +1649,12 @@ void DrawModelExV(U32 model_handle, V3 pos, V4 rot, V3 scale, V3 color, F32 tex_
   RenderModel* model = RendererFindModel(model_handle);
   DEBUG_ASSERT(model != NULL);
 
-  V3 camera_target;
-  V3AddV3(&camera_target, &r->camera_3d.pos, &r->camera_3d.look_dir);
-  M4 camera, world_to_camera, mesh_to_world, mesh_to_camera, mesh_to_camera_t;
-  camera = M4LookAt(&r->camera_3d.pos, &camera_target, &r->camera_3d.up_dir);
-  M4MultM4(&world_to_camera, &r->projection_3d, &camera);
-  mesh_to_world = M4FromTransform(&pos, &rot, &scale);
-  M4MultM4(&mesh_to_camera, &world_to_camera, &mesh_to_world);
-  M4Transpose(&mesh_to_camera_t, &mesh_to_camera);
+  V3 camera_target    = V3AddV3(r->camera_3d.pos, r->camera_3d.look_dir);
+  M4 camera           = M4LookAt(r->camera_3d.pos, camera_target, r->camera_3d.up_dir);
+  M4 world_to_camera  = M4MultM4(r->projection_3d, camera);
+  M4 mesh_to_world    = M4FromTransform(pos, rot, scale);
+  M4 mesh_to_camera   = M4MultM4(world_to_camera, mesh_to_world);
+  M4 mesh_to_camera_t = M4Transpose(mesh_to_camera);
 
   g->glUseProgram(r->mesh_shader);
   g->glUniformMatrix4fv(r->mesh_camera_uniform, 1, GL_FALSE, (GLfloat*) &mesh_to_camera_t);

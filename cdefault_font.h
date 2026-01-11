@@ -206,13 +206,6 @@ static S32 SortCompareFontIntersectPointAsc(void* a, void* b) {
   return ((FontIntersectPoint*) a)->x - ((FontIntersectPoint*) b)->x;
 }
 
-static F32 FontCurveEvaluateBezier(F32 start, F32 end, F32 control, F32 t) {
-  F32 start_to_control = F32Lerp(start, control, t);
-  F32 control_to_end   = F32Lerp(control, end, t);
-  F32 result           = F32Lerp(start_to_control, control_to_end, t);
-  return result;
-}
-
 static F32 FontCurveEvaluateBezierDerivative(F32 start, F32 end, F32 control, F32 t) {
   return 2.0f * ((1.0f - t) * (control - start) + (t * (end - control)));
 }
@@ -1048,7 +1041,7 @@ B32 FontGlyphShapeRasterize(GlyphShape* glyph_shape, U8** bmp, U32 bmp_width, U3
         F32 curve_max_y = MAX(curr->point.y, next->point.y);
         F32 t_y_extreme = (curr->point.y - curr->control.y) / a;
         if (0 <= t_y_extreme && t_y_extreme <= 1) {
-          F32 y_extreme = FontCurveEvaluateBezier(curr->point.y, next->point.y, curr->control.y, t_y_extreme);
+          F32 y_extreme = F32QuadBezier(curr->point.y, next->point.y, curr->control.y, t_y_extreme);
           curve_min_y = MIN(curve_min_y, y_extreme);
           curve_max_y = MAX(curve_max_y, y_extreme);
         }
@@ -1081,7 +1074,7 @@ B32 FontGlyphShapeRasterize(GlyphShape* glyph_shape, U8** bmp, U32 bmp_width, U3
         for (U32 k = 0; k < t_size; k++) {
           // NOTE: [0, 1), not [0, 1] because the 1 will be double counted at the next curve's t = 0.
           if (!(0 <= t[k] && t[k] < 1)) { continue; }
-          F32 intersect_x = FontCurveEvaluateBezier(curr->point.x, next->point.x, curr->control.x, t[k]);
+          F32 intersect_x = F32QuadBezier(curr->point.x, next->point.x, curr->control.x, t[k]);
           if (intersect_x < glyph_shape->min.x || intersect_x > glyph_shape->max.x) {
             LOG_WARN("[FONT] Font defined glyph shape exceeds defined bounds! Attempting to recover, but there may be visual artifacts.");
             intersect_x = MAX(glyph_shape->min.x, intersect_x);
@@ -1210,7 +1203,7 @@ B32 FontAtlasBakeBitmap(Arena* atlas_arena, Arena* bitmap_arena, Font* font, Fon
 
       AtlasChar* atlas_char = ARENA_PUSH_STRUCT(atlas_arena, AtlasChar);
       atlas_char->advance   = ((F32) advance) * scale;
-      V2MultF32(&atlas_char->offset, &glyph_shape.min, scale);
+      atlas_char->offset    = V2MultF32(glyph_shape.min, scale);
       atlas_char->size.x    = bitmap_max_x - bitmap_min_x;
       atlas_char->size.y    = bitmap_max_y - bitmap_min_y;
       atlas_char->uv_min.x  = ((F32) bitmap_min_x) / bitmap->width;
@@ -1271,9 +1264,8 @@ B32 FontAtlasBakeSdf(Arena* atlas_arena, Arena* bitmap_arena, Font* font, FontAt
     goto font_atlas_bake_sdf_end;
   }
 
-  V2 sdf_pad;
   V2 sdf_kernel = V2Assign(spread_factor, spread_factor);
-  V2MultF32(&sdf_pad, &sdf_kernel, sdf_scale / bmp_scale);
+  V2 sdf_pad    = V2MultF32(sdf_kernel, sdf_scale / bmp_scale);
   F32 max_possible_distance = F32Sqrt((sdf_kernel.x * sdf_kernel.x) + (sdf_kernel.y * sdf_kernel.y));
 
   if (!FontSuggestAtlasSize(font, char_set, sdf_scale, &bitmap->width, &bitmap->height, 2.0f * sdf_pad.x, 2.0f * sdf_pad.y)) {
@@ -1383,8 +1375,7 @@ B32 FontAtlasBakeSdf(Arena* atlas_arena, Arena* bitmap_arena, Font* font, FontAt
 
       AtlasChar* atlas_char = ARENA_PUSH_STRUCT(atlas_arena, AtlasChar);
       atlas_char->advance  = ((F32) advance) * sdf_scale;
-      V2MultF32(&atlas_char->offset, &glyph_shape.min, sdf_scale);
-      V2SubV2(&atlas_char->offset, &atlas_char->offset, &sdf_pad);
+      atlas_char->offset   = V2SubV2(V2MultF32(glyph_shape.min, sdf_scale), sdf_pad);
       atlas_char->size.x   = sdf_bitmap_max_x - sdf_bitmap_min_x;
       atlas_char->size.y   = sdf_bitmap_max_y - sdf_bitmap_min_y;
       atlas_char->uv_min.x = ((F32) sdf_bitmap_min_x) / bitmap->width;
@@ -1467,7 +1458,7 @@ B32 FontAtlasPlace(FontAtlas* atlas, U32 codepoint, U32 codepoint_next, F32 pixe
   AtlasChar* atlas_char = FontAtlasGetChar(atlas, codepoint);
   if (atlas_char == NULL) { return false; }
   F32 scale = pixel_height * atlas->scale_coeff;
-  V2MultF32(size, &atlas_char->size, scale);
+  *size     = V2MultF32(atlas_char->size, scale);
   center->x = cursor->x + (atlas_char->offset.x * scale) + (size->x / 2.0f);
   center->y = cursor->y + (atlas_char->offset.y * scale) + (size->y / 2.0f);
   *uv_min   = atlas_char->uv_min;

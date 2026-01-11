@@ -35,7 +35,7 @@ int main(void) {
       LOG_INFO("SIG_INT received, closing.");
       exit(0);
     }
-    V2Lerp(&camera_pos, &camera_pos, &pos, 0.005f);
+    camera_pos = V2Lerp(camera_pos, pos, 0.005f);
 
     if (WindowIsMouseButtonJustPressed(MouseButton_Left)) {
       V2 mouse_pos;
@@ -44,13 +44,11 @@ int main(void) {
       mouse_pos.x += camera_pos.x;
       mouse_pos.y -= WINDOW_HEIGHT / 2;
       mouse_pos.y += camera_pos.y;
-      V2 dir;
-      V2SubV2(&dir, &mouse_pos, &pos);
-      if (V2LengthSq(&dir) > 0) {
-        V2Normalize(&dir, &dir);
-        V2MultF32(&dir, &dir, 10.0f);
+      V2 dir = V2SubV2(mouse_pos, pos);
+      if (V2LengthSq(dir) > 0) {
+        dir = V2MultF32(V2Normalize(dir), 10);
         for (U32 i = 0; i < STATIC_ARRAY_SIZE(bullets_pos); i++) {
-          if (V2LengthSq(&bullets_pos[i]) == 0) {
+          if (V2LengthSq(bullets_pos[i]) == 0) {
             bullets_pos[i] = pos;
             bullets_vel[i] = dir;
             break;
@@ -64,26 +62,24 @@ int main(void) {
       V2 dir = (V2) { RandF32(NULL, -1000, 1000), RandF32(NULL, -1000, 1000) };
       U32 i = 0;
       for (; i < STATIC_ARRAY_SIZE(enemies); i++) {
-        if (V2LengthSq(&enemies[i]) == 0) { continue; }
-        V2 test;
-        V2SubV2(&test, &enemies[i], &pos);
-        if (V2LengthSq(&test) < V2LengthSq(&dir)) {
+        if (V2LengthSq(enemies[i]) == 0) { continue; }
+        V2 test = V2SubV2(enemies[i], pos);
+        if (V2LengthSq(test) < V2LengthSq(dir)) {
           dir = test;
         }
       }
-      if (V2LengthSq(&dir) > 0) { V2Normalize(&dir, &dir); }
-      V2MultF32(&dir, &dir, 10.0f);
-      V2AddV2(&velocity, &velocity, &dir);
+      if (V2LengthSq(dir) > 0) { dir = V2Normalize(dir); }
+      velocity = V2AddV2(velocity, V2MultF32(dir, 10.0f));
     }
-    V2AddV2(&pos, &pos, &velocity);
-    V2MultF32(&velocity, &velocity, 0.9f);
+    pos = V2AddV2(pos, velocity);
+    velocity = V2MultF32(velocity, 0.9f);
 
     if (StopwatchReadSeconds(&enemy_spawn_stopwatch) > 5.0f) {
       StopwatchReset(&enemy_spawn_stopwatch);
       for (U32 j = 0; j < 5; j++) {
         U32 i = 0;
         for (; i < STATIC_ARRAY_SIZE(enemies); i++) {
-          if (V2LengthSq(&enemies[i]) == 0) { break; }
+          if (V2LengthSq(enemies[i]) == 0) { break; }
         }
         enemies[i].x = RandF32(NULL, pos.x - 1000, pos.x + 1000);
         enemies[i].y = RandF32(NULL, pos.y - 1000, pos.y + 1000);
@@ -91,28 +87,27 @@ int main(void) {
     }
 
     for (U32 i = 0; i < STATIC_ARRAY_SIZE(bullets_pos); i++) {
-      if (V2LengthSq(&bullets_pos[i]) == 0) { continue; }
-      V2 dist;
-      V2SubV2(&dist, &bullets_pos[i], &pos);
-      if (V2Length(&dist) > 1000) {
+      if (V2LengthSq(bullets_pos[i]) == 0) { continue; }
+      V2 dist = V2SubV2(bullets_pos[i], pos);
+      if (V2Length(dist) > 1000) {
         bullets_pos[i] = (V2) { 0, 0 };
         continue;
       }
-      V2AddV2(&bullets_pos[i], &bullets_pos[i], &bullets_vel[i]);
+      bullets_pos[i] = V2AddV2(bullets_pos[i], bullets_vel[i]);
       DrawCircle(CamX(bullets_pos[i].x), CamY(bullets_pos[i].y), 10, 0, 0, 0);
     }
 
     for (U32 i = 0; i < STATIC_ARRAY_SIZE(enemies); i++) {
-      if (V2LengthSq(&enemies[i]) == 0) { continue; }
-      if (Circle2IntersectCircle2(&pos, 50, &enemies[i], 50, NULL)) {
+      if (V2LengthSq(enemies[i]) == 0) { continue; }
+      if (Circle2IntersectCircle2(pos, 50, enemies[i], 50, NULL)) {
         enemies[i] = (V2) { 0, 0 };
         continue;
       }
 
       B32 deleted = false;
       for (U32 j = 0; j < STATIC_ARRAY_SIZE(bullets_pos); j++) {
-        if (V2LengthSq(&bullets_pos[j]) == 0) { continue; }
-        if (Circle2IntersectCircle2(&enemies[i], 50, &bullets_pos[j], 10, NULL)) {
+        if (V2LengthSq(bullets_pos[j]) == 0) { continue; }
+        if (Circle2IntersectCircle2(enemies[i], 50, bullets_pos[j], 10, NULL)) {
           bullets_pos[j] = (V2) { 0, 0 };
           enemies[i] = (V2) { 0, 0 };
           deleted = true;
@@ -121,11 +116,10 @@ int main(void) {
       }
       if (deleted) { continue; }
 
-      V2 dir;
-      V2SubV2(&dir, &pos, &enemies[i]);
-      if (V2LengthSq(&dir) > 0) { V2Normalize(&dir, &dir); }
-      V2MultF32(&dir, &dir, 2.0f);
-      V2AddV2(&enemies[i], &enemies[i], &dir);
+      V2 dir = V2SubV2(pos, enemies[i]);
+      if (V2LengthSq(dir) > 0) { dir = V2Normalize(dir); }
+      dir = V2MultF32(dir, 2.0f);
+      enemies[i] = V2AddV2(enemies[i], dir);
       DrawCircle(CamX(enemies[i].x), CamY(enemies[i].y), 50, 0, 0, 1);
     }
 

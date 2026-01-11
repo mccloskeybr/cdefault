@@ -13,15 +13,13 @@ U32 next_collider = 0;
 
 static void DrawVelocityArrow(Collider2* c) {
   RigidBody2* rb = (RigidBody2*) Collider2GetSubtype(c, COLLIDER2_RIGID_BODY);
-  V2* start_pos = &c->center;
-  V2 end_pos;
-  V2AddV2(&end_pos, start_pos, &rb->velocity);
-  DrawLineV(*start_pos, end_pos, 5, (V3) { 0.5f, 0.0f, 0.5f });
+  V2 start_pos = c->center;
+  V2 end_pos = V2AddV2(start_pos, rb->velocity);
+  DrawLineV(start_pos, end_pos, 5, V3Assign(0.5f, 0.0f, 0.5f));
 
   V2 start = c->center;
-  V2 end = (V2) { F32Cos(c->angle_rad), F32Sin(c->angle_rad) };
-  V2MultF32(&end, &end, CIRCLE_RADIUS);
-  V2AddV2(&end, &end, &start);
+  V2 end = V2Assign(F32Cos(c->angle_rad), F32Sin(c->angle_rad));
+  end = V2AddV2(start, V2MultF32(end, CIRCLE_RADIUS));
   DrawLineV(start, end, 5, COLOR_BLACK);
 }
 
@@ -58,10 +56,10 @@ int main(void) {
   RendererSetClearColor(0.39f, 0.58f, 0.92f, 1);
   RendererDisableDepthTest();
   Physics2Init(5);
-  Physics2SetGravity((V2) { 0, -90.8f });
+  Physics2SetGravity(V2Assign(0, -90.8f));
 
-  V2 g_pos  = (V2) { 500, 50 };
-  V2 g_size = (V2) { 10000, 100 };
+  V2 g_pos  = V2Assign(500, 50);
+  V2 g_size = V2Assign(10000, 100);
   Collider2* ground = Physics2RegisterColliderRect(g_pos, g_size);
   RigidBody2* ground_rigid_body = Physics2RegisterRigidBodyStatic(ground);
   ground_rigid_body->fix_angle = true;

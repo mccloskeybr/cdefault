@@ -70,6 +70,7 @@ F32 F32Floor(F32 x);
 F32 F32Round(F32 x);
 F32 F32MapRange(F32 x, F32 a_min, F32 a_max, F32 b_min, F32 b_max);
 F32 F32Lerp(F32 x, F32 y, F32 t);
+F32 F32QuadBezier(F32 x, F32 y, F32 c, F32 t);
 B32 F32IsInteger(F32 x);
 
 B64 F64ApproxEq(F64 x, F64 y);
@@ -90,10 +91,11 @@ F64 F64Floor(F64 x);
 F64 F64Round(F64 x);
 F64 F64MapRange(F64 x, F64 a_min, F64 a_max, F64 b_min, F64 b_max);
 F64 F64Lerp(F64 x, F64 y, F64 t);
+F64 F64QuadBezier(F64 x, F64 y, F64 c, F64 t);
 B32 F64IsInteger(F64 x);
 
 ///////////////////////////////////////////////////////////////////////////////
-// NOTE: V2
+// NOTE: Vec2
 ///////////////////////////////////////////////////////////////////////////////
 
 #define V2_ZEROES (V2) { 0,  0 }
@@ -108,29 +110,32 @@ B32 F64IsInteger(F64 x);
 
 V2  V2Assign(F32 x, F32 y);
 V2  V2Splat(F32 c);
-V2* V2AddF32(V2* dest, V2* x, F32 c);
-V2* V2SubF32(V2* dest, V2* x, F32 c);
-V2* V2MultF32(V2* dest, V2* x, F32 c);
-V2* V2DivF32(V2* dest, V2* x, F32 c);
-V2* V2AddV2(V2* dest, V2* x, V2* y);
-V2* V2SubV2(V2* dest, V2* x, V2* y);
-V2* V2HadamardV2(V2* dest, V2* x, V2* y);
-F32 V2DotV2(V2* x, V2* y);
-F32 V2CrossV2(V2* x, V2* y);
-F32 V2InnerMultV2(V2* x, V2* y);
-B32 V2Eq(V2* x, V2* y);
-B32 V2ApproxEq(V2* x, V2* y);
-F32 V2LengthSq(V2* x);
-F32 V2Length(V2* x);
-V2* V2Abs(V2* dest, V2* src);
-V2* V2Normalize(V2* dest, V2* src);
-V2* V2Negate(V2* dest, V2* src);
-F32 V2MinValue(V2* x);
-F32 V2MaxValue(V2* x);
-V2* V2Project(V2* dest, V2* x, V2* y);
-V2* V2Clamp(V2* dest, V2* src, F32 min, F32 max);
-V2* V2Rotate(V2* dest, V2* src, F32 angle_rad);
-V2* V2Lerp(V2* dest, V2* x, V2* y, F32 t);
+V2  V2AddF32(V2 v, F32 c);
+V2  V2SubF32(V2 v, F32 c);
+V2  V2MultF32(V2 v, F32 c);
+V2  V2DivF32(V2 v, F32 c);
+V2  V2AddV2(V2 a, V2 b);
+V2  V2SubV2(V2 a, V2 b);
+V2  V2HadamardV2(V2 a, V2 b);
+F32 V2DotV2(V2 a, V2 b);
+F32 V2CrossV2(V2 a, V2 b);
+F32 V2InnerMultV2(V2 a, V2 b);
+B32 V2Eq(V2 a, V2 b);
+B32 V2ApproxEq(V2 a, V2 b);
+F32 V2LengthSq(V2 v);
+F32 V2Length(V2 v);
+V2  V2Abs(V2 v);
+V2  V2Normalize(V2 v);
+V2  V2Negate(V2 v);
+F32 V2MinValue(V2 v);
+F32 V2MaxValue(V2 v);
+V2  V2Project(V2 a, V2 b); // NOTE: projects a onto b
+V2  V2Clamp(V2 v, F32 min, F32 max);
+V2  V2Rotate(V2 v, F32 angle_rad);
+V2  V2RotateAroundV2(V2 v, V2 p, F32 angle_rad);
+V2  V2RotateAroundV2Ex(V2 v, V2 p, F32 sin_value, F32 cos_value);
+V2  V2Lerp(V2 a, V2 b, F32 t);
+V2  V2QuadBezier(V2 a, V2 b, V2 control, F32 t);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: V3
@@ -159,7 +164,6 @@ V2* V2Lerp(V2* dest, V2* x, V2* y, F32 t);
 #define V3_MOONFLY_GRAY         V3FromHex(0x9e9e9e)
 #define V3_MOONFLY_LIGHT_GRAY   V3FromHex(0xbdbdbd)
 #define V3_MOONFLY_BLUE         V3FromHex(0x80a0ff)
-// #define V3_MOONFLY_LIGHT_BLUE   V3FromHex(0xb2ceee)
 #define V3_MOONFLY_LIGHT_BLUE   V3FromHex(0x99b7f6)
 #define V3_MOONFLY_RED          V3FromHex(0xff5d5d)
 #define V3_MOONFLY_LIGHT_RED    V3FromHex(0xff5189)
@@ -174,34 +178,37 @@ V2* V2Lerp(V2* dest, V2* x, V2* y, F32 t);
 
 V3  V3Assign(F32 x, F32 y, F32 z);
 V3  V3Splat(F32 c);
-V3  V3FromV2(V2* src, F32 z);
+V3  V3FromV2(V2 v, F32 z);
 V3  V3FromHex(U32 x);
-V3* V3AddF32(V3* dest, V3* x, F32 c);
-V3* V3SubF32(V3* dest, V3* x, F32 c);
-V3* V3MultF32(V3* dest, V3* x, F32 c);
-V3* V3DivF32(V3* dest, V3* x, F32 c);
-V3* V3AddV3(V3* dest, V3* x, V3* y);
-V3* V3SubV3(V3* dest, V3* x, V3* y);
-V3* V3HadamardV3(V3* dest, V3* x, V3* y);
-F32 V3InnerMultV3(V3* x, V3* y);
-F32 V3DotV3(V3* x, V3* y);
-V3* V3CrossV3(V3* dest, V3* x, V3* y);
-B32 V3ApproxEq(V3* x, V3* y);
-B32 V3Eq(V3* x, V3* y);
-F32 V3LengthSq(V3* x);
-F32 V3Length(V3* x);
-V3* V3Abs(V3* dest, V3* src);
-V3* V3Normalize(V3* dest, V3* src);
-V3* V3Negate(V3* dest, V3* src);
-F32 V3MinValue(V3* x);
-F32 V3MaxValue(V3* x);
-B32 V3IsBetween(V3* x, V3* start, V3* end);
-V3* V3Project(V3* dest, V3* x, V3* y);
-V3* V3Clamp(V3* dest, V3* src, F32 min, F32 max);
-B32 V3AreCollinear(V3* x, V3* y, V3* z);
-F32 V3AngleBetween(V3* x, V3* y);
-V3* V3Lerp(V3* dest, V3* x, V3* y, F32 t);
-V3* V3RotateAroundAxis(V3* dest, V3* x, V3* axis, F32 angle_rad);
+V3  V3AddF32(V3 v, F32 c);
+V3  V3SubF32(V3 v, F32 c);
+V3  V3MultF32(V3 v, F32 c);
+V3  V3DivF32(V3 v, F32 c);
+V3  V3AddV3(V3 a, V3 b);
+V3  V3SubV3(V3 a, V3 b);
+V3  V3HadamardV3(V3 a, V3 b);
+F32 V3InnerMultV3(V3 a, V3 b);
+F32 V3DotV3(V3 a, V3 b);
+V3  V3CrossV3(V3 a, V3 b);
+B32 V3ApproxEq(V3 a, V3 b);
+B32 V3Eq(V3 a, V3 b);
+F32 V3LengthSq(V3 v);
+F32 V3Length(V3 v);
+V3  V3Abs(V3 v);
+V3  V3Normalize(V3 v);
+V3  V3Negate(V3 v);
+F32 V3MinValue(V3 v);
+F32 V3MaxValue(V3 v);
+B32 V3IsBetween(V3 v, V3 start, V3 end);
+V3  V3Project(V3 a, V3 b); // NOTE: projects a onto b
+V3  V3Clamp(V3 v, F32 min, F32 max);
+B32 V3AreCollinear(V3 a, V3 b, V3 c);
+F32 V3AngleBetween(V3 a, V3 b);
+V3  V3Lerp(V3 a, V3 b, F32 t);
+V3  V3QuadBezier(V3 a, V3 b, V3 control, F32 t);
+V3  V3RotateAroundAxis(V3 v, V3 axis, F32 angle_rad);
+V3  V3RotateAroundV3Quat(V3 v, V3 p, V4 rot);
+V3  V3RotateAroundV3M3(V3 v, V3 p, M3 rot);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: V4
@@ -230,32 +237,33 @@ V3* V3RotateAroundAxis(V3* dest, V3* x, V3* axis, F32 angle_rad);
 
 V4  V4Assign(F32 x, F32 y, F32 z, F32 w);
 V4  V4Splat(F32 c);
-V4  V4FromV2(V2* src, F32 z, F32 w);
-V4  V4FromV3(V3* src, F32 w);
-V4* V4AddF32(V4* dest, V4* x, F32 c);
-V4* V4SubF32(V4* dest, V4* x, F32 c);
-V4* V4MultF32(V4* dest, V4* x, F32 c);
-V4* V4DivF32(V4* dest, V4* x, F32 c);
-V4* V4AddV4(V4* dest, V4* x, V4* y);
-V4* V4SubV4(V4* dest, V4* x, V4* y);
-V4* V4HadamardV4(V4* dest, V4* x, V4* y);
-V4* V4QuatMulV4(V4* dest, V4* x, V4* y);
-F32 V4InnerMultV4(V4* x, V4* y);
-F32 V4DotV4(V4* x, V4* y);
-B32 V4ApproxEq(V4* a, V4* b);
-B32 V4Eq(V4* x , V4* y);
-F32 V4LengthSq(V4* x);
-F32 V4Length(V4* x);
-V4* V4Abs(V4* dest, V4* src);
-V4* V4Normalize(V4* dest, V4* src);
-V4* V4Negate(V4* dest, V4* src);
-V4* V4Project(V4* dest, V4* x, V4* y);
-V4* V4Clamp(V4* dest, V4* src, F32 min, F32 max);
-V4* V4Lerp(V4* dest, V4* a, V4* b, F32 t);
-V4* V4Slerp(V4* dest, V4* a, V4* b, F32 t);
-V4* V4RotateAroundAxis(V4* dest, V3* axis, F32 angle_rad);
-V4* V4LookInDir(V4* dest, V3* dir);
-V4* V4LookAt(V4* dest, V3* pos, V3* target);
+V4  V4FromV2(V2 v, F32 z, F32 w);
+V4  V4FromV3(V3 v, F32 w);
+V4  V4AddF32(V4 v, F32 c);
+V4  V4SubF32(V4 v, F32 c);
+V4  V4MultF32(V4 v, F32 c);
+V4  V4DivF32(V4 v, F32 c);
+V4  V4AddV4(V4 a, V4 b);
+V4  V4SubV4(V4 a, V4 b);
+V4  V4HadamardV4(V4 a, V4 b);
+V4  V4QuatMulV4(V4 a, V4 b);
+F32 V4InnerMultV4(V4 a, V4 b);
+F32 V4DotV4(V4 a, V4 b);
+B32 V4ApproxEq(V4 a, V4 b);
+B32 V4Eq(V4 a , V4 b);
+F32 V4LengthSq(V4 v);
+F32 V4Length(V4 v);
+V4  V4Abs(V4 v);
+V4  V4Normalize(V4 v);
+V4  V4Negate(V4 v);
+V4  V4Project(V4 a, V4 b); // NOTE: projects a onto b
+V4  V4Clamp(V4 v, F32 min, F32 max);
+V4  V4Lerp(V4 a, V4 b, F32 t);
+V4  V4QuadBezier(V4 a, V4 b, V4 control, F32 t);
+V4  V4Slerp(V4 a, V4 b, F32 t);
+V4  V4RotateAroundAxis(V3 axis, F32 angle_rad);
+V4  V4LookInDir(V3 dir);
+V4  V4LookAt(V3 pos, V3 target);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: M2
@@ -265,16 +273,16 @@ V4* V4LookAt(V4* dest, V3* pos, V3* target);
                           0, 1, 0, \
                           0, 0, 1 }
 
-M2* M2AddM2(M2* dest, M2* x, M2* y);
-M2* M2SubM2(M2* dest, M2* x, M2* y);
-M2* M2MultF32(M2* dest, F32 c, M2* m);
-M2* M2MultM2(M2* dest, M2* x, M2* y);
-V2* M2MultV2(V2* dest, M2* x, V2* y);
-M2* M2Transpose(M2* dest, M2* x);
-F32 M2Det(M2* m);
-M2* M2Invert(M2* dest, M2* x);
-B32 M2ApproxEq(M2* x, M2* y);
-B32 M2Eq(M2* x, M2* y);
+M2  M2AddM2(M2 a, M2 b);
+M2  M2SubM2(M2 a, M2 b);
+M2  M2MultF32(M2 m, F32 c);
+M2  M2MultM2(M2 a, M2 b);
+V2  M2MultV2(M2 m, V2 v);
+M2  M2Transpose(M2 m);
+F32 M2Det(M2 m);
+M2  M2Invert(M2 m);
+B32 M2ApproxEq(M2 a, M2 b);
+B32 M2Eq(M2 a, M2 b);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: M3
@@ -284,17 +292,17 @@ B32 M2Eq(M2* x, M2* y);
                           0, 1, 0, \
                           0, 0, 1 }
 
-M3  M3FromQuaternion(V4* q);
-M3* M3AddM3(M3* dest, M3* x, M3* y);
-M3* M3SubM3(M3* dest, M3* x, M3* y);
-M3* M3MultF32(M3* dest, F32 c, M3* m);
-M3* M3MultM3(M3* dest, M3* x, M3* y);
-V3* M3MultV3(V3* dest, M3* x, V3* y);
-M3* M3Transpose(M3* dest, M3* x);
-F32 M3Det(M3* m);
-M3* M3Invert(M3* dest, M3* x);
-B32 M3ApproxEq(M3* x, M3* y);
-B32 M3Eq(M3* x, M3* y);
+M3  M3FromQuaternion(V4 q);
+M3  M3AddM3(M3 a, M3 b);
+M3  M3SubM3(M3 a, M3 b);
+M3  M3MultF32(M3 m, F32 c);
+M3  M3MultM3(M3 a, M3 b);
+V3  M3MultV3(M3 m, V3 v);
+M3  M3Transpose(M3 m);
+F32 M3Det(M3 m);
+M3  M3Invert(M3 m);
+B32 M3ApproxEq(M3 a, M3 b);
+B32 M3Eq(M3 a, M3 b);
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: M4
@@ -305,20 +313,20 @@ B32 M3Eq(M3* x, M3* y);
                           0, 0, 1, 0, \
                           0, 0, 0, 1}
 
-M4  M4FromTransform(V3* pos, V4* rot, V3* scale);
+M4  M4FromTransform(V3 pos, V4 rot, V3 scale);
 M4  M4Perspective(F32 fov_y_rad, F32 aspect_ratio, F32 near_plane, F32 far_plane);
 M4  M4Orthographic(F32 left, F32 right, F32 bottom, F32 top, F32 near_plane, F32 far_plane);
-M4  M4LookAt(V3* eye, V3* target, V3* up);
-M4* M4AddM4(M4* dest, M4* x, M4* y);
-M4* M4SubM4(M4* dest, M4* x, M4* y);
-M4* M4MultF32(M4* dest, F32 c,  M4* m);
-M4* M4MultM4(M4* dest, M4* x, M4* y);
-V4* M4MultV4(V4* dest, M4* x, V4* y);
-M4* M4Transpose(M4* dest, M4* x);
-F32 M4Det(M4* m);
-M4* M4Invert(M4* dest, M4* x);
-B32 M4ApproxEq(M4* x, M4* y);
-B32 M4Eq(M4* x, M4* y);
+M4  M4LookAt(V3 eye, V3 target, V3 up);
+M4  M4AddM4(M4 a, M4 b);
+M4  M4SubM4(M4 a, M4 b);
+M4  M4MultF32(M4 m, F32 c);
+M4  M4MultM4(M4 a, M4 b);
+V4  M4MultV4(M4 a, V4 b);
+M4  M4Transpose(M4 m);
+F32 M4Det(M4 m);
+M4  M4Invert(M4 m);
+B32 M4ApproxEq(M4 a, M4 b);
+B32 M4Eq(M4 a, M4 b);
 
 #endif // CDEFAULT_MATH_H_
 
@@ -329,45 +337,169 @@ B32 M4Eq(M4* x, M4* y);
 // NOTE: Num implementation
 ///////////////////////////////////////////////////////////////////////////////
 
-B32 F32ApproxEq(F32 x, F32 y) { return F32Abs(x - y) < 0.00001f; }
-F32 F32Abs(F32 x) { return fabsf(x); }
-F32 F32Pow(F32 x, F32 y) { return powf(x, y); }
-F32 F32Sqrt(F32 x) { return sqrtf(x); }
-F32 F32Sin(F32 x) { return sinf(x); }
-F32 F32Cos(F32 x) { return cosf(x); }
-F32 F32Tan(F32 x) { return tanf(x); }
-F32 F32ArcSin(F32 x) { return asinf(x); }
-F32 F32ArcCos(F32 x) { return acosf(x); }
-F32 F32ArcTan(F32 x) { return atanf(x); }
-F32 F32ArcTan2(F32 y, F32 x) { return atan2f(y, x); }
-F32 F32ToRad(F32 deg) { return deg * (F32_PI / 180.0f); }
-F32 F32ToDeg(F32 rad) { return rad * (180.0f / F32_PI); }
-F32 F32Ceil(F32 x) { return ceilf(x); }
-F32 F32Floor(F32 x) { return floorf(x); }
-F32 F32Round(F32 x) { return F32Floor(x + 0.5f); }
-F32 F32MapRange(F32 x, F32 a_min, F32 a_max, F32 b_min, F32 b_max) { return b_min + ((x - a_min) / (a_max - a_min)) * (b_max - b_min); }
-F32 F32Lerp(F32 x, F32 y, F32 t) { return x + ((y - x) * t); }
-B32 F32IsInteger(F32 x) { return x == F32Floor(x); }
+B32 F32ApproxEq(F32 x, F32 y) {
+  return F32Abs(x - y) < 0.00001f;
+}
 
-B64 F64ApproxEq(F64 x, F64 y) { return F64Abs(x - y) < 0.00001; }
-F64 F64Abs(F64 x) { return fabs(x); }
-F64 F64Pow(F64 x, F64 y) { return pow(x, y); }
-F64 F64Sqrt(F64 x) { return sqrt(x); }
-F64 F64Sin(F64 x) { return sin(x); }
-F64 F64Cos(F64 x) { return cos(x); }
-F64 F64Tan(F64 x) { return tan(x); }
-F64 F64ArcSin(F64 x) { return asin(x); }
-F64 F64ArcCos(F64 x) { return acos(x); }
-F64 F64ArcTan(F64 x) { return atan(x); }
-F64 F64ArcTan2(F64 y, F64 x) { return atan2(y, x); }
-F64 F64ToRad(F64 deg) { return deg * (F64_PI / 180.0); }
-F64 F64ToDeg(F64 rad) { return rad * (180.0 / F64_PI); }
-F64 F64Ceil(F64 x) { return ceil(x); }
-F64 F64Floor(F64 x) { return floor(x); }
-F64 F64Round(F64 x) { return F64Floor(x + 0.5); }
-F64 F64MapRange(F64 x, F64 a_min, F64 a_max, F64 b_min, F64 b_max) { return b_min + ((x - a_min) / (a_max - a_min)) * (b_max - b_min); }
-F64 F64Lerp(F64 x, F64 y, F64 t) { return x + ((y - x) * t); }
-B32 F64IsInteger(F64 x) { return x == F64Floor(x); }
+F32 F32Abs(F32 x) {
+  return fabsf(x);
+}
+
+F32 F32Pow(F32 x, F32 y) {
+  return powf(x, y);
+}
+
+F32 F32Sqrt(F32 x) {
+  return sqrtf(x);
+}
+
+F32 F32Sin(F32 x) {
+  return sinf(x);
+}
+
+F32 F32Cos(F32 x) {
+  return cosf(x);
+}
+
+F32 F32Tan(F32 x) {
+  return tanf(x);
+}
+
+F32 F32ArcSin(F32 x) {
+  return asinf(x);
+}
+
+F32 F32ArcCos(F32 x) {
+  return acosf(x);
+}
+
+F32 F32ArcTan(F32 x) {
+  return atanf(x);
+}
+
+F32 F32ArcTan2(F32 y, F32 x) {
+  return atan2f(y, x);
+}
+
+F32 F32ToRad(F32 deg) {
+  return deg * (F32_PI / 180.0f);
+}
+
+F32 F32ToDeg(F32 rad) {
+  return rad * (180.0f / F32_PI);
+}
+
+F32 F32Ceil(F32 x) {
+  return ceilf(x);
+}
+
+F32 F32Floor(F32 x) {
+  return floorf(x);
+}
+
+F32 F32Round(F32 x) {
+  return F32Floor(x + 0.5f);
+}
+
+F32 F32MapRange(F32 x, F32 a_min, F32 a_max, F32 b_min, F32 b_max) {
+  return b_min + ((x - a_min) / (a_max - a_min)) * (b_max - b_min);
+}
+
+F32 F32Lerp(F32 x, F32 y, F32 t) {
+  return x + ((y - x) * t);
+}
+
+F32 F32QuadBezier(F32 x, F32 y, F32 c, F32 t) {
+  F32 x_1 = F32Lerp(x, c, t);
+  F32 x_2 = F32Lerp(c, y, t);
+  return F32Lerp(x_1, x_2, t);
+}
+
+B32 F32IsInteger(F32 x) {
+  return x == F32Floor(x);
+}
+
+B64 F64ApproxEq(F64 x, F64 y) {
+  return F64Abs(x - y) < 0.00001;
+}
+
+F64 F64Abs(F64 x) {
+  return fabs(x);
+}
+
+F64 F64Pow(F64 x, F64 y) {
+  return pow(x, y);
+}
+
+F64 F64Sqrt(F64 x) {
+  return sqrt(x);
+}
+
+F64 F64Sin(F64 x) {
+  return sin(x);
+}
+
+F64 F64Cos(F64 x) {
+  return cos(x);
+}
+
+F64 F64Tan(F64 x) {
+  return tan(x);
+}
+
+F64 F64ArcSin(F64 x) {
+  return asin(x);
+}
+
+F64 F64ArcCos(F64 x) {
+  return acos(x);
+}
+
+F64 F64ArcTan(F64 x) {
+  return atan(x);
+}
+
+F64 F64ArcTan2(F64 y, F64 x) {
+  return atan2(y, x);
+}
+
+F64 F64ToRad(F64 deg) {
+  return deg * (F64_PI / 180.0);
+}
+
+F64 F64ToDeg(F64 rad) {
+  return rad * (180.0 / F64_PI);
+}
+
+F64 F64Ceil(F64 x) {
+  return ceil(x);
+}
+
+F64 F64Floor(F64 x) {
+  return floor(x);
+}
+
+F64 F64Round(F64 x) {
+  return F64Floor(x + 0.5);
+}
+
+F64 F64MapRange(F64 x, F64 a_min, F64 a_max, F64 b_min, F64 b_max) {
+  return b_min + ((x - a_min) / (a_max - a_min)) * (b_max - b_min);
+}
+
+F64 F64Lerp(F64 x, F64 y, F64 t) {
+  return x + ((y - x) * t);
+}
+
+F64 F64QuadBezier(F64 x, F64 y, F64 c, F64 t) {
+  F64 x_1 = F64Lerp(x, c, t);
+  F64 x_2 = F64Lerp(c, y, t);
+  return F64Lerp(x_1, x_2, t);
+}
+
+B32 F64IsInteger(F64 x) {
+  return x == F64Floor(x);
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: V2 implementation
@@ -387,126 +519,156 @@ V2 V2Splat(F32 c) {
   return result;
 }
 
-V2* V2AddF32(V2* dest, V2* x, F32 c) {
-  dest->x = x->x + c;
-  dest->y = x->y + c;
-  return dest;
+V2 V2AddF32(V2 v, F32 c) {
+  V2 result;
+  result.x = v.x + c;
+  result.y = v.y + c;
+  return result;
 }
 
-V2* V2SubF32(V2* dest, V2* x, F32 c) {
-  dest->x = x->x - c;
-  dest->y = x->y - c;
-  return dest;
+V2 V2SubF32(V2 v, F32 c) {
+  V2 result;
+  result.x = v.x - c;
+  result.y = v.y - c;
+  return result;
 }
 
-V2* V2MultF32(V2* dest, V2* x, F32 c) {
-  dest->x = x->x * c;
-  dest->y = x->y * c;
-  return dest;
+V2 V2MultF32(V2 v, F32 c) {
+  V2 result;
+  result.x = v.x * c;
+  result.y = v.y * c;
+  return result;
 }
 
-V2* V2DivF32(V2* dest, V2* x, F32 c) {
+V2 V2DivF32(V2 v, F32 c) {
   DEBUG_ASSERT(c != 0);
-  dest->x = x->x / c;
-  dest->y = x->y / c;
-  return dest;
+  V2 result;
+  result.x = v.x / c;
+  result.y = v.y / c;
+  return result;
 }
 
-V2* V2AddV2(V2* dest, V2* x, V2* y) {
-  dest->x = x->x + y->x;
-  dest->y = x->y + y->y;
-  return dest;
+V2 V2AddV2(V2 a, V2 b) {
+  V2 result;
+  result.x = a.x + b.x;
+  result.y = a.y + b.y;
+  return result;
 }
 
-V2* V2SubV2(V2* dest, V2* x, V2* y) {
-  dest->x = x->x - y->x;
-  dest->y = x->y - y->y;
-  return dest;
+V2 V2SubV2(V2 a, V2 b) {
+  V2 result;
+  result.x = a.x - b.x;
+  result.y = a.y - b.y;
+  return result;
 }
 
-V2* V2HadamardV2(V2* dest, V2* x, V2* y) {
-  dest->x = x->x * y->x;
-  dest->y = x->y * y->y;
-  return dest;
+V2 V2HadamardV2(V2 a, V2 b) {
+  V2 result;
+  result.x = a.x * b.x;
+  result.y = a.y * b.y;
+  return result;
 }
 
-F32 V2DotV2(V2* x, V2* y) {
-  return (x->x * y->x) + (x->y * y->y);
+F32 V2DotV2(V2 a, V2 b) {
+  return (a.x * b.x) + (a.y * b.y);
 }
 
-F32 V2CrossV2(V2* x, V2* y) {
-  return (x->x * y->y) - (x->y * y->x);
+F32 V2CrossV2(V2 a, V2 b) {
+  return (a.x * b.y) - (a.y * b.x);
 }
 
-F32 V2InnerMultV2(V2* x, V2* y) {
-  return V2DotV2(x, y);
+F32 V2InnerMultV2(V2 a, V2 b) {
+  return V2DotV2(a, b);
 }
 
-B32 V2Eq(V2* x, V2* y) {
-  return (x->x == y->x) &&
-         (x->y == y->y);
+B32 V2Eq(V2 a, V2 b) {
+  return (a.x == b.x) &&
+         (a.y == b.y);
 }
 
-B32 V2ApproxEq(V2* x, V2* y) {
-  return F32ApproxEq(x->x, y->x) &&
-         F32ApproxEq(x->y, y->y);
+B32 V2ApproxEq(V2 a, V2 b) {
+  return F32ApproxEq(a.x, b.x) &&
+         F32ApproxEq(a.y, b.y);
 }
 
-F32 V2LengthSq(V2* x) {
-  return V2DotV2(x, x);
+F32 V2LengthSq(V2 v) {
+  return V2DotV2(v, v);
 }
 
-F32 V2Length(V2* x) {
-  return F32Sqrt(V2LengthSq(x));
+F32 V2Length(V2 v) {
+  return F32Sqrt(V2LengthSq(v));
 }
 
-V2* V2Abs(V2* dest, V2* src) {
-  dest->x = F32Abs(src->x);
-  dest->y = F32Abs(src->y);
-  return dest;
+V2 V2Abs(V2 v) {
+  V2 result;
+  result.x = F32Abs(v.x);
+  result.y = F32Abs(v.y);
+  return result;
 }
 
-V2* V2Normalize(V2* dest, V2* x) {
-  return V2DivF32(dest, x, V2Length(x));
+V2 V2Normalize(V2 v) {
+  return V2DivF32(v, V2Length(v));
 }
 
-V2* V2Negate(V2* dest, V2* src) {
-  return V2MultF32(dest, src, -1);
+V2 V2Negate(V2 v) {
+  return V2MultF32(v, -1);
 }
 
-F32 V2MinValue(V2* x) {
-  return MIN(x->x, x->y);
+F32 V2MinValue(V2 v) {
+  return MIN(v.x, v.y);
 }
 
-F32 V2MaxValue(V2* x) {
-  return MAX(x->x, x->y);
+F32 V2MaxValue(V2 v) {
+  return MAX(v.x, v.y);
 }
 
-V2* V2Clamp(V2* dest, V2* src, F32 min, F32 max) {
-  dest->x = CLAMP(min, src->x, max);
-  dest->y = CLAMP(min, src->y, max);
-  return dest;
+V2 V2Clamp(V2 v, F32 min, F32 max) {
+  V2 result;
+  result.x = CLAMP(min, v.x, max);
+  result.y = CLAMP(min, v.y, max);
+  return result;
 }
 
-V2* V2Project(V2* dest, V2* x, V2* y) {
-  F32 ratio = V2DotV2(x, y) / V2DotV2(y, y);
-  return V2MultF32(dest, y, ratio);
+V2 V2Project(V2 a, V2 b) {
+  return V2MultF32(b, V2DotV2(a, b) / V2DotV2(b, b));
 }
  
-V2* V2Rotate(V2* dest, V2* src, F32 angle_rad) {
+V2 V2Rotate(V2 v, F32 angle_rad) {
   V2 result;
   F32 s = F32Sin(angle_rad);
   F32 c = F32Cos(angle_rad);
-  result.x = src->x * c - src->y * s;
-  result.y = src->x * c + src->y * s;
-  *dest = result;
-  return dest;
+  result.x = v.x * c - v.y * s;
+  result.y = v.x * c + v.y * s;
+  return result;
 }
 
-V2* V2Lerp(V2* dest, V2* x, V2* y, F32 t) {
-  dest->x = F32Lerp(x->x, y->x, t);
-  dest->y = F32Lerp(x->y, y->y, t);
-  return dest;
+V2 V2RotateAroundV2(V2 v, V2 p, F32 angle_rad) {
+  F32 sin_value = F32Sin(angle_rad);
+  F32 cos_value = F32Cos(angle_rad);
+  return V2RotateAroundV2Ex(v, p, sin_value, cos_value);
+}
+
+V2 V2RotateAroundV2Ex(V2 v, V2 p, F32 sin_value, F32 cos_value) {
+  V2 result;
+  V2 rel_v = V2SubV2(v, p);
+  result.x = rel_v.x * cos_value - rel_v.y * sin_value;
+  result.y = rel_v.x * sin_value + rel_v.y * cos_value;
+  result = V2AddV2(result, p);
+  return result;
+}
+
+V2 V2Lerp(V2 a, V2 b, F32 t) {
+  V2 result;
+  result.x = F32Lerp(a.x, b.x, t);
+  result.y = F32Lerp(a.y, b.y, t);
+  return result;
+}
+
+V2 V2QuadBezier(V2 a, V2 b, V2 control, F32 t) {
+  V2 result;
+  result.x = F32QuadBezier(a.x, b.x, control.x, t);
+  result.y = F32QuadBezier(a.y, b.y, control.y, t);
+  return result;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -529,10 +691,10 @@ V3 V3Splat(F32 c) {
   return result;
 }
 
-V3 V3FromV2(V2* src, F32 z) {
+V3 V3FromV2(V2 v, F32 z) {
   V3 result;
-  result.x = src->x;
-  result.y = src->y;
+  result.x = v.x;
+  result.y = v.y;
   result.z = z;
   return result;
 }
@@ -545,174 +707,194 @@ V3 V3FromHex(U32 x) {
   return result;
 }
 
-V3* V3AddF32(V3* dest, V3* x, F32 c) {
-  dest->x = x->x + c;
-  dest->y = x->y + c;
-  dest->z = x->z + c;
-  return dest;
-}
-
-V3* V3SubF32(V3* dest, V3* x, F32 c) {
-  dest->x = x->x - c;
-  dest->y = x->y - c;
-  dest->z = x->z - c;
-  return dest;
-}
-
-V3* V3MultF32(V3* dest, V3* x, F32 c) {
-  dest->x = x->x * c;
-  dest->y = x->y * c;
-  dest->z = x->z * c;
-  return dest;
-}
-
-V3* V3DivF32(V3* dest, V3* x, F32 c) {
-  ASSERT(c != 0);
-  dest->x = x->x / c;
-  dest->y = x->y / c;
-  dest->z = x->z / c;
-  return dest;
-}
-
-V3* V3AddV3(V3* dest, V3* x, V3* y) {
-  dest->x = x->x + y->x;
-  dest->y = x->y + y->y;
-  dest->z = x->z + y->z;
-  return dest;
-}
-
-V3* V3SubV3(V3*dest, V3* x, V3* y) {
-  dest->x = x->x - y->x;
-  dest->y = x->y - y->y;
-  dest->z = x->z - y->z;
-  return dest;
-}
-
-V3* V3HadamardV3(V3* dest, V3* x, V3* y) {
-  dest->x = x->x * y->x;
-  dest->y = x->y * y->y;
-  dest->z = x->z * y->z;
-  return dest;
-}
-
-F32 V3InnerMultV3(V3* x, V3* y) {
-  return V3DotV3(x, y);
-}
-
-F32 V3DotV3(V3* x, V3* y) {
-  return (x->x * y->x) + (x->y * y->y) + (x->z * y->z);
-}
-
-V3* V3CrossV3(V3* dest, V3* x, V3* y) {
+V3 V3AddF32(V3 v, F32 c) {
   V3 result;
-  result.x = (x->y * y->z) - (x->z * y->y);
-  result.y = (x->z * y->x) - (x->x * y->z);
-  result.z = (x->x * y->y) - (x->y * y->x);
-  *dest = result;
-  return dest;
+  result.x = v.x + c;
+  result.y = v.y + c;
+  result.z = v.z + c;
+  return result;
 }
 
-B32 V3ApproxEq(V3* x, V3* y) {
-  return F32ApproxEq(x->x, y->x) &&
-         F32ApproxEq(x->y, y->y) &&
-         F32ApproxEq(x->z, y->z);
+V3 V3SubF32(V3 v, F32 c) {
+  V3 result;
+  result.x = v.x - c;
+  result.y = v.y - c;
+  result.z = v.z - c;
+  return result;
 }
 
-B32 V3Eq(V3* x, V3* y) {
-  return x->x == y->x &&
-         x->y == y->y &&
-         x->z == y->z;
+V3 V3MultF32(V3 v, F32 c) {
+  V3 result;
+  result.x = v.x * c;
+  result.y = v.y * c;
+  result.z = v.z * c;
+  return result;
 }
 
-F32 V3LengthSq(V3* x) {
-  return V3DotV3(x, x);
+V3 V3DivF32(V3 v, F32 c) {
+  DEBUG_ASSERT(c != 0);
+  V3 result;
+  result.x = v.x / c;
+  result.y = v.y / c;
+  result.z = v.z / c;
+  return result;
 }
 
-F32 V3Length(V3* x) {
-  return F32Sqrt(V3LengthSq(x));
+V3 V3AddV3(V3 a, V3 b) {
+  V3 result;
+  result.x = a.x + b.x;
+  result.y = a.y + b.y;
+  result.z = a.z + b.z;
+  return result;
 }
 
-V3* V3Abs(V3* dest, V3* src) {
-  dest->x = F32Abs(src->x);
-  dest->y = F32Abs(src->y);
-  dest->z = F32Abs(src->z);
-  return dest;
+V3 V3SubV3(V3 a, V3 b) {
+  V3 result;
+  result.x = a.x - b.x;
+  result.y = a.y - b.y;
+  result.z = a.z - b.z;
+  return result;
 }
 
-V3* V3Normalize(V3* dest, V3* src) {
-  return V3DivF32(dest, src, V3Length(src));
+V3 V3HadamardV3(V3 a, V3 b) {
+  V3 result;
+  result.x = a.x * b.x;
+  result.y = a.y * b.y;
+  result.z = a.z * b.z;
+  return result;
 }
 
-V3* V3Negate(V3* dest, V3* src) {
-  return V3MultF32(dest, src, -1);
+F32 V3InnerMultV3(V3 a, V3 b) {
+  return V3DotV3(a, b);
 }
 
-F32 V3MinValue(V3* x) {
-  return MIN3(x->x, x->y, x->z);
+F32 V3DotV3(V3 a, V3 b) {
+  return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
 }
 
-F32 V3MaxValue(V3* x) {
-  return MAX3(x->x, x->y, x->z);
+V3 V3CrossV3(V3 a, V3 b) {
+  V3 result;
+  result.x = (a.y * b.z) - (a.z * b.y);
+  result.y = (a.z * b.x) - (a.x * b.z);
+  result.z = (a.x * b.y) - (a.y * b.x);
+  return result;
 }
 
-B32 V3IsBetween(V3* x, V3* start, V3* end) {
-  V3* i = start;
-  V3* j = end;
-  V3* k = x;
-  if (!V3AreCollinear(i, j, k)) { return false; }
-  V3 ij, ik;
-  V3SubV3(&ij, j, i);
-  V3SubV3(&ik, k, i);
-  F32 ij_dot_ik = V3DotV3(&ij, &ik);
-  F32 ij_dot_ij = V3DotV3(&ij, &ij);
+B32 V3ApproxEq(V3 a, V3 b) {
+  return F32ApproxEq(a.x, b.x) &&
+         F32ApproxEq(a.y, b.y) &&
+         F32ApproxEq(a.z, b.z);
+}
+
+B32 V3Eq(V3 a, V3 b) {
+  return a.x == b.x &&
+         a.y == b.y &&
+         a.z == b.z;
+}
+
+F32 V3LengthSq(V3 v) {
+  return V3DotV3(v, v);
+}
+
+F32 V3Length(V3 v) {
+  return F32Sqrt(V3LengthSq(v));
+}
+
+V3 V3Abs(V3 v) {
+  V3 result;
+  result.x = F32Abs(v.x);
+  result.y = F32Abs(v.y);
+  result.z = F32Abs(v.z);
+  return result;
+}
+
+V3 V3Normalize(V3 v) {
+  return V3DivF32(v, V3Length(v));
+}
+
+V3 V3Negate(V3 v) {
+  return V3MultF32(v, -1);
+}
+
+F32 V3MinValue(V3 x) {
+  return MIN3(x.x, x.y, x.z);
+}
+
+F32 V3MaxValue(V3 x) {
+  return MAX3(x.x, x.y, x.z);
+}
+
+B32 V3IsBetween(V3 v, V3 start, V3 end) {
+  if (!V3AreCollinear(v, start, end)) { return false; }
+  V3 ij         = V3SubV3(end, start);
+  V3 ik         = V3SubV3(v, start);
+  F32 ij_dot_ik = V3DotV3(ij, ik);
+  F32 ij_dot_ij = V3DotV3(ij, ij);
   return 0 < ij_dot_ik && ij_dot_ik < ij_dot_ij;
 }
 
 // https://en.wikibooks.org/wiki/Linear_Algebra/Orthogonal_Projection_Onto_a_Line
-V3* V3Project(V3* dest, V3* x, V3* y) {
-  F32 ratio = V3DotV3(x, y) / V3DotV3(y, y);
-  return V3MultF32(dest, y, ratio);
+V3 V3Project(V3 a, V3 b) {
+  return V3MultF32(b, V3DotV3(a, b) / V3DotV3(b, b));
 }
 
-V3* V3Clamp(V3* dest, V3* src, F32 min, F32 max) {
-  dest->x = CLAMP(min, src->x, max);
-  dest->y = CLAMP(min, src->y, max);
-  dest->z = CLAMP(min, src->z, max);
-  return dest;
+V3 V3Clamp(V3 v, F32 min, F32 max) {
+  V3 result;
+  result.x = CLAMP(min, v.x, max);
+  result.y = CLAMP(min, v.y, max);
+  result.z = CLAMP(min, v.z, max);
+  return result;
 }
 
-B32 V3AreCollinear(V3* x, V3* y, V3* z) {
-  V3 xy, xz, xy_cross_xz;
-  V3SubV3(&xy, y, x);
-  V3SubV3(&xz, z, x);
-  V3CrossV3(&xy_cross_xz, &xy, &xz);
-  V3 zeros = { 0, 0, 0 };
-  return V3Eq(&xy_cross_xz, &zeros);
+B32 V3AreCollinear(V3 a, V3 b, V3 c) {
+  V3 ab = V3SubV3(b, a);
+  V3 ac = V3SubV3(c, a);
+  return V3Eq(V3CrossV3(ab, ac), V3_ZEROES);
 }
 
-F32 V3AngleBetween(V3* x, V3* y) {
-  return F32ArcCos(V3DotV3(x, y));
+F32 V3AngleBetween(V3 a, V3 b) {
+  return F32ArcCos(V3DotV3(a, b));
 }
 
-V3* V3Lerp(V3* dest, V3* x, V3* y, F32 t) {
-  dest->x = F32Lerp(x->x, y->x, t);
-  dest->y = F32Lerp(x->y, y->y, t);
-  dest->z = F32Lerp(x->z, y->z, t);
-  return dest;
+V3 V3Lerp(V3 a, V3 b, F32 t) {
+  V3 result;
+  result.x = F32Lerp(a.x, b.x, t);
+  result.y = F32Lerp(a.y, b.y, t);
+  result.z = F32Lerp(a.z, b.z, t);
+  return result;
+}
+
+V3 V3QuadBezier(V3 a, V3 b, V3 control, F32 t) {
+  V3 result;
+  result.x = F32QuadBezier(a.x, b.x, control.x, t);
+  result.y = F32QuadBezier(a.y, b.y, control.y, t);
+  result.z = F32QuadBezier(a.z, b.z, control.z, t);
+  return result;
 }
 
 // https://stackoverflow.com/questions/69245724/rotate-a-vector-around-an-axis-in-3d-space
-V3* V3RotateAroundAxis(V3* dest, V3* v, V3* axis, F32 angle_rad) {
-  V3 cross, double_cross;
-  V3CrossV3(&cross, axis, v);
-  V3CrossV3(&double_cross, axis, &cross);
-  V3 a, b;
-  V3MultF32(&a, &cross, F32Sin(angle_rad));
-  V3MultF32(&b, &double_cross, (1.0f - F32Cos(angle_rad)));
-  dest->x = v->x + a.x + b.x;
-  dest->y = v->y + a.y + b.y;
-  dest->z = v->z + a.z + b.z;
-  return dest;
+V3 V3RotateAroundAxis(V3 v, V3 axis, F32 angle_rad) {
+  V3 cross        = V3CrossV3(axis, v);
+  V3 double_cross = V3CrossV3(axis, cross);
+  V3 a            = V3MultF32(cross, F32Sin(angle_rad));
+  V3 b            = V3MultF32(double_cross, (1.0f - F32Cos(angle_rad)));
+  V3 result;
+  result.x = v.x + a.x + b.x;
+  result.y = v.y + a.y + b.y;
+  result.z = v.z + a.z + b.z;
+  return result;
+}
+
+V3 V3RotateAroundV3V4(V3 v, V3 p, V4 rot) {
+  M3 rot_mat = M3FromQuaternion(rot);
+  return V3RotateAroundV3M3(v, p, rot_mat);
+}
+
+V3 V3RotateAroundV3M3(V3 v, V3 p, M3 rot) {
+  v = V3SubV3(v, p);
+  v = M3MultV3(rot, v);
+  v = V3AddV3(v, p);
+  return v;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -738,475 +920,485 @@ V4 V4Splat(F32 c) {
 }
 
 
-V4 V4FromV2(V2* src, F32 z, F32 w) {
+V4 V4FromV2(V2 v, F32 z, F32 w) {
   V4 result;
-  result.x = src->x;
-  result.y = src->y;
+  result.x = v.x;
+  result.y = v.y;
   result.z = z;
   result.w = w;
   return result;
 }
 
-V4 V4FromV3(V3* src, F32 w) {
+V4 V4FromV3(V3 v, F32 w) {
   V4 result;
-  result.x = src->x;
-  result.y = src->y;
-  result.z = src->z;
+  result.x = v.x;
+  result.y = v.y;
+  result.z = v.z;
   result.w = w;
   return result;
 }
 
-V4* V4AddV4(V4* dest, V4* x, V4* y) {
-  dest->x = x->x + y->x;
-  dest->y = x->y + y->y;
-  dest->z = x->z + y->z;
-  dest->w = x->w + y->w;
-  return dest;
+V4 V4AddV4(V4 a, V4 b) {
+  V4 result;
+  result.x = a.x + b.x;
+  result.y = a.y + b.y;
+  result.z = a.z + b.z;
+  result.w = a.w + b.w;
+  return result;
 }
 
-V4* V4AddF32(V4* dest, V4* x, F32 c) {
-  dest->x = x->x + c;
-  dest->y = x->y + c;
-  dest->z = x->z + c;
-  dest->w = x->w + c;
-  return dest;
+V4 V4AddF32(V4 v, F32 c) {
+  V4 result;
+  result.x = v.x + c;
+  result.y = v.y + c;
+  result.z = v.z + c;
+  result.w = v.w + c;
+  return result;
 }
 
-V4* V4MultF32(V4* dest, V4* x, F32 c) {
-  dest->x = x->x * c;
-  dest->y = x->y * c;
-  dest->z = x->z * c;
-  dest->w = x->w * c;
-  return dest;
+V4 V4MultF32(V4 v, F32 c) {
+  V4 result;
+  result.x = v.x * c;
+  result.y = v.y * c;
+  result.z = v.z * c;
+  result.w = v.w * c;
+  return result;
 }
 
-V4* V4DivF32(V4* dest, V4* x, F32 c) {
-  dest->x = x->x / c;
-  dest->y = x->y / c;
-  dest->z = x->z / c;
-  dest->w = x->w / c;
-  return dest;
+V4 V4DivF32(V4 v, F32 c) {
+  V4 result;
+  result.x = v.x / c;
+  result.y = v.y / c;
+  result.z = v.z / c;
+  result.w = v.w / c;
+  return result;
 }
 
-V4* V4SubF32(V4* dest, V4* x, F32 c) {
-  dest->x = x->x - c;
-  dest->y = x->y - c;
-  dest->z = x->z - c;
-  dest->w = x->w - c;
-  return dest;
+V4 V4SubF32(V4 v, F32 c) {
+  V4 result;
+  result.x = v.x - c;
+  result.y = v.y - c;
+  result.z = v.z - c;
+  result.w = v.w - c;
+  return result;
 }
 
-V4* V4SubV4(V4* dest, V4* x, V4* y) {
-  dest->x = x->x - y->x;
-  dest->y = x->y - y->y;
-  dest->z = x->z - y->z;
-  dest->w = x->w - y->w;
-  return dest;
+V4 V4SubV4(V4 a, V4 b) {
+  V4 result;
+  result.x = a.x - b.x;
+  result.y = a.y - b.y;
+  result.z = a.z - b.z;
+  result.w = a.w - b.w;
+  return result;
 }
 
-F32 V4LengthSq(V4* x) {
-  return V4DotV4(x, x);
+F32 V4LengthSq(V4 v) {
+  return V4DotV4(v, v);
 }
 
-F32 V4Length(V4* x) {
-  return F32Sqrt(V4LengthSq(x));
+F32 V4Length(V4 v) {
+  return F32Sqrt(V4LengthSq(v));
 }
 
-V4* V4Hadamard(V4* dest, V4* x, V4* y) {
-  dest->x = x->x * y->x;
-  dest->y = x->y * y->y;
-  dest->z = x->z * y->z;
-  dest->w = x->w * y->w;
-  return dest;
+V4 V4Hadamard(V4 a, V4 b) {
+  V4 result;
+  result.x = a.x * b.x;
+  result.y = a.y * b.y;
+  result.z = a.z * b.z;
+  result.w = a.w * b.w;
+  return result;
 }
 
-V4* V4HadamardV4(V4* dest, V4* x, V4* y) {
-  dest->x = x->x * y->x;
-  dest->y = x->y * y->y;
-  dest->z = x->z * y->z;
-  dest->w = x->w * y->w;
-  return dest;
+V4 V4HadamardV4(V4 a, V4 b) {
+  V4 result;
+  result.x = a.x * b.x;
+  result.y = a.y * b.y;
+  result.z = a.z * b.z;
+  result.w = a.w * b.w;
+  return result;
 }
 
 // https://stackoverflow.com/questions/19956555/how-to-multiply-two-quaternions
-V4* V4QuatMulV4(V4* dest, V4* x, V4* y) {
-  dest->x = x->w*y->x + x->x*y->w + x->y*y->z - x->z*y->y;
-  dest->y = x->w*y->y - x->x*y->z + x->y*y->w + x->z*y->x;
-  dest->z = x->w*y->z + x->x*y->y - x->y*y->x + x->z*y->w;
-  dest->w = x->w*y->w - x->x*y->x - x->y*y->y - x->z*y->z;
-  return dest;
+V4 V4QuatMulV4(V4 a, V4 b) {
+  V4 result;
+  result.x = (a.w * b.x) + (a.x * b.w) + (a.y * b.z) - (a.z * b.y);
+  result.y = (a.w * b.y) - (a.x * b.z) + (a.y * b.w) + (a.z * b.x);
+  result.z = (a.w * b.z) + (a.x * b.y) - (a.y * b.x) + (a.z * b.w);
+  result.w = (a.w * b.w) - (a.x * b.x) - (a.y * b.y) - (a.z * b.z);
+  return result;
 }
 
-F32 V4InnerMultV4(V4* x, V4* y) {
-  return V4DotV4(x, y);
+F32 V4InnerMultV4(V4 a, V4 b) {
+  return V4DotV4(a, b);
 }
 
-F32 V4DotV4(V4* x, V4* y) {
-  return (x->x * y->x) + (x->y * y->y) + (x->z * y->z) + (x->w * y->w);
+F32 V4DotV4(V4 a, V4 b) {
+  return (a.x * b.x) + (a.y * b.y) + (a.z * b.z) + (a.w * b.w);
 }
 
-B32 V4Eq(V4* x , V4* y) {
-  return x->x == y->x && x->y == y->y && x->z == y->z && x->w == y->w;
+B32 V4Eq(V4 a , V4 b) {
+  return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
 }
 
-B32 V4ApproxEq(V4* x, V4* y) {
-  return F32ApproxEq(x->x, y->x) &&
-         F32ApproxEq(x->y, y->y) &&
-         F32ApproxEq(x->z, y->z) &&
-         F32ApproxEq(x->w, y->w);
+B32 V4ApproxEq(V4 a, V4 b) {
+  return F32ApproxEq(a.x, b.x) &&
+         F32ApproxEq(a.y, b.y) &&
+         F32ApproxEq(a.z, b.z) &&
+         F32ApproxEq(a.w, b.w);
 }
 
-V4* V4Abs(V4* dest, V4* src) {
-  dest->x = F32Abs(src->x);
-  dest->y = F32Abs(src->y);
-  dest->z = F32Abs(src->z);
-  return dest;
+V4 V4Abs(V4 v) {
+  V4 result;
+  result.x = F32Abs(v.x);
+  result.y = F32Abs(v.y);
+  result.z = F32Abs(v.z);
+  return result;
 }
 
-V4* V4Normalize(V4* dest, V4* src) {
-  return V4DivF32(dest, src, V4Length(src));
+V4 V4Normalize(V4 v) {
+  return V4DivF32(v, V4Length(v));
 }
 
-V4* V4Negate(V4* dest, V4* src) {
-  return V4MultF32(dest, src, -1);
+V4 V4Negate(V4 v) {
+  return V4MultF32(v, -1);
 }
 
-V4* V4Project(V4* dest, V4* x, V4* y) {
-  F32 ratio = V4DotV4(x, y) / V4DotV4(y, y);
-  return V4MultF32(dest, y, ratio);
+V4 V4Project(V4 a, V4 b) {
+  return V4MultF32(b, V4DotV4(a, b) / V4DotV4(b, b));
 }
 
-V4* V4Clamp(V4* dest, V4* src, F32 min, F32 max) {
-  dest->x = CLAMP(min, src->x, max);
-  dest->y = CLAMP(min, src->y, max);
-  dest->z = CLAMP(min, src->z, max);
-  dest->w = CLAMP(min, src->w, max);
-  return dest;
+V4 V4Clamp(V4 v, F32 min, F32 max) {
+  V4 result;
+  result.x = CLAMP(min, v.x, max);
+  result.y = CLAMP(min, v.y, max);
+  result.z = CLAMP(min, v.z, max);
+  result.w = CLAMP(min, v.w, max);
+  return result;
 }
 
-V4* V4Lerp(V4* dest, V4* a, V4* b, F32 t) {
-  dest->x = F32Lerp(a->x, b->x, t);
-  dest->y = F32Lerp(a->y, b->y, t);
-  dest->z = F32Lerp(a->z, b->z, t);
-  dest->w = F32Lerp(a->w, b->w, t);
-  return dest;
+V4 V4Lerp(V4 a, V4 b, F32 t) {
+  V4 result;
+  result.x = F32Lerp(a.x, b.x, t);
+  result.y = F32Lerp(a.y, b.y, t);
+  result.z = F32Lerp(a.z, b.z, t);
+  result.w = F32Lerp(a.w, b.w, t);
+  return result;
 }
 
-V4* V4Slerp(V4* dest, V4* a, V4* b, F32 t) {
-  V4 a_copy = *a;
-  V4 b_copy = *b;
-  F32 dot = V4DotV4(&a_copy, &b_copy);
+V4 V4QuadBezier(V4 a, V4 b, V4 control, F32 t) {
+  V4 result;
+  result.x = F32QuadBezier(a.x, b.x, control.x, t);
+  result.y = F32QuadBezier(a.y, b.y, control.y, t);
+  result.z = F32QuadBezier(a.z, b.z, control.z, t);
+  result.w = F32QuadBezier(a.w, b.w, control.w, t);
+  return result;
+}
+
+V4 V4Slerp(V4 a, V4 b, F32 t) {
+  F32 dot = V4DotV4(a, b);
   if (dot < 0) {
     dot = -dot;
-    V4MultF32(&a_copy, a, -1);
+    a = V4MultF32(a, -1);
   }
   if (UNLIKELY(F32ApproxEq(dot, 1))) {
-    V4Lerp(dest, &a_copy, &b_copy, t);
-    return dest;
+    return V4Lerp(a, b, t);
   }
   F32 angle_rad = F32ArcCos(dot);
   F32 a_scalar = F32Sin((1.0f - t) * angle_rad) / F32Sin(angle_rad);
   F32 b_scalar = F32Sin(t * angle_rad) / F32Sin(angle_rad);
-  V4MultF32(&a_copy, &a_copy, a_scalar);
-  V4MultF32(&b_copy, &b_copy, b_scalar);
-  V4AddV4(dest, &a_copy, &b_copy);
-  return dest;
+  return V4AddV4(V4MultF32(a, a_scalar), V4MultF32(b, b_scalar));
 }
 
-V4* V4RotateAroundAxis(V4* dest, V3* axis, F32 angle_rad) {
+V4 V4RotateAroundAxis(V3 axis, F32 angle_rad) {
   F32 factor = F32Sin(angle_rad / 2.0f);
-  dest->x = factor * axis->x;
-  dest->y = factor * axis->y;
-  dest->z = factor * axis->z;
-  dest->w = F32Cos(angle_rad / 2.0f);
-  return V4Normalize(dest, dest);
+  V4 result;
+  result.x = factor * axis.x;
+  result.y = factor * axis.y;
+  result.z = factor * axis.z;
+  result.w = F32Cos(angle_rad / 2.0f);
+  return V4Normalize(result);
 }
 
 // https://stackoverflow.com/questions/12435671/quaternion-lookat-function
-V4* V4LookInDir(V4* dest, V3* dir) {
+V4 V4LookInDir(V3 dir) {
   ASSERT(F32ApproxEq(V3LengthSq(dir), 1.0f));
-  F32 dot = V3DotV3(&V3_Y_NEG, dir);
+  F32 dot = V3DotV3(V3_Y_NEG, dir);
   if (F32ApproxEq(dot, -1)) {
     // TODO: this is probably wrong?
-    *dest = (V4) {0, 0, 1, 0};
-    return dest;
+    return V4Assign(0, 0, 1, 0);
   } else if (F32ApproxEq(dot, +1)) {
-    *dest = V4_QUAT_IDENT;
-    return dest;
+    return V4_QUAT_IDENT;
   }
 
-  V3 axis;
-  V3CrossV3(&axis, &V3_Y_NEG, dir);
-  V3Normalize(&axis, &axis);
+  V3 axis = V3Normalize(V3CrossV3(V3_Y_NEG, dir));
 
   F32 angle = F32ArcCos(dot);
   F32 half_sin = F32Sin(angle / 2.0f);
   F32 half_cos = F32Cos(angle / 2.0f);
-  dest->x = axis.x * half_sin;
-  dest->y = axis.y * half_sin;
-  dest->z = axis.z * half_sin;
-  dest->w = half_cos;
-  return dest;
+
+  V4 result;
+  result.x = axis.x * half_sin;
+  result.y = axis.y * half_sin;
+  result.z = axis.z * half_sin;
+  result.w = half_cos;
+  return result;
 }
 
-V4* V4LookAt(V4* dest, V3* pos, V3* target) {
-  V3 dir;
-  V3SubV3(&dir, target, pos);
-  V3Normalize(&dir, &dir);
-  V4LookInDir(dest, &dir);
-  return dest;
+V4 V4LookAt(V3 pos, V3 target) {
+  V3 dir = V3Normalize(V3SubV3(target, pos));
+  return V4LookInDir(dir);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: M2 implementation
 ///////////////////////////////////////////////////////////////////////////////
 
-M2* M2AddM2(M2* dest, M2* x, M2* y) {
-  dest->e[0][0] = x->e[0][0] + y->e[0][0];
-  dest->e[0][1] = x->e[0][1] + y->e[0][1];
-  dest->e[1][0] = x->e[1][0] + y->e[1][0];
-  dest->e[1][1] = x->e[1][1] + y->e[1][1];
-  return dest;
-}
-
-M2* M2SubM2(M2* dest, M2* x, M2* y) {
-  dest->e[0][0] = x->e[0][0] - y->e[0][0];
-  dest->e[0][1] = x->e[0][1] - y->e[0][1];
-  dest->e[1][0] = x->e[1][0] - y->e[1][0];
-  dest->e[1][1] = x->e[1][1] - y->e[1][1];
-  return dest;
-}
-
-M2* M2MultF32(M2* dest, F32 c, M2* m) {
-  dest->e[0][0] = m->e[0][0] * c;
-  dest->e[0][1] = m->e[0][1] * c;
-  dest->e[1][0] = m->e[1][0] * c;
-  dest->e[1][1] = m->e[1][1] * c;
-  return dest;
-}
-
-M2* M2MultM2(M2* dest, M2* x, M2* y) {
+M2 M2AddM2(M2 a, M2 b) {
   M2 result;
-  result.e[0][0] = (x->e[0][0] * y->e[0][0]) + (x->e[0][1] * y->e[1][0]);
-  result.e[0][1] = (x->e[0][0] * y->e[0][1]) + (x->e[0][1] * y->e[1][1]);
-  result.e[1][0] = (x->e[1][0] * y->e[0][0]) + (x->e[1][1] * y->e[1][0]);
-  result.e[1][1] = (x->e[1][0] * y->e[0][1]) + (x->e[1][1] * y->e[1][1]);
-  *dest = result;
-  return dest;
+  result.e[0][0] = a.e[0][0] + b.e[0][0];
+  result.e[0][1] = a.e[0][1] + b.e[0][1];
+  result.e[1][0] = a.e[1][0] + b.e[1][0];
+  result.e[1][1] = a.e[1][1] + b.e[1][1];
+  return result;
 }
 
-V2* M2MultV2(V2* dest, M2* x, V2* y) {
+M2 M2SubM2(M2 a, M2 b) {
+  M2 result;
+  result.e[0][0] = a.e[0][0] - b.e[0][0];
+  result.e[0][1] = a.e[0][1] - b.e[0][1];
+  result.e[1][0] = a.e[1][0] - b.e[1][0];
+  result.e[1][1] = a.e[1][1] - b.e[1][1];
+  return result;
+}
+
+M2 M2MultF32(M2 m, F32 c) {
+  M2 result;
+  result.e[0][0] = m.e[0][0] * c;
+  result.e[0][1] = m.e[0][1] * c;
+  result.e[1][0] = m.e[1][0] * c;
+  result.e[1][1] = m.e[1][1] * c;
+  return result;
+}
+
+M2 M2MultM2(M2 a, M2 b) {
+  M2 result;
+  result.e[0][0] = (a.e[0][0] * b.e[0][0]) + (a.e[0][1] * b.e[1][0]);
+  result.e[0][1] = (a.e[0][0] * b.e[0][1]) + (a.e[0][1] * b.e[1][1]);
+  result.e[1][0] = (a.e[1][0] * b.e[0][0]) + (a.e[1][1] * b.e[1][0]);
+  result.e[1][1] = (a.e[1][0] * b.e[0][1]) + (a.e[1][1] * b.e[1][1]);
+  return result;
+}
+
+V2 M2MultV2(M2 m, V2 v) {
   V2 result;
-  result.e[0] = (x->e[0][0] * y->e[0]) + (x->e[0][1] * y->e[1]);
-  result.e[1] = (x->e[1][0] * y->e[0]) + (x->e[1][1] * y->e[1]);
-  *dest = result;
-  return dest;
+  result.e[0] = (m.e[0][0] * v.e[0]) + (m.e[0][1] * v.e[1]);
+  result.e[1] = (m.e[1][0] * v.e[0]) + (m.e[1][1] * v.e[1]);
+  return result;
 }
 
-M2* M2Transpose(M2* dest, M2* x) {
+M2 M2Transpose(M2 m) {
   M2 result;
-  result.e[0][0] = x->e[0][0];
-  result.e[0][1] = x->e[1][0];
-  result.e[1][0] = x->e[0][1];
-  result.e[1][1] = x->e[1][1];
-  *dest = result;
-  return dest;
+  result.e[0][0] = m.e[0][0];
+  result.e[0][1] = m.e[1][0];
+  result.e[1][0] = m.e[0][1];
+  result.e[1][1] = m.e[1][1];
+  return result;
 }
 
-F32 M2Det(M2* m) {
-  return (m->e[0][0] * m->e[1][1]) - (m->e[0][1] * m->e[1][0]);
+F32 M2Det(M2 m) {
+  return (m.e[0][0] * m.e[1][1]) - (m.e[0][1] * m.e[1][0]);
 }
 
-M2* M2Invert(M2* dest, M2* x) {
-  F32 det = M2Det(x);
+M2 M2Invert(M2 m) {
+  F32 det = M2Det(m);
   DEBUG_ASSERT(det != 0);
   F32 det_inv = 1.0f / det;
-  dest->e[0][0] = det_inv * +x->e[1][1];
-  dest->e[0][1] = det_inv * -x->e[0][1];
-  dest->e[1][0] = det_inv * -x->e[1][0];
-  dest->e[1][1] = det_inv * +x->e[0][0];
-  return dest;
+  M2 result;
+  result.e[0][0] = det_inv * +m.e[1][1];
+  result.e[0][1] = det_inv * -m.e[0][1];
+  result.e[1][0] = det_inv * -m.e[1][0];
+  result.e[1][1] = det_inv * +m.e[0][0];
+  return result;
 }
 
-B32 M2ApproxEq(M2* x, M2* y) {
-  return F32ApproxEq(x->e[0][0], y->e[0][0]) &&
-         F32ApproxEq(x->e[0][1], y->e[0][1]) &&
-         F32ApproxEq(x->e[1][0], y->e[1][0]) &&
-         F32ApproxEq(x->e[1][1], y->e[1][1]);
+B32 M2ApproxEq(M2 a, M2 b) {
+  return F32ApproxEq(a.e[0][0], b.e[0][0]) &&
+         F32ApproxEq(a.e[0][1], b.e[0][1]) &&
+         F32ApproxEq(a.e[1][0], b.e[1][0]) &&
+         F32ApproxEq(a.e[1][1], b.e[1][1]);
 }
 
-B32 M2Eq(M2* x, M2* y) {
-  return x->e[0][0] == y->e[0][0] &&
-         x->e[0][1] == y->e[0][1] &&
-         x->e[1][0] == y->e[1][0] &&
-         x->e[1][1] == y->e[1][1];
+B32 M2Eq(M2 a, M2 b) {
+  return a.e[0][0] == b.e[0][0] &&
+         a.e[0][1] == b.e[0][1] &&
+         a.e[1][0] == b.e[1][0] &&
+         a.e[1][1] == b.e[1][1];
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: M3 implementation
 ///////////////////////////////////////////////////////////////////////////////
 
-M3* M3AddM3(M3* dest, M3* x, M3* y) {
-  dest->e[0][0] = x->e[0][0] + y->e[0][0];
-  dest->e[0][1] = x->e[0][1] + y->e[0][1];
-  dest->e[0][2] = x->e[0][2] + y->e[0][2];
-  dest->e[1][0] = x->e[1][0] + y->e[1][0];
-  dest->e[1][1] = x->e[1][1] + y->e[1][1];
-  dest->e[1][2] = x->e[1][2] + y->e[1][2];
-  dest->e[2][0] = x->e[2][0] + y->e[2][0];
-  dest->e[2][1] = x->e[2][1] + y->e[2][1];
-  dest->e[2][2] = x->e[2][2] + y->e[2][2];
-  return dest;
-}
-
-M3* M3SubM3(M3* dest, M3* x, M3* y) {
-  dest->e[0][0] = x->e[0][0] - y->e[0][0];
-  dest->e[0][1] = x->e[0][1] - y->e[0][1];
-  dest->e[0][2] = x->e[0][2] - y->e[0][2];
-  dest->e[1][0] = x->e[1][0] - y->e[1][0];
-  dest->e[1][1] = x->e[1][1] - y->e[1][1];
-  dest->e[1][2] = x->e[1][2] - y->e[1][2];
-  dest->e[2][0] = x->e[2][0] - y->e[2][0];
-  dest->e[2][1] = x->e[2][1] - y->e[2][1];
-  dest->e[2][2] = x->e[2][2] - y->e[2][2];
-  return dest;
-}
-
-M3* M3MultF32(M3* dest, F32 c, M3* m) {
-  dest->e[0][0] = m->e[0][0] * c;
-  dest->e[0][1] = m->e[0][1] * c;
-  dest->e[0][2] = m->e[0][2] * c;
-  dest->e[1][0] = m->e[1][0] * c;
-  dest->e[1][1] = m->e[1][1] * c;
-  dest->e[1][2] = m->e[1][2] * c;
-  dest->e[2][0] = m->e[2][0] * c;
-  dest->e[2][1] = m->e[2][1] * c;
-  dest->e[2][2] = m->e[2][2] * c;
-  return dest;
-}
-
-M3* M3MultM3(M3* dest, M3* x, M3* y) {
+M3 M3AddM3(M3 a, M3 b) {
   M3 result;
-  result.e[0][0] = (x->e[0][0] * y->e[0][0]) + (x->e[0][1] * y->e[1][0]) + (x->e[0][2] * y->e[2][0]);
-  result.e[0][1] = (x->e[0][0] * y->e[0][1]) + (x->e[0][1] * y->e[1][1]) + (x->e[0][2] * y->e[2][1]);
-  result.e[0][2] = (x->e[0][0] * y->e[0][2]) + (x->e[0][1] * y->e[1][2]) + (x->e[0][2] * y->e[2][2]);
-  result.e[1][0] = (x->e[1][0] * y->e[0][0]) + (x->e[1][1] * y->e[1][0]) + (x->e[1][2] * y->e[2][0]);
-  result.e[1][1] = (x->e[1][0] * y->e[0][1]) + (x->e[1][1] * y->e[1][1]) + (x->e[1][2] * y->e[2][1]);
-  result.e[1][2] = (x->e[1][0] * y->e[0][2]) + (x->e[1][1] * y->e[1][2]) + (x->e[1][2] * y->e[2][2]);
-  result.e[2][0] = (x->e[2][0] * y->e[0][0]) + (x->e[2][1] * y->e[1][0]) + (x->e[2][2] * y->e[2][0]);
-  result.e[2][1] = (x->e[2][0] * y->e[0][1]) + (x->e[2][1] * y->e[1][1]) + (x->e[2][2] * y->e[2][1]);
-  result.e[2][2] = (x->e[2][0] * y->e[0][2]) + (x->e[2][1] * y->e[1][2]) + (x->e[2][2] * y->e[2][2]);
-  *dest = result;
-  return dest;
-}
-
-V3* M3MultV3(V3* dest, M3* x, V3* y) {
-  V3 result;
-  result.e[0] = (x->e[0][0] * y->e[0]) + (x->e[0][1] * y->e[1]) + (x->e[0][2] * y->e[2]);
-  result.e[1] = (x->e[1][0] * y->e[0]) + (x->e[1][1] * y->e[1]) + (x->e[1][2] * y->e[2]);
-  result.e[2] = (x->e[2][0] * y->e[0]) + (x->e[2][1] * y->e[1]) + (x->e[2][2] * y->e[2]);
-  *dest = result;
-  return dest;
-}
-
-M3* M3Transpose(M3* dest, M3* x) {
-  M3 result;
-  result.e[0][0] = x->e[0][0];
-  result.e[0][1] = x->e[1][0];
-  result.e[0][2] = x->e[2][0];
-  result.e[1][0] = x->e[0][1];
-  result.e[1][1] = x->e[1][1];
-  result.e[1][2] = x->e[2][1];
-  result.e[2][0] = x->e[0][2];
-  result.e[2][1] = x->e[1][2];
-  result.e[2][2] = x->e[2][2];
-  *dest = result;
-  return dest;
-}
-
-// https://www.chilimath.com/lessons/advanced-algebra/determinant-3x3-matrix/
-F32 M3Det(M3* m) {
-  F32 sub_0 = (m->e[1][1] * m->e[2][2]) - (m->e[1][2] * m->e[2][1]);
-  F32 sub_1 = (m->e[1][0] * m->e[2][2]) - (m->e[1][2] * m->e[2][0]);
-  F32 sub_2 = (m->e[1][0] * m->e[2][1]) - (m->e[1][1] * m->e[2][0]);
-  return (m->e[0][0] * sub_0) - (m->e[0][1] * sub_1) + (m->e[0][2] * sub_2);
-}
-
-M3* M3Invert(M3* dest, M3* m) {
-  M3 adj;
-  adj.e[0][0] = +((m->e[1][1] * m->e[2][2]) - (m->e[1][2] * m->e[2][1]));
-  adj.e[1][0] = -((m->e[1][0] * m->e[2][2]) - (m->e[1][2] * m->e[2][0]));
-  adj.e[2][0] = +((m->e[1][0] * m->e[2][1]) - (m->e[1][1] * m->e[2][0]));
-  adj.e[0][1] = -((m->e[0][1] * m->e[2][2]) - (m->e[0][2] * m->e[2][1]));
-  adj.e[1][1] = +((m->e[0][0] * m->e[2][2]) - (m->e[0][2] * m->e[2][0]));
-  adj.e[2][1] = -((m->e[0][0] * m->e[2][1]) - (m->e[0][1] * m->e[2][0]));
-  adj.e[0][2] = +((m->e[0][1] * m->e[1][2]) - (m->e[0][2] * m->e[1][1]));
-  adj.e[1][2] = -((m->e[0][0] * m->e[1][2]) - (m->e[0][2] * m->e[1][0]));
-  adj.e[2][2] = +((m->e[0][0] * m->e[1][1]) - (m->e[0][1] * m->e[1][0]));
-
-  // NOTE: reuse cofactor calcs from adj mat.
-  F32 det = (m->e[0][0] * adj.e[0][0]) + (m->e[0][1] * adj.e[1][0]) + (m->e[0][2] * adj.e[2][0]);
-  DEBUG_ASSERT(det != 0);
-  F32 inv_det = 1.0f / det;
-  for (S32 i = 0; i < 9; i++) { dest->i[i] = inv_det * adj.i[i]; }
-  return dest;
-}
-
-// https://automaticaddison.com/how-to-convert-a-quaternion-to-a-rotation-matrix/
-M3 M3FromQuaternion(V4* q) {
-  M3 result;
-  result.e[0][0] = 2.0f*(q->w*q->w + q->x*q->x) - 1.0f;
-  result.e[0][1] = 2.0f*(q->x*q->y - q->w*q->z);
-  result.e[0][2] = 2.0f*(q->x*q->z + q->w*q->y);
-  result.e[1][0] = 2.0f*(q->x*q->y + q->w*q->z);
-  result.e[1][1] = 2.0f*(q->w*q->w + q->y*q->y) - 1.0f;
-  result.e[1][2] = 2.0f*(q->y*q->z - q->w*q->x);
-  result.e[2][0] = 2.0f*(q->x*q->z - q->w*q->y);
-  result.e[2][1] = 2.0f*(q->y*q->z + q->w*q->x);
-  result.e[2][2] = 2.0f*(q->w*q->w + q->z*q->z) - 1.0f;
+  result.e[0][0] = a.e[0][0] + b.e[0][0];
+  result.e[0][1] = a.e[0][1] + b.e[0][1];
+  result.e[0][2] = a.e[0][2] + b.e[0][2];
+  result.e[1][0] = a.e[1][0] + b.e[1][0];
+  result.e[1][1] = a.e[1][1] + b.e[1][1];
+  result.e[1][2] = a.e[1][2] + b.e[1][2];
+  result.e[2][0] = a.e[2][0] + b.e[2][0];
+  result.e[2][1] = a.e[2][1] + b.e[2][1];
+  result.e[2][2] = a.e[2][2] + b.e[2][2];
   return result;
 }
 
-B32 M3ApproxEq(M3* x, M3* y) {
-  return F32ApproxEq(x->e[0][0], y->e[0][0]) &&
-         F32ApproxEq(x->e[0][1], y->e[0][1]) &&
-         F32ApproxEq(x->e[0][2], y->e[0][2]) &&
-         F32ApproxEq(x->e[1][0], y->e[1][0]) &&
-         F32ApproxEq(x->e[1][1], y->e[1][1]) &&
-         F32ApproxEq(x->e[1][2], y->e[1][2]) &&
-         F32ApproxEq(x->e[2][0], y->e[2][0]) &&
-         F32ApproxEq(x->e[2][1], y->e[2][1]) &&
-         F32ApproxEq(x->e[2][2], y->e[2][2]);
+M3 M3SubM3(M3 a, M3 b) {
+  M3 result;
+  result.e[0][0] = a.e[0][0] - b.e[0][0];
+  result.e[0][1] = a.e[0][1] - b.e[0][1];
+  result.e[0][2] = a.e[0][2] - b.e[0][2];
+  result.e[1][0] = a.e[1][0] - b.e[1][0];
+  result.e[1][1] = a.e[1][1] - b.e[1][1];
+  result.e[1][2] = a.e[1][2] - b.e[1][2];
+  result.e[2][0] = a.e[2][0] - b.e[2][0];
+  result.e[2][1] = a.e[2][1] - b.e[2][1];
+  result.e[2][2] = a.e[2][2] - b.e[2][2];
+  return result;
 }
 
-B32 M3Eq(M3* x, M3* y) {
-  return x->e[0][0] == y->e[0][0] &&
-         x->e[0][1] == y->e[0][1] &&
-         x->e[0][2] == y->e[0][2] &&
-         x->e[1][0] == y->e[1][0] &&
-         x->e[1][1] == y->e[1][1] &&
-         x->e[1][2] == y->e[1][2] &&
-         x->e[2][0] == y->e[2][0] &&
-         x->e[2][1] == y->e[2][1] &&
-         x->e[2][2] == y->e[2][2];
+M3 M3MultF32(M3 m, F32 c) {
+  M3 result;
+  result.e[0][0] = m.e[0][0] * c;
+  result.e[0][1] = m.e[0][1] * c;
+  result.e[0][2] = m.e[0][2] * c;
+  result.e[1][0] = m.e[1][0] * c;
+  result.e[1][1] = m.e[1][1] * c;
+  result.e[1][2] = m.e[1][2] * c;
+  result.e[2][0] = m.e[2][0] * c;
+  result.e[2][1] = m.e[2][1] * c;
+  result.e[2][2] = m.e[2][2] * c;
+  return result;
+}
+
+M3 M3MultM3(M3 a, M3 b) {
+  M3 result;
+  result.e[0][0] = (a.e[0][0] * b.e[0][0]) + (a.e[0][1] * b.e[1][0]) + (a.e[0][2] * b.e[2][0]);
+  result.e[0][1] = (a.e[0][0] * b.e[0][1]) + (a.e[0][1] * b.e[1][1]) + (a.e[0][2] * b.e[2][1]);
+  result.e[0][2] = (a.e[0][0] * b.e[0][2]) + (a.e[0][1] * b.e[1][2]) + (a.e[0][2] * b.e[2][2]);
+  result.e[1][0] = (a.e[1][0] * b.e[0][0]) + (a.e[1][1] * b.e[1][0]) + (a.e[1][2] * b.e[2][0]);
+  result.e[1][1] = (a.e[1][0] * b.e[0][1]) + (a.e[1][1] * b.e[1][1]) + (a.e[1][2] * b.e[2][1]);
+  result.e[1][2] = (a.e[1][0] * b.e[0][2]) + (a.e[1][1] * b.e[1][2]) + (a.e[1][2] * b.e[2][2]);
+  result.e[2][0] = (a.e[2][0] * b.e[0][0]) + (a.e[2][1] * b.e[1][0]) + (a.e[2][2] * b.e[2][0]);
+  result.e[2][1] = (a.e[2][0] * b.e[0][1]) + (a.e[2][1] * b.e[1][1]) + (a.e[2][2] * b.e[2][1]);
+  result.e[2][2] = (a.e[2][0] * b.e[0][2]) + (a.e[2][1] * b.e[1][2]) + (a.e[2][2] * b.e[2][2]);
+  return result;
+}
+
+V3 M3MultV3(M3 m, V3 v) {
+  V3 result;
+  result.e[0] = (m.e[0][0] * v.e[0]) + (m.e[0][1] * v.e[1]) + (m.e[0][2] * v.e[2]);
+  result.e[1] = (m.e[1][0] * v.e[0]) + (m.e[1][1] * v.e[1]) + (m.e[1][2] * v.e[2]);
+  result.e[2] = (m.e[2][0] * v.e[0]) + (m.e[2][1] * v.e[1]) + (m.e[2][2] * v.e[2]);
+  return result;
+}
+
+M3 M3Transpose(M3 m) {
+  M3 result;
+  result.e[0][0] = m.e[0][0];
+  result.e[0][1] = m.e[1][0];
+  result.e[0][2] = m.e[2][0];
+  result.e[1][0] = m.e[0][1];
+  result.e[1][1] = m.e[1][1];
+  result.e[1][2] = m.e[2][1];
+  result.e[2][0] = m.e[0][2];
+  result.e[2][1] = m.e[1][2];
+  result.e[2][2] = m.e[2][2];
+  return result;
+}
+
+// https://www.chilimath.com/lessons/advanced-algebra/determinant-3x3-matrix/
+F32 M3Det(M3 m) {
+  F32 sub_0 = (m.e[1][1] * m.e[2][2]) - (m.e[1][2] * m.e[2][1]);
+  F32 sub_1 = (m.e[1][0] * m.e[2][2]) - (m.e[1][2] * m.e[2][0]);
+  F32 sub_2 = (m.e[1][0] * m.e[2][1]) - (m.e[1][1] * m.e[2][0]);
+  return (m.e[0][0] * sub_0) - (m.e[0][1] * sub_1) + (m.e[0][2] * sub_2);
+}
+
+M3 M3Invert(M3 m) {
+  M3 adj;
+  adj.e[0][0] = +((m.e[1][1] * m.e[2][2]) - (m.e[1][2] * m.e[2][1]));
+  adj.e[1][0] = -((m.e[1][0] * m.e[2][2]) - (m.e[1][2] * m.e[2][0]));
+  adj.e[2][0] = +((m.e[1][0] * m.e[2][1]) - (m.e[1][1] * m.e[2][0]));
+  adj.e[0][1] = -((m.e[0][1] * m.e[2][2]) - (m.e[0][2] * m.e[2][1]));
+  adj.e[1][1] = +((m.e[0][0] * m.e[2][2]) - (m.e[0][2] * m.e[2][0]));
+  adj.e[2][1] = -((m.e[0][0] * m.e[2][1]) - (m.e[0][1] * m.e[2][0]));
+  adj.e[0][2] = +((m.e[0][1] * m.e[1][2]) - (m.e[0][2] * m.e[1][1]));
+  adj.e[1][2] = -((m.e[0][0] * m.e[1][2]) - (m.e[0][2] * m.e[1][0]));
+  adj.e[2][2] = +((m.e[0][0] * m.e[1][1]) - (m.e[0][1] * m.e[1][0]));
+
+  F32 det = (m.e[0][0] * adj.e[0][0]) + (m.e[0][1] * adj.e[1][0]) + (m.e[0][2] * adj.e[2][0]);
+  DEBUG_ASSERT(det != 0);
+  F32 inv_det = 1.0f / det;
+
+  M3 result;
+  for (S32 i = 0; i < 9; i++) { result.i[i] = inv_det * adj.i[i]; }
+  return result;
+}
+
+// https://automaticaddison.com/how-to-convert-a-quaternion-to-a-rotation-matrix/
+M3 M3FromQuaternion(V4 q) {
+  M3 result;
+  result.e[0][0] = (2.0f * ((q.w * q.w) + (q.x * q.x))) - 1.0f;
+  result.e[0][1] = (2.0f * ((q.x * q.y) - (q.w * q.z)));
+  result.e[0][2] = (2.0f * ((q.x * q.z) + (q.w * q.y)));
+  result.e[1][0] = (2.0f * ((q.x * q.y) + (q.w * q.z)));
+  result.e[1][1] = (2.0f * ((q.w * q.w) + (q.y * q.y))) - 1.0f;
+  result.e[1][2] = (2.0f * ((q.y * q.z) - (q.w * q.x)));
+  result.e[2][0] = (2.0f * ((q.x * q.z) - (q.w * q.y)));
+  result.e[2][1] = (2.0f * ((q.y * q.z) + (q.w * q.x)));
+  result.e[2][2] = (2.0f * ((q.w * q.w) + (q.z * q.z))) - 1.0f;
+  return result;
+}
+
+B32 M3ApproxEq(M3 a, M3 b) {
+  return F32ApproxEq(a.e[0][0], b.e[0][0]) &&
+         F32ApproxEq(a.e[0][1], b.e[0][1]) &&
+         F32ApproxEq(a.e[0][2], b.e[0][2]) &&
+         F32ApproxEq(a.e[1][0], b.e[1][0]) &&
+         F32ApproxEq(a.e[1][1], b.e[1][1]) &&
+         F32ApproxEq(a.e[1][2], b.e[1][2]) &&
+         F32ApproxEq(a.e[2][0], b.e[2][0]) &&
+         F32ApproxEq(a.e[2][1], b.e[2][1]) &&
+         F32ApproxEq(a.e[2][2], b.e[2][2]);
+}
+
+B32 M3Eq(M3 a, M3 b) {
+  return a.e[0][0] == b.e[0][0] &&
+         a.e[0][1] == b.e[0][1] &&
+         a.e[0][2] == b.e[0][2] &&
+         a.e[1][0] == b.e[1][0] &&
+         a.e[1][1] == b.e[1][1] &&
+         a.e[1][2] == b.e[1][2] &&
+         a.e[2][0] == b.e[2][0] &&
+         a.e[2][1] == b.e[2][1] &&
+         a.e[2][2] == b.e[2][2];
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // NOTE: M4 implementation
 ///////////////////////////////////////////////////////////////////////////////
 
-// TODO: faster way to do this?
-M4 M4FromTransform(V3* pos, V4* rot, V3* scale) {
+// TODO: faster way to do this / check compiler output?
+M4 M4FromTransform(V3 pos, V4 rot, V3 scale) {
   M3 scale_m;
   MEMORY_ZERO_STRUCT(&scale_m);
-  scale_m.e[0][0] = scale->x;
-  scale_m.e[1][1] = scale->y;
-  scale_m.e[2][2] = scale->z;
+  scale_m.e[0][0] = scale.x;
+  scale_m.e[1][1] = scale.y;
+  scale_m.e[2][2] = scale.z;
 
-  M3 rot_m = M3FromQuaternion(rot);
-
-  M3 rot_scale;
-  M3MultM3(&rot_scale, &rot_m, &scale_m);
+  M3 rot_m     = M3FromQuaternion(rot);
+  M3 rot_scale = M3MultM3(rot_m, scale_m);
 
   M4 result;
   MEMORY_ZERO_STRUCT(&result);
@@ -1220,9 +1412,9 @@ M4 M4FromTransform(V3* pos, V4* rot, V3* scale) {
   result.e[2][1] = rot_scale.e[2][1];
   result.e[2][2] = rot_scale.e[2][2];
 
-  result.e[0][3] = pos->x;
-  result.e[1][3] = pos->y;
-  result.e[2][3] = pos->z;
+  result.e[0][3] = pos.x;
+  result.e[1][3] = pos.y;
+  result.e[2][3] = pos.z;
   result.e[3][3] = 1;
   return result;
 }
@@ -1261,20 +1453,18 @@ M4 M4Orthographic(F32 left, F32 right, F32 bottom, F32 top, F32 near_plane, F32 
   return result;
 }
 
-M4 M4LookAt(V3* eye, V3* target, V3* up) {
-  V3 x, y, z;
-  V3SubV3(&z, eye, target);
-  V3Normalize(&z, &z);
-  y = *up;
-  V3CrossV3(&x, &y, &z);
-  V3CrossV3(&y, &z, &x);
+M4 M4LookAt(V3 eye, V3 target, V3 up) {
+  V3 z = V3Normalize(V3SubV3(eye, target));
+  V3 y = up;
+  V3 x = V3CrossV3(y, z);
 
-  V3Normalize(&x, &x);
-  V3Normalize(&y, &y);
+  y = V3CrossV3(z, x);
+  x = V3Normalize(x);
+  y = V3Normalize(y);
 
-  F32 a = -V3DotV3(&x, eye);
-  F32 b = -V3DotV3(&y, eye);
-  F32 c = -V3DotV3(&z, eye);
+  F32 a = -V3DotV3(x, eye);
+  F32 b = -V3DotV3(y, eye);
+  F32 c = -V3DotV3(z, eye);
 
   M4 result = {
     x.x, x.y, x.z, a,
@@ -1285,203 +1475,206 @@ M4 M4LookAt(V3* eye, V3* target, V3* up) {
   return result;
 }
 
-M4* M4AddM4(M4* dest, M4* x, M4* y) {
-  dest->e[0][0] = x->e[0][0] + y->e[0][0];
-  dest->e[0][1] = x->e[0][1] + y->e[0][1];
-  dest->e[0][2] = x->e[0][2] + y->e[0][2];
-  dest->e[0][3] = x->e[0][3] + y->e[0][3];
-  dest->e[1][0] = x->e[1][0] + y->e[1][0];
-  dest->e[1][1] = x->e[1][1] + y->e[1][1];
-  dest->e[1][2] = x->e[1][2] + y->e[1][2];
-  dest->e[1][3] = x->e[1][3] + y->e[1][3];
-  dest->e[2][0] = x->e[2][0] + y->e[2][0];
-  dest->e[2][1] = x->e[2][1] + y->e[2][1];
-  dest->e[2][2] = x->e[2][2] + y->e[2][2];
-  dest->e[2][3] = x->e[2][3] + y->e[2][3];
-  dest->e[3][0] = x->e[3][0] + y->e[3][0];
-  dest->e[3][1] = x->e[3][1] + y->e[3][1];
-  dest->e[3][2] = x->e[3][2] + y->e[3][2];
-  dest->e[3][3] = x->e[3][3] + y->e[3][3];
-  return dest;
-}
-
-M4* M4SubM4(M4* dest, M4* x, M4* y) {
-  dest->e[0][0] = x->e[0][0] - y->e[0][0];
-  dest->e[0][1] = x->e[0][1] - y->e[0][1];
-  dest->e[0][2] = x->e[0][2] - y->e[0][2];
-  dest->e[0][3] = x->e[0][3] - y->e[0][3];
-  dest->e[1][0] = x->e[1][0] - y->e[1][0];
-  dest->e[1][1] = x->e[1][1] - y->e[1][1];
-  dest->e[1][2] = x->e[1][2] - y->e[1][2];
-  dest->e[1][3] = x->e[1][3] - y->e[1][3];
-  dest->e[2][0] = x->e[2][0] - y->e[2][0];
-  dest->e[2][1] = x->e[2][1] - y->e[2][1];
-  dest->e[2][2] = x->e[2][2] - y->e[2][2];
-  dest->e[2][3] = x->e[2][3] - y->e[2][3];
-  dest->e[3][0] = x->e[3][0] - y->e[3][0];
-  dest->e[3][1] = x->e[3][1] - y->e[3][1];
-  dest->e[3][2] = x->e[3][2] - y->e[3][2];
-  dest->e[3][3] = x->e[3][3] - y->e[3][3];
-  return dest;
-}
-
-M4* M4MultF32(M4* dest, F32 c, M4* m) {
-  dest->e[0][0] = m->e[0][0] * c;
-  dest->e[0][1] = m->e[0][1] * c;
-  dest->e[0][2] = m->e[0][2] * c;
-  dest->e[0][3] = m->e[0][3] * c;
-  dest->e[1][0] = m->e[1][0] * c;
-  dest->e[1][1] = m->e[1][1] * c;
-  dest->e[1][2] = m->e[1][2] * c;
-  dest->e[1][3] = m->e[1][3] * c;
-  dest->e[2][0] = m->e[2][0] * c;
-  dest->e[2][1] = m->e[2][1] * c;
-  dest->e[2][2] = m->e[2][2] * c;
-  dest->e[2][3] = m->e[2][3] * c;
-  dest->e[3][0] = m->e[3][0] * c;
-  dest->e[3][1] = m->e[3][1] * c;
-  dest->e[3][2] = m->e[3][2] * c;
-  dest->e[3][3] = m->e[3][3] * c;
-  return dest;
-}
-
-M4* M4MultM4(M4* dest, M4* x, M4* y) {
+M4 M4AddM4(M4 a, M4 b) {
   M4 result;
-  result.e[0][0] = (x->e[0][0] * y->e[0][0]) + (x->e[0][1] * y->e[1][0]) + (x->e[0][2] * y->e[2][0]) + (x->e[0][3] * y->e[3][0]);
-  result.e[0][1] = (x->e[0][0] * y->e[0][1]) + (x->e[0][1] * y->e[1][1]) + (x->e[0][2] * y->e[2][1]) + (x->e[0][3] * y->e[3][1]);
-  result.e[0][2] = (x->e[0][0] * y->e[0][2]) + (x->e[0][1] * y->e[1][2]) + (x->e[0][2] * y->e[2][2]) + (x->e[0][3] * y->e[3][2]);
-  result.e[0][3] = (x->e[0][0] * y->e[0][3]) + (x->e[0][1] * y->e[1][3]) + (x->e[0][2] * y->e[2][3]) + (x->e[0][3] * y->e[3][3]);
-  result.e[1][0] = (x->e[1][0] * y->e[0][0]) + (x->e[1][1] * y->e[1][0]) + (x->e[1][2] * y->e[2][0]) + (x->e[1][3] * y->e[3][0]);
-  result.e[1][1] = (x->e[1][0] * y->e[0][1]) + (x->e[1][1] * y->e[1][1]) + (x->e[1][2] * y->e[2][1]) + (x->e[1][3] * y->e[3][1]);
-  result.e[1][2] = (x->e[1][0] * y->e[0][2]) + (x->e[1][1] * y->e[1][2]) + (x->e[1][2] * y->e[2][2]) + (x->e[1][3] * y->e[3][2]);
-  result.e[1][3] = (x->e[1][0] * y->e[0][3]) + (x->e[1][1] * y->e[1][3]) + (x->e[1][2] * y->e[2][3]) + (x->e[1][3] * y->e[3][3]);
-  result.e[2][0] = (x->e[2][0] * y->e[0][0]) + (x->e[2][1] * y->e[1][0]) + (x->e[2][2] * y->e[2][0]) + (x->e[2][3] * y->e[3][0]);
-  result.e[2][1] = (x->e[2][0] * y->e[0][1]) + (x->e[2][1] * y->e[1][1]) + (x->e[2][2] * y->e[2][1]) + (x->e[2][3] * y->e[3][1]);
-  result.e[2][2] = (x->e[2][0] * y->e[0][2]) + (x->e[2][1] * y->e[1][2]) + (x->e[2][2] * y->e[2][2]) + (x->e[2][3] * y->e[3][2]);
-  result.e[2][3] = (x->e[2][0] * y->e[0][3]) + (x->e[2][1] * y->e[1][3]) + (x->e[2][2] * y->e[2][3]) + (x->e[2][3] * y->e[3][3]);
-  result.e[3][0] = (x->e[3][0] * y->e[0][0]) + (x->e[3][1] * y->e[1][0]) + (x->e[3][2] * y->e[2][0]) + (x->e[3][3] * y->e[3][0]);
-  result.e[3][1] = (x->e[3][0] * y->e[0][1]) + (x->e[3][1] * y->e[1][1]) + (x->e[3][2] * y->e[2][1]) + (x->e[3][3] * y->e[3][1]);
-  result.e[3][2] = (x->e[3][0] * y->e[0][2]) + (x->e[3][1] * y->e[1][2]) + (x->e[3][2] * y->e[2][2]) + (x->e[3][3] * y->e[3][2]);
-  result.e[3][3] = (x->e[3][0] * y->e[0][3]) + (x->e[3][1] * y->e[1][3]) + (x->e[3][2] * y->e[2][3]) + (x->e[3][3] * y->e[3][3]);
-  *dest = result;
-  return dest;
+  result.e[0][0] = a.e[0][0] + b.e[0][0];
+  result.e[0][1] = a.e[0][1] + b.e[0][1];
+  result.e[0][2] = a.e[0][2] + b.e[0][2];
+  result.e[0][3] = a.e[0][3] + b.e[0][3];
+  result.e[1][0] = a.e[1][0] + b.e[1][0];
+  result.e[1][1] = a.e[1][1] + b.e[1][1];
+  result.e[1][2] = a.e[1][2] + b.e[1][2];
+  result.e[1][3] = a.e[1][3] + b.e[1][3];
+  result.e[2][0] = a.e[2][0] + b.e[2][0];
+  result.e[2][1] = a.e[2][1] + b.e[2][1];
+  result.e[2][2] = a.e[2][2] + b.e[2][2];
+  result.e[2][3] = a.e[2][3] + b.e[2][3];
+  result.e[3][0] = a.e[3][0] + b.e[3][0];
+  result.e[3][1] = a.e[3][1] + b.e[3][1];
+  result.e[3][2] = a.e[3][2] + b.e[3][2];
+  result.e[3][3] = a.e[3][3] + b.e[3][3];
+  return result;
 }
 
-V4* M4MultV4(V4* dest, M4* x, V4* y) {
+M4 M4SubM4(M4 a, M4 b) {
+  M4 result;
+  result.e[0][0] = a.e[0][0] - b.e[0][0];
+  result.e[0][1] = a.e[0][1] - b.e[0][1];
+  result.e[0][2] = a.e[0][2] - b.e[0][2];
+  result.e[0][3] = a.e[0][3] - b.e[0][3];
+  result.e[1][0] = a.e[1][0] - b.e[1][0];
+  result.e[1][1] = a.e[1][1] - b.e[1][1];
+  result.e[1][2] = a.e[1][2] - b.e[1][2];
+  result.e[1][3] = a.e[1][3] - b.e[1][3];
+  result.e[2][0] = a.e[2][0] - b.e[2][0];
+  result.e[2][1] = a.e[2][1] - b.e[2][1];
+  result.e[2][2] = a.e[2][2] - b.e[2][2];
+  result.e[2][3] = a.e[2][3] - b.e[2][3];
+  result.e[3][0] = a.e[3][0] - b.e[3][0];
+  result.e[3][1] = a.e[3][1] - b.e[3][1];
+  result.e[3][2] = a.e[3][2] - b.e[3][2];
+  result.e[3][3] = a.e[3][3] - b.e[3][3];
+  return result;
+}
+
+M4 M4MultF32(M4 m, F32 c) {
+  M4 result;
+  result.e[0][0] = m.e[0][0] * c;
+  result.e[0][1] = m.e[0][1] * c;
+  result.e[0][2] = m.e[0][2] * c;
+  result.e[0][3] = m.e[0][3] * c;
+  result.e[1][0] = m.e[1][0] * c;
+  result.e[1][1] = m.e[1][1] * c;
+  result.e[1][2] = m.e[1][2] * c;
+  result.e[1][3] = m.e[1][3] * c;
+  result.e[2][0] = m.e[2][0] * c;
+  result.e[2][1] = m.e[2][1] * c;
+  result.e[2][2] = m.e[2][2] * c;
+  result.e[2][3] = m.e[2][3] * c;
+  result.e[3][0] = m.e[3][0] * c;
+  result.e[3][1] = m.e[3][1] * c;
+  result.e[3][2] = m.e[3][2] * c;
+  result.e[3][3] = m.e[3][3] * c;
+  return result;
+}
+
+M4 M4MultM4(M4 a, M4 b) {
+  M4 result;
+  result.e[0][0] = (a.e[0][0] * b.e[0][0]) + (a.e[0][1] * b.e[1][0]) + (a.e[0][2] * b.e[2][0]) + (a.e[0][3] * b.e[3][0]);
+  result.e[0][1] = (a.e[0][0] * b.e[0][1]) + (a.e[0][1] * b.e[1][1]) + (a.e[0][2] * b.e[2][1]) + (a.e[0][3] * b.e[3][1]);
+  result.e[0][2] = (a.e[0][0] * b.e[0][2]) + (a.e[0][1] * b.e[1][2]) + (a.e[0][2] * b.e[2][2]) + (a.e[0][3] * b.e[3][2]);
+  result.e[0][3] = (a.e[0][0] * b.e[0][3]) + (a.e[0][1] * b.e[1][3]) + (a.e[0][2] * b.e[2][3]) + (a.e[0][3] * b.e[3][3]);
+  result.e[1][0] = (a.e[1][0] * b.e[0][0]) + (a.e[1][1] * b.e[1][0]) + (a.e[1][2] * b.e[2][0]) + (a.e[1][3] * b.e[3][0]);
+  result.e[1][1] = (a.e[1][0] * b.e[0][1]) + (a.e[1][1] * b.e[1][1]) + (a.e[1][2] * b.e[2][1]) + (a.e[1][3] * b.e[3][1]);
+  result.e[1][2] = (a.e[1][0] * b.e[0][2]) + (a.e[1][1] * b.e[1][2]) + (a.e[1][2] * b.e[2][2]) + (a.e[1][3] * b.e[3][2]);
+  result.e[1][3] = (a.e[1][0] * b.e[0][3]) + (a.e[1][1] * b.e[1][3]) + (a.e[1][2] * b.e[2][3]) + (a.e[1][3] * b.e[3][3]);
+  result.e[2][0] = (a.e[2][0] * b.e[0][0]) + (a.e[2][1] * b.e[1][0]) + (a.e[2][2] * b.e[2][0]) + (a.e[2][3] * b.e[3][0]);
+  result.e[2][1] = (a.e[2][0] * b.e[0][1]) + (a.e[2][1] * b.e[1][1]) + (a.e[2][2] * b.e[2][1]) + (a.e[2][3] * b.e[3][1]);
+  result.e[2][2] = (a.e[2][0] * b.e[0][2]) + (a.e[2][1] * b.e[1][2]) + (a.e[2][2] * b.e[2][2]) + (a.e[2][3] * b.e[3][2]);
+  result.e[2][3] = (a.e[2][0] * b.e[0][3]) + (a.e[2][1] * b.e[1][3]) + (a.e[2][2] * b.e[2][3]) + (a.e[2][3] * b.e[3][3]);
+  result.e[3][0] = (a.e[3][0] * b.e[0][0]) + (a.e[3][1] * b.e[1][0]) + (a.e[3][2] * b.e[2][0]) + (a.e[3][3] * b.e[3][0]);
+  result.e[3][1] = (a.e[3][0] * b.e[0][1]) + (a.e[3][1] * b.e[1][1]) + (a.e[3][2] * b.e[2][1]) + (a.e[3][3] * b.e[3][1]);
+  result.e[3][2] = (a.e[3][0] * b.e[0][2]) + (a.e[3][1] * b.e[1][2]) + (a.e[3][2] * b.e[2][2]) + (a.e[3][3] * b.e[3][2]);
+  result.e[3][3] = (a.e[3][0] * b.e[0][3]) + (a.e[3][1] * b.e[1][3]) + (a.e[3][2] * b.e[2][3]) + (a.e[3][3] * b.e[3][3]);
+  return result;
+}
+
+V4 M4MultV4(M4 m, V4 v) {
   V4 result;
-  result.e[0] = (x->e[0][0] * y->e[0]) + (x->e[0][1] * y->e[1]) + (x->e[0][2] * y->e[2]) + (x->e[0][3] * y->e[3]);
-  result.e[1] = (x->e[1][0] * y->e[0]) + (x->e[1][1] * y->e[1]) + (x->e[1][2] * y->e[2]) + (x->e[1][3] * y->e[3]);
-  result.e[2] = (x->e[2][0] * y->e[0]) + (x->e[2][1] * y->e[1]) + (x->e[2][2] * y->e[2]) + (x->e[2][3] * y->e[3]);
-  result.e[3] = (x->e[3][0] * y->e[0]) + (x->e[3][1] * y->e[1]) + (x->e[3][2] * y->e[2]) + (x->e[3][3] * y->e[3]);
-  *dest = result;
-  return dest;
+  result.e[0] = (m.e[0][0] * v.e[0]) + (m.e[0][1] * v.e[1]) + (m.e[0][2] * v.e[2]) + (m.e[0][3] * v.e[3]);
+  result.e[1] = (m.e[1][0] * v.e[0]) + (m.e[1][1] * v.e[1]) + (m.e[1][2] * v.e[2]) + (m.e[1][3] * v.e[3]);
+  result.e[2] = (m.e[2][0] * v.e[0]) + (m.e[2][1] * v.e[1]) + (m.e[2][2] * v.e[2]) + (m.e[2][3] * v.e[3]);
+  result.e[3] = (m.e[3][0] * v.e[0]) + (m.e[3][1] * v.e[1]) + (m.e[3][2] * v.e[2]) + (m.e[3][3] * v.e[3]);
+  return result;
 }
 
-M4* M4Transpose(M4* dest, M4* x) {
+M4 M4Transpose(M4 m) {
   M4 result;
-  result.e[0][0] = x->e[0][0];
-  result.e[0][1] = x->e[1][0];
-  result.e[0][2] = x->e[2][0];
-  result.e[0][3] = x->e[3][0];
-  result.e[1][0] = x->e[0][1];
-  result.e[1][1] = x->e[1][1];
-  result.e[1][2] = x->e[2][1];
-  result.e[1][3] = x->e[3][1];
-  result.e[2][0] = x->e[0][2];
-  result.e[2][1] = x->e[1][2];
-  result.e[2][2] = x->e[2][2];
-  result.e[2][3] = x->e[3][2];
-  result.e[3][0] = x->e[0][3];
-  result.e[3][1] = x->e[1][3];
-  result.e[3][2] = x->e[2][3];
-  result.e[3][3] = x->e[3][3];
-  *dest = result;
-  return dest;
+  result.e[0][0] = m.e[0][0];
+  result.e[0][1] = m.e[1][0];
+  result.e[0][2] = m.e[2][0];
+  result.e[0][3] = m.e[3][0];
+  result.e[1][0] = m.e[0][1];
+  result.e[1][1] = m.e[1][1];
+  result.e[1][2] = m.e[2][1];
+  result.e[1][3] = m.e[3][1];
+  result.e[2][0] = m.e[0][2];
+  result.e[2][1] = m.e[1][2];
+  result.e[2][2] = m.e[2][2];
+  result.e[2][3] = m.e[3][2];
+  result.e[3][0] = m.e[0][3];
+  result.e[3][1] = m.e[1][3];
+  result.e[3][2] = m.e[2][3];
+  result.e[3][3] = m.e[3][3];
+  return result;
 }
 
 // https://byjus.com/maths/determinant-of-4x4-matrix/
-F32 M4Det(M4* m) {
-  F32 sub_00 = (m->e[2][2] * m->e[3][3]) - (m->e[2][3] * m->e[3][2]);
-  F32 sub_01 = (m->e[2][1] * m->e[3][3]) - (m->e[2][3] * m->e[3][1]);
-  F32 sub_02 = (m->e[2][1] * m->e[3][2]) - (m->e[2][2] * m->e[3][1]);
-  F32 det_0  = (m->e[1][1] * sub_00) - (m->e[1][2] * sub_01) + (m->e[1][3] * sub_02);
-  F32 sub_10 = (m->e[2][2] * m->e[3][3]) - (m->e[2][3] * m->e[3][2]);
-  F32 sub_11 = (m->e[2][0] * m->e[3][3]) - (m->e[2][3] * m->e[3][0]);
-  F32 sub_12 = (m->e[2][0] * m->e[3][2]) - (m->e[2][2] * m->e[3][0]);
-  F32 det_1  = (m->e[1][0] * sub_10) - (m->e[1][2] * sub_11) + (m->e[1][3] * sub_12);
-  F32 sub_20 = (m->e[2][1] * m->e[3][3]) - (m->e[2][3] * m->e[3][1]);
-  F32 sub_21 = (m->e[2][0] * m->e[3][3]) - (m->e[2][3] * m->e[3][0]);
-  F32 sub_22 = (m->e[2][0] * m->e[3][1]) - (m->e[2][1] * m->e[3][0]);
-  F32 det_2  = (m->e[1][0] * sub_20) - (m->e[1][1] * sub_21) + (m->e[1][3] * sub_22);
-  F32 sub_30 = (m->e[2][1] * m->e[3][2]) - (m->e[2][2] * m->e[3][1]);
-  F32 sub_31 = (m->e[2][0] * m->e[3][2]) - (m->e[2][2] * m->e[3][0]);
-  F32 sub_32 = (m->e[2][0] * m->e[3][1]) - (m->e[2][1] * m->e[3][0]);
-  F32 det_3  = (m->e[1][0] * sub_30) - (m->e[1][1] * sub_31) + (m->e[1][2] * sub_32);
-  return ((m->e[0][0] * det_0) - (m->e[0][1] * det_1) + (m->e[0][2] * det_2) - (m->e[0][3] * det_3));
+F32 M4Det(M4 m) {
+  F32 sub_00 = (m.e[2][2] * m.e[3][3]) - (m.e[2][3] * m.e[3][2]);
+  F32 sub_01 = (m.e[2][1] * m.e[3][3]) - (m.e[2][3] * m.e[3][1]);
+  F32 sub_02 = (m.e[2][1] * m.e[3][2]) - (m.e[2][2] * m.e[3][1]);
+  F32 det_0  = (m.e[1][1] * sub_00) - (m.e[1][2] * sub_01) + (m.e[1][3] * sub_02);
+  F32 sub_10 = (m.e[2][2] * m.e[3][3]) - (m.e[2][3] * m.e[3][2]);
+  F32 sub_11 = (m.e[2][0] * m.e[3][3]) - (m.e[2][3] * m.e[3][0]);
+  F32 sub_12 = (m.e[2][0] * m.e[3][2]) - (m.e[2][2] * m.e[3][0]);
+  F32 det_1  = (m.e[1][0] * sub_10) - (m.e[1][2] * sub_11) + (m.e[1][3] * sub_12);
+  F32 sub_20 = (m.e[2][1] * m.e[3][3]) - (m.e[2][3] * m.e[3][1]);
+  F32 sub_21 = (m.e[2][0] * m.e[3][3]) - (m.e[2][3] * m.e[3][0]);
+  F32 sub_22 = (m.e[2][0] * m.e[3][1]) - (m.e[2][1] * m.e[3][0]);
+  F32 det_2  = (m.e[1][0] * sub_20) - (m.e[1][1] * sub_21) + (m.e[1][3] * sub_22);
+  F32 sub_30 = (m.e[2][1] * m.e[3][2]) - (m.e[2][2] * m.e[3][1]);
+  F32 sub_31 = (m.e[2][0] * m.e[3][2]) - (m.e[2][2] * m.e[3][0]);
+  F32 sub_32 = (m.e[2][0] * m.e[3][1]) - (m.e[2][1] * m.e[3][0]);
+  F32 det_3  = (m.e[1][0] * sub_30) - (m.e[1][1] * sub_31) + (m.e[1][2] * sub_32);
+  return ((m.e[0][0] * det_0) - (m.e[0][1] * det_1) + (m.e[0][2] * det_2) - (m.e[0][3] * det_3));
 }
 
 // http://rodolphe-vaillant.fr/entry/7/c-code-for-4x4-matrix-inversion
-M4* M4Invert(M4* dest, M4* x) {
+M4 M4Invert(M4 m) {
   M4 t;
-  t.i[ 0] =  x->i[5] * x->i[10] * x->i[15] - x->i[5] * x->i[14] * x->i[11] - x->i[6] * x->i[9] * x->i[15] + x->i[6] * x->i[13] * x->i[11] + x->i[7] * x->i[9] * x->i[14] - x->i[7] * x->i[13] * x->i[10];
-  t.i[ 1] = -x->i[1] * x->i[10] * x->i[15] + x->i[1] * x->i[14] * x->i[11] + x->i[2] * x->i[9] * x->i[15] - x->i[2] * x->i[13] * x->i[11] - x->i[3] * x->i[9] * x->i[14] + x->i[3] * x->i[13] * x->i[10];
-  t.i[ 2] =  x->i[1] * x->i[ 6] * x->i[15] - x->i[1] * x->i[14] * x->i[ 7] - x->i[2] * x->i[5] * x->i[15] + x->i[2] * x->i[13] * x->i[ 7] + x->i[3] * x->i[5] * x->i[14] - x->i[3] * x->i[13] * x->i[ 6];
-  t.i[ 3] = -x->i[1] * x->i[ 6] * x->i[11] + x->i[1] * x->i[10] * x->i[ 7] + x->i[2] * x->i[5] * x->i[11] - x->i[2] * x->i[ 9] * x->i[ 7] - x->i[3] * x->i[5] * x->i[10] + x->i[3] * x->i[ 9] * x->i[ 6];
-  t.i[ 4] = -x->i[4] * x->i[10] * x->i[15] + x->i[4] * x->i[14] * x->i[11] + x->i[6] * x->i[8] * x->i[15] - x->i[6] * x->i[12] * x->i[11] - x->i[7] * x->i[8] * x->i[14] + x->i[7] * x->i[12] * x->i[10];
-  t.i[ 5] =  x->i[0] * x->i[10] * x->i[15] - x->i[0] * x->i[14] * x->i[11] - x->i[2] * x->i[8] * x->i[15] + x->i[2] * x->i[12] * x->i[11] + x->i[3] * x->i[8] * x->i[14] - x->i[3] * x->i[12] * x->i[10];
-  t.i[ 6] = -x->i[0] * x->i[ 6] * x->i[15] + x->i[0] * x->i[14] * x->i[ 7] + x->i[2] * x->i[4] * x->i[15] - x->i[2] * x->i[12] * x->i[ 7] - x->i[3] * x->i[4] * x->i[14] + x->i[3] * x->i[12] * x->i[ 6];
-  t.i[ 7] =  x->i[0] * x->i[ 6] * x->i[11] - x->i[0] * x->i[10] * x->i[ 7] - x->i[2] * x->i[4] * x->i[11] + x->i[2] * x->i[ 8] * x->i[ 7] + x->i[3] * x->i[4] * x->i[10] - x->i[3] * x->i[ 8] * x->i[ 6];
-  t.i[ 8] =  x->i[4] * x->i[ 9] * x->i[15] - x->i[4] * x->i[13] * x->i[11] - x->i[5] * x->i[8] * x->i[15] + x->i[5] * x->i[12] * x->i[11] + x->i[7] * x->i[8] * x->i[13] - x->i[7] * x->i[12] * x->i[ 9];
-  t.i[ 9] = -x->i[0] * x->i[ 9] * x->i[15] + x->i[0] * x->i[13] * x->i[11] + x->i[1] * x->i[8] * x->i[15] - x->i[1] * x->i[12] * x->i[11] - x->i[3] * x->i[8] * x->i[13] + x->i[3] * x->i[12] * x->i[ 9];
-  t.i[10] =  x->i[0] * x->i[ 5] * x->i[15] - x->i[0] * x->i[13] * x->i[ 7] - x->i[1] * x->i[4] * x->i[15] + x->i[1] * x->i[12] * x->i[ 7] + x->i[3] * x->i[4] * x->i[13] - x->i[3] * x->i[12] * x->i[ 5];
-  t.i[11] = -x->i[0] * x->i[ 5] * x->i[11] + x->i[0] * x->i[ 9] * x->i[ 7] + x->i[1] * x->i[4] * x->i[11] - x->i[1] * x->i[ 8] * x->i[ 7] - x->i[3] * x->i[4] * x->i[ 9] + x->i[3] * x->i[ 8] * x->i[ 5];
-  t.i[12] = -x->i[4] * x->i[ 9] * x->i[14] + x->i[4] * x->i[13] * x->i[10] + x->i[5] * x->i[8] * x->i[14] - x->i[5] * x->i[12] * x->i[10] - x->i[6] * x->i[8] * x->i[13] + x->i[6] * x->i[12] * x->i[ 9];
-  t.i[13] =  x->i[0] * x->i[ 9] * x->i[14] - x->i[0] * x->i[13] * x->i[10] - x->i[1] * x->i[8] * x->i[14] + x->i[1] * x->i[12] * x->i[10] + x->i[2] * x->i[8] * x->i[13] - x->i[2] * x->i[12] * x->i[ 9];
-  t.i[14] = -x->i[0] * x->i[ 5] * x->i[14] + x->i[0] * x->i[13] * x->i[ 6] + x->i[1] * x->i[4] * x->i[14] - x->i[1] * x->i[12] * x->i[ 6] - x->i[2] * x->i[4] * x->i[13] + x->i[2] * x->i[12] * x->i[ 5];
-  t.i[15] =  x->i[0] * x->i[ 5] * x->i[10] - x->i[0] * x->i[ 9] * x->i[ 6] - x->i[1] * x->i[4] * x->i[10] + x->i[1] * x->i[ 8] * x->i[ 6] + x->i[2] * x->i[4] * x->i[ 9] - x->i[2] * x->i[ 8] * x->i[ 5];
-  F32 det = x->i[0] * t.i[0] + x->i[4] * t.i[1] + x->i[8] * t.i[2] + x->i[12] * t.i[3];
+  t.i[ 0] =  m.i[5] * m.i[10] * m.i[15] - m.i[5] * m.i[14] * m.i[11] - m.i[6] * m.i[9] * m.i[15] + m.i[6] * m.i[13] * m.i[11] + m.i[7] * m.i[9] * m.i[14] - m.i[7] * m.i[13] * m.i[10];
+  t.i[ 1] = -m.i[1] * m.i[10] * m.i[15] + m.i[1] * m.i[14] * m.i[11] + m.i[2] * m.i[9] * m.i[15] - m.i[2] * m.i[13] * m.i[11] - m.i[3] * m.i[9] * m.i[14] + m.i[3] * m.i[13] * m.i[10];
+  t.i[ 2] =  m.i[1] * m.i[ 6] * m.i[15] - m.i[1] * m.i[14] * m.i[ 7] - m.i[2] * m.i[5] * m.i[15] + m.i[2] * m.i[13] * m.i[ 7] + m.i[3] * m.i[5] * m.i[14] - m.i[3] * m.i[13] * m.i[ 6];
+  t.i[ 3] = -m.i[1] * m.i[ 6] * m.i[11] + m.i[1] * m.i[10] * m.i[ 7] + m.i[2] * m.i[5] * m.i[11] - m.i[2] * m.i[ 9] * m.i[ 7] - m.i[3] * m.i[5] * m.i[10] + m.i[3] * m.i[ 9] * m.i[ 6];
+  t.i[ 4] = -m.i[4] * m.i[10] * m.i[15] + m.i[4] * m.i[14] * m.i[11] + m.i[6] * m.i[8] * m.i[15] - m.i[6] * m.i[12] * m.i[11] - m.i[7] * m.i[8] * m.i[14] + m.i[7] * m.i[12] * m.i[10];
+  t.i[ 5] =  m.i[0] * m.i[10] * m.i[15] - m.i[0] * m.i[14] * m.i[11] - m.i[2] * m.i[8] * m.i[15] + m.i[2] * m.i[12] * m.i[11] + m.i[3] * m.i[8] * m.i[14] - m.i[3] * m.i[12] * m.i[10];
+  t.i[ 6] = -m.i[0] * m.i[ 6] * m.i[15] + m.i[0] * m.i[14] * m.i[ 7] + m.i[2] * m.i[4] * m.i[15] - m.i[2] * m.i[12] * m.i[ 7] - m.i[3] * m.i[4] * m.i[14] + m.i[3] * m.i[12] * m.i[ 6];
+  t.i[ 7] =  m.i[0] * m.i[ 6] * m.i[11] - m.i[0] * m.i[10] * m.i[ 7] - m.i[2] * m.i[4] * m.i[11] + m.i[2] * m.i[ 8] * m.i[ 7] + m.i[3] * m.i[4] * m.i[10] - m.i[3] * m.i[ 8] * m.i[ 6];
+  t.i[ 8] =  m.i[4] * m.i[ 9] * m.i[15] - m.i[4] * m.i[13] * m.i[11] - m.i[5] * m.i[8] * m.i[15] + m.i[5] * m.i[12] * m.i[11] + m.i[7] * m.i[8] * m.i[13] - m.i[7] * m.i[12] * m.i[ 9];
+  t.i[ 9] = -m.i[0] * m.i[ 9] * m.i[15] + m.i[0] * m.i[13] * m.i[11] + m.i[1] * m.i[8] * m.i[15] - m.i[1] * m.i[12] * m.i[11] - m.i[3] * m.i[8] * m.i[13] + m.i[3] * m.i[12] * m.i[ 9];
+  t.i[10] =  m.i[0] * m.i[ 5] * m.i[15] - m.i[0] * m.i[13] * m.i[ 7] - m.i[1] * m.i[4] * m.i[15] + m.i[1] * m.i[12] * m.i[ 7] + m.i[3] * m.i[4] * m.i[13] - m.i[3] * m.i[12] * m.i[ 5];
+  t.i[11] = -m.i[0] * m.i[ 5] * m.i[11] + m.i[0] * m.i[ 9] * m.i[ 7] + m.i[1] * m.i[4] * m.i[11] - m.i[1] * m.i[ 8] * m.i[ 7] - m.i[3] * m.i[4] * m.i[ 9] + m.i[3] * m.i[ 8] * m.i[ 5];
+  t.i[12] = -m.i[4] * m.i[ 9] * m.i[14] + m.i[4] * m.i[13] * m.i[10] + m.i[5] * m.i[8] * m.i[14] - m.i[5] * m.i[12] * m.i[10] - m.i[6] * m.i[8] * m.i[13] + m.i[6] * m.i[12] * m.i[ 9];
+  t.i[13] =  m.i[0] * m.i[ 9] * m.i[14] - m.i[0] * m.i[13] * m.i[10] - m.i[1] * m.i[8] * m.i[14] + m.i[1] * m.i[12] * m.i[10] + m.i[2] * m.i[8] * m.i[13] - m.i[2] * m.i[12] * m.i[ 9];
+  t.i[14] = -m.i[0] * m.i[ 5] * m.i[14] + m.i[0] * m.i[13] * m.i[ 6] + m.i[1] * m.i[4] * m.i[14] - m.i[1] * m.i[12] * m.i[ 6] - m.i[2] * m.i[4] * m.i[13] + m.i[2] * m.i[12] * m.i[ 5];
+  t.i[15] =  m.i[0] * m.i[ 5] * m.i[10] - m.i[0] * m.i[ 9] * m.i[ 6] - m.i[1] * m.i[4] * m.i[10] + m.i[1] * m.i[ 8] * m.i[ 6] + m.i[2] * m.i[4] * m.i[ 9] - m.i[2] * m.i[ 8] * m.i[ 5];
+  F32 det = m.i[0] * t.i[0] + m.i[4] * t.i[1] + m.i[8] * t.i[2] + m.i[12] * t.i[3];
+
   DEBUG_ASSERT(det != 0);
-  det = 1 / det;
-  for(int32_t j = 0; j < 16; j++) { dest->i[j] = t.i[j] * det; }
-  return dest;
+  F32 det_inv = 1 / det;
+
+  M4 result;
+  for(U32 j = 0; j < 16; j++) { result.i[j] = det_inv * t.i[j]; }
+  return result;
 }
 
-B32 M4ApproxEq(M4* x, M4* y) {
-  return F32ApproxEq(x->e[0][0], y->e[0][0]) &&
-         F32ApproxEq(x->e[0][1], y->e[0][1]) &&
-         F32ApproxEq(x->e[0][2], y->e[0][2]) &&
-         F32ApproxEq(x->e[0][3], y->e[0][3]) &&
-         F32ApproxEq(x->e[1][0], y->e[1][0]) &&
-         F32ApproxEq(x->e[1][1], y->e[1][1]) &&
-         F32ApproxEq(x->e[1][2], y->e[1][2]) &&
-         F32ApproxEq(x->e[1][3], y->e[1][3]) &&
-         F32ApproxEq(x->e[2][0], y->e[2][0]) &&
-         F32ApproxEq(x->e[2][1], y->e[2][1]) &&
-         F32ApproxEq(x->e[2][2], y->e[2][2]) &&
-         F32ApproxEq(x->e[2][3], y->e[2][3]) &&
-         F32ApproxEq(x->e[3][0], y->e[3][0]) &&
-         F32ApproxEq(x->e[3][1], y->e[3][1]) &&
-         F32ApproxEq(x->e[3][2], y->e[3][2]) &&
-         F32ApproxEq(x->e[3][3], y->e[3][3]);
+B32 M4ApproxEq(M4 a, M4 b) {
+  return F32ApproxEq(a.e[0][0], b.e[0][0]) &&
+         F32ApproxEq(a.e[0][1], b.e[0][1]) &&
+         F32ApproxEq(a.e[0][2], b.e[0][2]) &&
+         F32ApproxEq(a.e[0][3], b.e[0][3]) &&
+         F32ApproxEq(a.e[1][0], b.e[1][0]) &&
+         F32ApproxEq(a.e[1][1], b.e[1][1]) &&
+         F32ApproxEq(a.e[1][2], b.e[1][2]) &&
+         F32ApproxEq(a.e[1][3], b.e[1][3]) &&
+         F32ApproxEq(a.e[2][0], b.e[2][0]) &&
+         F32ApproxEq(a.e[2][1], b.e[2][1]) &&
+         F32ApproxEq(a.e[2][2], b.e[2][2]) &&
+         F32ApproxEq(a.e[2][3], b.e[2][3]) &&
+         F32ApproxEq(a.e[3][0], b.e[3][0]) &&
+         F32ApproxEq(a.e[3][1], b.e[3][1]) &&
+         F32ApproxEq(a.e[3][2], b.e[3][2]) &&
+         F32ApproxEq(a.e[3][3], b.e[3][3]);
 }
 
-B32 M4Eq(M4* x, M4* y) {
-  return x->e[0][0] == y->e[0][0] &&
-         x->e[0][1] == y->e[0][1] &&
-         x->e[0][2] == y->e[0][2] &&
-         x->e[0][2] == y->e[0][3] &&
-         x->e[1][0] == y->e[1][0] &&
-         x->e[1][1] == y->e[1][1] &&
-         x->e[1][2] == y->e[1][2] &&
-         x->e[1][3] == y->e[1][3] &&
-         x->e[2][0] == y->e[2][0] &&
-         x->e[2][1] == y->e[2][1] &&
-         x->e[2][2] == y->e[2][2] &&
-         x->e[2][3] == y->e[2][3] &&
-         x->e[3][0] == y->e[3][0] &&
-         x->e[3][1] == y->e[3][1] &&
-         x->e[3][2] == y->e[3][2] &&
-         x->e[3][3] == y->e[3][3];
+B32 M4Eq(M4 a, M4 b) {
+  return a.e[0][0] == b.e[0][0] &&
+         a.e[0][1] == b.e[0][1] &&
+         a.e[0][2] == b.e[0][2] &&
+         a.e[0][2] == b.e[0][3] &&
+         a.e[1][0] == b.e[1][0] &&
+         a.e[1][1] == b.e[1][1] &&
+         a.e[1][2] == b.e[1][2] &&
+         a.e[1][3] == b.e[1][3] &&
+         a.e[2][0] == b.e[2][0] &&
+         a.e[2][1] == b.e[2][1] &&
+         a.e[2][2] == b.e[2][2] &&
+         a.e[2][3] == b.e[2][3] &&
+         a.e[3][0] == b.e[3][0] &&
+         a.e[3][1] == b.e[3][1] &&
+         a.e[3][2] == b.e[3][2] &&
+         a.e[3][3] == b.e[3][3];
 }
 
 #endif // CDEFAULT_MATH_IMPLEMENTATION

@@ -159,9 +159,9 @@ B32 ModelLoadObj(Arena* arena, Model* model, U8* file_data, U32 file_data_size) 
       // NOTE: search for duplicate vertex
       S32 duplicate_idx = -1;
       for (U32 i = 0; i < mesh->vertices_size; i++) {
-        if (V3Eq(&mesh->points[i], &obj_points[point_idx])) {
-          if (normal_idx == -1 || V3Eq(&mesh->normals[i], &obj_normals[normal_idx])) {
-            if (uv_idx == -1 || V2Eq(&mesh->uvs[i], &obj_uvs[uv_idx])) {
+        if (V3Eq(mesh->points[i], obj_points[point_idx])) {
+          if (normal_idx == -1 || V3Eq(mesh->normals[i], obj_normals[normal_idx])) {
+            if (uv_idx == -1 || V2Eq(mesh->uvs[i], obj_uvs[uv_idx])) {
               duplicate_idx = i;
               break;
             }

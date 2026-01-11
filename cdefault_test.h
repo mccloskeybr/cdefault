@@ -55,12 +55,12 @@ void LogTestReport(); // NOTE: Prints the final test report to stdout. Must be c
 #define EXPECT_PTR_NOT_NULL(a)      EXPECT_BASE((a) != NULL, "Expected not NULL, but got: %p", a)
 #define EXPECT_CSTR_EQ(a, b)        EXPECT_BASE(CStrEq((U8*) (a), (U8*) (b)), "Expected C Strings equal, but got: '%s', '%s'", (a), (b))
 #define EXPECT_STR8_EQ(a, b)        EXPECT_BASE(Str8Eq(a, b), "Expected String8s equal, but got: '%S', '%S'", (a), (b))
-#define EXPECT_V2_EQ(a, b)          EXPECT_BASE((a).x == (b).x && (a).y == (b).y, "Expected V2s equal, but got: %V2, %V2", (a), (b))
-#define EXPECT_V2_APPROX_EQ(a, b)   EXPECT_BASE(F32ApproxEq((a).x, (b).x) && F32ApproxEq((a).y, (b).y), "Expected V2s approximately equal, but got: %V2, %V2", (a), (b))
-#define EXPECT_V3_EQ(a, b)          EXPECT_BASE((a).x == (b).x && (a).y == (b).y && (a).z == (b).z, "Expected V3s equal, but got: %V3, %V3", (a), (b))
-#define EXPECT_V3_APPROX_EQ(a, b)   EXPECT_BASE(F32ApproxEq((a).x, (b).x) && F32ApproxEq((a).y, (b).y) && F32ApproxEq((a).z, (b).z), "Expected V3s approximately equal, but got: %V3, %V3", (a), (b))
-#define EXPECT_V4_EQ(a, b)          EXPECT_BASE((a).x == (b).x && (a).y == (b).y && (a).z == (b).z && (a).w == (b).w, "Expected V4s equal, but got: %V4, %V4", (a), (b))
-#define EXPECT_V4_APPROX_EQ(a, b)   EXPECT_BASE(F32ApproxEq((a).x, (b).x) && F32ApproxEq((a).y, (b).y) && F32ApproxEq((a).z, (b).z) && F32ApproxEq((a).w, (b).w), "Expected V4s approximately equal, but got: %V4, %V4", (a), (b))
+#define EXPECT_V2_EQ(a, b)          EXPECT_BASE((a).x == (b).x && (a).y == (b).y, "Expected V2s equal, but got: %V2, %V2", (a.e), (b.e))
+#define EXPECT_V2_APPROX_EQ(a, b)   EXPECT_BASE(F32ApproxEq((a).x, (b).x) && F32ApproxEq((a).y, (b).y), "Expected V2s approximately equal, but got: %V2, %V2", (a.e), (b.e))
+#define EXPECT_V3_EQ(a, b)          EXPECT_BASE((a).x == (b).x && (a).y == (b).y && (a).z == (b).z, "Expected V3s equal, but got: %V3, %V3", (a.e), (b.e))
+#define EXPECT_V3_APPROX_EQ(a, b)   EXPECT_BASE(F32ApproxEq((a).x, (b).x) && F32ApproxEq((a).y, (b).y) && F32ApproxEq((a).z, (b).z), "Expected V3s approximately equal, but got: %V3, %V3", (a.e), (b.e))
+#define EXPECT_V4_EQ(a, b)          EXPECT_BASE((a).x == (b).x && (a).y == (b).y && (a).z == (b).z && (a).w == (b).w, "Expected V4s equal, but got: %V4, %V4", (a.e), (b.e))
+#define EXPECT_V4_APPROX_EQ(a, b)   EXPECT_BASE(F32ApproxEq((a).x, (b).x) && F32ApproxEq((a).y, (b).y) && F32ApproxEq((a).z, (b).z) && F32ApproxEq((a).w, (b).w), "Expected V4s approximately equal, but got: %V4, %V4", (a.e), (b.e))
 
 // NOTE: Custom expectations can use EXPECT_BASE as a foundation.
 #define EXPECT_BASE(result, fmt, ...)                            \

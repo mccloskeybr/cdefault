@@ -113,8 +113,7 @@ int main(void) {
       if (UiWindowFloatingBegin(UIID(), Str8Lit("plots"), V2Assign(600, 900), V2_ZEROES, true).open) {
         UiPanelVerticalBegin(UIID(), V2Assign(10, 10), 10);
           if (UiPlotLines(UIID(), plot_values, STATIC_ARRAY_SIZE(plot_values), V2Assign(500, 100)).hovered) {
-            V2 hover_pos;
-            V2AddV2(&hover_pos, &mouse_pos, &(V2) { 5, 5 });
+            V2 hover_pos = V2AddV2(mouse_pos, V2Assign(5, 5));
             UiPopupBegin(UIID(), hover_pos, V2_ZEROES, true);
               UiText(UIID(), Str8Lit("popup!"), V2_ZEROES);
             UiPopupEnd();

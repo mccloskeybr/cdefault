@@ -214,12 +214,12 @@ static Collider2* Collider2Allocate() {
 static void Collider2ConvexHullUpdateWorldPoints(Collider2* collider) {
   DEBUG_ASSERT(collider->type == Collider2Type_ConvexHull);
   MEMORY_COPY_ARRAY(collider->convex_hull.points_world, collider->convex_hull.points_local, collider->convex_hull.points_size);
-  ConvexHull2RotateAboutPoint(collider->convex_hull.points_world, collider->convex_hull.points_size, &(V2) {0, 0}, collider->angle_rad);
-  ConvexHull2Offset(collider->convex_hull.points_world, collider->convex_hull.points_size, &collider->convex_hull.center);
+  ConvexHull2RotateAroundPoint(collider->convex_hull.points_world, collider->convex_hull.points_size, V2_ZEROES, collider->angle_rad);
+  ConvexHull2Offset(collider->convex_hull.points_world, collider->convex_hull.points_size, collider->convex_hull.center);
 }
 
 static B32 Collider2IntersectBroad(Collider2* a, Collider2* b, IntersectManifold2* manifold) {
-  return Circle2IntersectCircle2(&a->center, a->broad_circle_radius, &b->center, b->broad_circle_radius, manifold);
+  return Circle2IntersectCircle2(a->center, a->broad_circle_radius, b->center, b->broad_circle_radius, manifold);
 }
 
 static B32 Collider2IntersectNarrow(Collider2* a, Collider2* b, IntersectManifold2* manifold) {
@@ -227,14 +227,14 @@ static B32 Collider2IntersectNarrow(Collider2* a, Collider2* b, IntersectManifol
     case Collider2Type_Circle: {
       switch (b->type) {
         case Collider2Type_Circle: {
-          return Circle2IntersectCircle2(&a->circle.center, a->circle.radius, &b->circle.center, b->circle.radius, manifold);
+          return Circle2IntersectCircle2(a->circle.center, a->circle.radius, b->circle.center, b->circle.radius, manifold);
         } break;
         case Collider2Type_Rect: {
-          return Circle2IntersectObb2(&a->circle.center, a->circle.radius, &b->rect.center, &b->rect.size, b->angle_rad, manifold);
+          return Circle2IntersectObb2(a->circle.center, a->circle.radius, b->rect.center, b->rect.size, b->angle_rad, manifold);
         } break;
         case Collider2Type_ConvexHull: {
           Collider2ConvexHullUpdateWorldPoints(b);
-          B32 result = Circle2IntersectConvexHull2(&a->circle.center, a->circle.radius, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
+          B32 result = Circle2IntersectConvexHull2(a->circle.center, a->circle.radius, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
           return result;
         }
       }
@@ -242,14 +242,14 @@ static B32 Collider2IntersectNarrow(Collider2* a, Collider2* b, IntersectManifol
     case Collider2Type_Rect: {
       switch (b->type) {
         case Collider2Type_Circle: {
-          return Obb2IntersectCircle2(&a->rect.center, &a->rect.size, a->angle_rad, &b->circle.center, b->circle.radius, manifold);
+          return Obb2IntersectCircle2(a->rect.center, a->rect.size, a->angle_rad, b->circle.center, b->circle.radius, manifold);
         } break;
         case Collider2Type_Rect: {
-          return Obb2IntersectObb2(&a->rect.center, &a->rect.size, a->angle_rad, &b->rect.center, &b->rect.size, b->angle_rad, manifold);
+          return Obb2IntersectObb2(a->rect.center, a->rect.size, a->angle_rad, b->rect.center, b->rect.size, b->angle_rad, manifold);
         } break;
         case Collider2Type_ConvexHull: {
           Collider2ConvexHullUpdateWorldPoints(b);
-          return Obb2IntersectConvexHull2(&a->rect.center, &a->rect.size, a->angle_rad, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
+          return Obb2IntersectConvexHull2(a->rect.center, a->rect.size, a->angle_rad, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
         }
       }
     } break;
@@ -257,10 +257,10 @@ static B32 Collider2IntersectNarrow(Collider2* a, Collider2* b, IntersectManifol
       Collider2ConvexHullUpdateWorldPoints(a);
       switch (b->type) {
         case Collider2Type_Circle: {
-          return ConvexHull2IntersectCircle2(a->convex_hull.points_world, a->convex_hull.points_size, &b->circle.center, b->circle.radius, manifold);
+          return ConvexHull2IntersectCircle2(a->convex_hull.points_world, a->convex_hull.points_size, b->circle.center, b->circle.radius, manifold);
         } break;
         case Collider2Type_Rect: {
-          return ConvexHull2IntersectObb2(a->convex_hull.points_world, a->convex_hull.points_size, &b->rect.center, &b->rect.size, b->angle_rad, manifold);
+          return ConvexHull2IntersectObb2(a->convex_hull.points_world, a->convex_hull.points_size, b->rect.center, b->rect.size, b->angle_rad, manifold);
         } break;
         case Collider2Type_ConvexHull: {
           Collider2ConvexHullUpdateWorldPoints(b);
@@ -301,13 +301,12 @@ static void Physics2RigidBodyUpdate(F32 dt_s) {
     RigidBody2* rigid_body = &rigid_body_internal->rigid_body;
     if (rigid_body->type != RigidBody2Type_Dynamic) { continue; }
 
-    V2 moment_acceleration, moment_velocity;
-    V2MultF32(&moment_acceleration, &rigid_body->force, rigid_body->mass_inv);
-    V2AddV2(&moment_acceleration, &moment_acceleration, &c->rigid_body_gravity);
-    V2MultF32(&moment_acceleration, &moment_acceleration, dt_s);
-    V2AddV2(&rigid_body->velocity, &rigid_body->velocity, &moment_acceleration);
-    V2MultF32(&moment_velocity, &rigid_body->velocity, dt_s);
-    V2AddV2(&rigid_body->collider->center, &rigid_body->collider->center, &moment_velocity);
+    V2 moment_acceleration = V2MultF32(rigid_body->force, rigid_body->mass_inv);
+    moment_acceleration    = V2AddV2(moment_acceleration, c->rigid_body_gravity);
+    moment_acceleration    = V2MultF32(moment_acceleration, dt_s);
+    rigid_body->velocity = V2AddV2(rigid_body->velocity, moment_acceleration);
+    V2 moment_velocity = V2MultF32(rigid_body->velocity, dt_s);
+    rigid_body->collider->center = V2AddV2(rigid_body->collider->center, moment_velocity);
     rigid_body->collider->angle_rad += rigid_body->angular_velocity * dt_s;
 
     MEMORY_ZERO_STRUCT(&rigid_body->force);
@@ -355,12 +354,10 @@ static void Physics2RigidBodyResolver(Collision2* collisions, U32 collisions_siz
     pen_ratio /= a_rigid_body->mass_inv + b_rigid_body->mass_inv;
     F32 a_pen = a_rigid_body->mass_inv * pen_ratio;
     F32 b_pen = b_rigid_body->mass_inv * pen_ratio;
-    V2 a_separation;
-    V2MultF32(&a_separation, &manifold->normal, a_pen);
-    V2AddV2(&a->center, &a->center, &a_separation);
-    V2 b_separation;
-    V2MultF32(&b_separation, &manifold->normal, b_pen);
-    V2SubV2(&b->center, &b->center, &b_separation);
+    V2 a_separation = V2MultF32(manifold->normal, a_pen);
+    a->center       = V2AddV2(a->center, a_separation);
+    V2 b_separation = V2MultF32(manifold->normal, b_pen);
+    b->center       = V2SubV2(b->center, b_separation);
 
     // TODO: cases where there is a manifold but no contact points?
 
@@ -370,25 +367,23 @@ static void Physics2RigidBodyResolver(Collision2* collisions, U32 collisions_siz
     for (U32 i = 0; i < manifold->contact_points_size; i++) {
       j[i] = 0;
 
-      V2SubV2(&ra[i], &manifold->contact_points[i], &a->center);
-      V2SubV2(&rb[i], &manifold->contact_points[i], &b->center);
+      ra[i] = V2SubV2(manifold->contact_points[i], a->center);
+      rb[i] = V2SubV2(manifold->contact_points[i], b->center);
       ra_perp[i] = (V2) { -ra[i].y, +ra[i].x };
       rb_perp[i] = (V2) { -rb[i].y, +rb[i].x };
 
-      V2 a_angular_linear_velocity, b_angular_linear_velocity;
-      V2MultF32(&a_angular_linear_velocity, &ra_perp[i], a_rigid_body->angular_velocity);
-      V2MultF32(&b_angular_linear_velocity, &rb_perp[i], b_rigid_body->angular_velocity);
+      V2 a_angular_linear_velocity = V2MultF32(ra_perp[i], a_rigid_body->angular_velocity);
+      V2 b_angular_linear_velocity = V2MultF32(rb_perp[i], b_rigid_body->angular_velocity);
 
-      V2 a_total_velocity, b_total_velocity, relative_velocity;
-      V2AddV2(&a_total_velocity, &a_rigid_body->velocity, &a_angular_linear_velocity);
-      V2AddV2(&b_total_velocity, &b_rigid_body->velocity, &b_angular_linear_velocity);
-      V2SubV2(&relative_velocity, &a_total_velocity, &b_total_velocity);
+      V2 a_total_velocity  = V2AddV2(a_rigid_body->velocity, a_angular_linear_velocity);
+      V2 b_total_velocity  = V2AddV2(b_rigid_body->velocity, b_angular_linear_velocity);
+      V2 relative_velocity = V2SubV2(a_total_velocity, b_total_velocity);
 
-      F32 separating_velocity = V2DotV2(&relative_velocity, &manifold->normal);
+      F32 separating_velocity = V2DotV2(relative_velocity, manifold->normal);
       if (separating_velocity > 0) { continue; }
 
-      F32 ra_perp_dot_i_norm = V2DotV2(&ra_perp[i], &manifold->normal);
-      F32 rb_perp_dot_i_norm = V2DotV2(&rb_perp[i], &manifold->normal);
+      F32 ra_perp_dot_i_norm = V2DotV2(ra_perp[i], manifold->normal);
+      F32 rb_perp_dot_i_norm = V2DotV2(rb_perp[i], manifold->normal);
       F32 e = a_rigid_body->restitution * b_rigid_body->restitution;
       F32 j_num   = -(1.0f + e) * separating_velocity;
       F32 j_denom = (a_rigid_body->mass_inv + b_rigid_body->mass_inv);
@@ -405,19 +400,15 @@ static void Physics2RigidBodyResolver(Collision2* collisions, U32 collisions_siz
     // NOTE: apply impulse
     // this is done separately from determination as subsequent impulse calculations are dependent on prior velocity values.
     for (U32 i = 0; i < manifold->contact_points_size; i++) {
-      V2 impulse;
-      V2MultF32(&impulse, &manifold->normal, j[i]);
+      V2 impulse = V2MultF32(manifold->normal, j[i]);
+      V2 a_dv                = V2MultF32(impulse, a_rigid_body->mass_inv);
 
-      V2 a_dv;
-      V2MultF32(&a_dv, &impulse, a_rigid_body->mass_inv);
-      V2AddV2(&a_rigid_body->velocity, &a_rigid_body->velocity, &a_dv);
+      a_rigid_body->velocity = V2AddV2(a_rigid_body->velocity, a_dv);
+      V2 b_dv                = V2MultF32(impulse, b_rigid_body->mass_inv);
+      b_rigid_body->velocity = V2SubV2(b_rigid_body->velocity, b_dv);
 
-      V2 b_dv;
-      V2MultF32(&b_dv, &impulse, b_rigid_body->mass_inv);
-      V2SubV2(&b_rigid_body->velocity, &b_rigid_body->velocity, &b_dv);
-
-      a_rigid_body->angular_velocity += V2CrossV2(&ra[i], &impulse) * a_rigid_body->moment_inertia_inv * !a_rigid_body->fix_angle;
-      b_rigid_body->angular_velocity -= V2CrossV2(&rb[i], &impulse) * b_rigid_body->moment_inertia_inv * !b_rigid_body->fix_angle;
+      a_rigid_body->angular_velocity += V2CrossV2(ra[i], impulse) * a_rigid_body->moment_inertia_inv * !a_rigid_body->fix_angle;
+      b_rigid_body->angular_velocity -= V2CrossV2(rb[i], impulse) * b_rigid_body->moment_inertia_inv * !b_rigid_body->fix_angle;
     }
 
     // NOTE: determine tangent / friction impulse
@@ -428,48 +419,43 @@ static void Physics2RigidBodyResolver(Collision2* collisions, U32 collisions_siz
     for (U32 i = 0; i < manifold->contact_points_size; i++) {
       friction_impulse[i] = (V2) { 0, 0 };
 
-      V2 a_angular_linear_velocity, b_angular_linear_velocity;
-      V2MultF32(&a_angular_linear_velocity, &ra_perp[i], a_rigid_body->angular_velocity);
-      V2MultF32(&b_angular_linear_velocity, &rb_perp[i], b_rigid_body->angular_velocity);
+      V2 a_angular_linear_velocity = V2MultF32(ra_perp[i], a_rigid_body->angular_velocity);
+      V2 b_angular_linear_velocity = V2MultF32(rb_perp[i], b_rigid_body->angular_velocity);
 
-      V2 a_total_velocity, b_total_velocity, relative_velocity;
-      V2AddV2(&a_total_velocity, &a_rigid_body->velocity, &a_angular_linear_velocity);
-      V2AddV2(&b_total_velocity, &b_rigid_body->velocity, &b_angular_linear_velocity);
-      V2SubV2(&relative_velocity, &a_total_velocity, &b_total_velocity);
+      V2 a_total_velocity  = V2AddV2(a_rigid_body->velocity, a_angular_linear_velocity);
+      V2 b_total_velocity  = V2AddV2(b_rigid_body->velocity, b_angular_linear_velocity);
+      V2 relative_velocity = V2SubV2(a_total_velocity, b_total_velocity);
 
-      V2 tangent;
-      V2MultF32(&tangent, &manifold->normal, V2DotV2(&relative_velocity, &manifold->normal));
-      V2SubV2(&tangent, &relative_velocity, &tangent);
-      if (V2LengthSq(&tangent) < 0.0005) { continue; }
-      V2Normalize(&tangent, &tangent);
+      V2 tangent = V2MultF32(manifold->normal, V2DotV2(relative_velocity, manifold->normal));
+      tangent    = V2SubV2(relative_velocity, tangent);
+      if (V2LengthSq(tangent) < 0.0005) { continue; }
+      tangent = V2Normalize(tangent);
 
-      F32 ra_perp_dot_tan = V2DotV2(&ra_perp[i], &tangent);
-      F32 rb_perp_dot_tan = V2DotV2(&rb_perp[i], &tangent);
-      F32 jt_num = -V2DotV2(&relative_velocity, &tangent);
+      F32 ra_perp_dot_tan = V2DotV2(ra_perp[i], tangent);
+      F32 rb_perp_dot_tan = V2DotV2(rb_perp[i], tangent);
+      F32 jt_num = -V2DotV2(relative_velocity, tangent);
       F32 jt_denom = a_rigid_body->mass_inv + b_rigid_body->mass_inv;
       jt_denom += (ra_perp_dot_tan * ra_perp_dot_tan) * a_rigid_body->moment_inertia_inv;
       jt_denom += (rb_perp_dot_tan * rb_perp_dot_tan) * b_rigid_body->moment_inertia_inv;
       jt_denom *= manifold->contact_points_size;
       F32 jt = jt_num / jt_denom;
 
-      if (F32Abs(jt) <= j[i] * static_friction) { V2MultF32(&friction_impulse[i], &tangent, jt); }
-      else { V2MultF32(&friction_impulse[i], &tangent, -j[i] * dynamic_friction); }
+      if (F32Abs(jt) <= j[i] * static_friction) { friction_impulse[i] = V2MultF32(tangent, jt);                       }
+      else                                      { friction_impulse[i] = V2MultF32(tangent, -j[i] * dynamic_friction); }
     }
 
     // NOTE: apply tangent / friction impulse
     for (U32 i = 0; i < manifold->contact_points_size; i++) {
-      V2* impulse = &friction_impulse[i];
+      V2 impulse = friction_impulse[i];
 
-      V2 a_dv;
-      V2MultF32(&a_dv, impulse, a_rigid_body->mass_inv);
-      V2AddV2(&a_rigid_body->velocity, &a_rigid_body->velocity, &a_dv);
+      V2 a_dv                = V2MultF32(impulse, a_rigid_body->mass_inv);
+      a_rigid_body->velocity = V2AddV2(a_rigid_body->velocity, a_dv);
 
-      V2 b_dv;
-      V2MultF32(&b_dv, impulse, b_rigid_body->mass_inv);
-      V2SubV2(&b_rigid_body->velocity, &b_rigid_body->velocity, &b_dv);
+      V2 b_dv                = V2MultF32(impulse, b_rigid_body->mass_inv);
+      b_rigid_body->velocity = V2SubV2(b_rigid_body->velocity, b_dv);
 
-      a_rigid_body->angular_velocity += V2CrossV2(&ra[i], impulse) * a_rigid_body->moment_inertia_inv * !a_rigid_body->fix_angle;
-      b_rigid_body->angular_velocity -= V2CrossV2(&rb[i], impulse) * b_rigid_body->moment_inertia_inv * !b_rigid_body->fix_angle;
+      a_rigid_body->angular_velocity += V2CrossV2(ra[i], impulse) * a_rigid_body->moment_inertia_inv * !a_rigid_body->fix_angle;
+      b_rigid_body->angular_velocity -= V2CrossV2(rb[i], impulse) * b_rigid_body->moment_inertia_inv * !b_rigid_body->fix_angle;
     }
 
     // NOTE: Update object position across known collisions
@@ -477,14 +463,14 @@ static void Physics2RigidBodyResolver(Collision2* collisions, U32 collisions_siz
     for (U32 j = 0; j < collisions_size; j++) {
       Collision2* test = &collisions[j];
       if (test->a == a) {
-        test->manifold.penetration -= V2DotV2(&test->manifold.normal, &a_separation);
+        test->manifold.penetration -= V2DotV2(test->manifold.normal, a_separation);
       } else if (test->a == b) {
-        test->manifold.penetration += V2DotV2(&test->manifold.normal, &b_separation);
+        test->manifold.penetration += V2DotV2(test->manifold.normal, b_separation);
       }
       if (test->b == a) {
-        test->manifold.penetration += V2DotV2(&test->manifold.normal, &a_separation);
+        test->manifold.penetration += V2DotV2(test->manifold.normal, a_separation);
       } else if (test->b == b) {
-        test->manifold.penetration -= V2DotV2(&test->manifold.normal, &b_separation);
+        test->manifold.penetration -= V2DotV2(test->manifold.normal, b_separation);
       }
     }
   }
@@ -550,7 +536,7 @@ void Physics2Update(F32 dt_s) {
                 break;
               } else if (a_subtype->type == resolver->type_b && b_subtype->type == resolver->type_a) {
                 SWAP(Collider2*, collision.a, collision.b);
-                V2Negate(&collision.manifold.normal, &collision.manifold.normal);
+                collision.manifold.normal = V2Negate(collision.manifold.normal);
                 DA_PUSH_BACK_EX(resolver->collisions_arena, resolver->collisions, resolver->collisions_size, resolver->collisions_capacity, collision);
                 break;
               }
@@ -609,7 +595,7 @@ Collider2* Physics2RegisterColliderRect(V2 center, V2 size) {
   collider->type = Collider2Type_Rect;
   collider->rect.center = center;
   collider->rect.size = size;
-  Obb2GetEnclosingCircle2(&center, &size, 0, &collider->broad_circle_radius);
+  Obb2GetEnclosingCircle2(center, size, 0, &collider->broad_circle_radius);
   return collider;
 }
 
@@ -624,9 +610,8 @@ Collider2* Physics2RegisterColliderConvexHull(V2* points, U32 points_size) {
   MEMORY_COPY_ARRAY(collider->convex_hull.points_world, points, points_size);
   collider->convex_hull.points_size = points_size;
   ConvexHull2GetEnclosingCircle2(points, points_size, &collider->convex_hull.center, &collider->broad_circle_radius);
-  V2 neg_center;
-  V2Negate(&neg_center, &collider->convex_hull.center);
-  ConvexHull2Offset(collider->convex_hull.points_local, collider->convex_hull.points_size, &neg_center);
+  V2 neg_center = V2Negate(collider->convex_hull.center);
+  ConvexHull2Offset(collider->convex_hull.points_local, collider->convex_hull.points_size, neg_center);
   return collider;
 }
 

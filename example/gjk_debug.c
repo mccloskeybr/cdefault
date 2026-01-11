@@ -7,7 +7,7 @@
 #define GJK_OFFSET (V3){0, -2, -15}
 
 void DrawPoint(V3 pos, V3 offset, V3 color, B32 wireframe) {
-  V3AddV3(&pos, &pos, &offset);
+  pos = V3AddV3(pos, offset);
   DrawSphereV(pos, V4_QUAT_IDENT, 0.05f, color);
   if (wireframe) {
     RendererEnableWireframe();
@@ -17,13 +17,13 @@ void DrawPoint(V3 pos, V3 offset, V3 color, B32 wireframe) {
 }
 
 void DrawLine(V3 start, V3 end, V3 offset, V3 color) {
-  V3AddV3(&start, &start, &offset);
-  V3AddV3(&end, &end, &offset);
+  start = V3AddV3(start, offset);
+  end   = V3AddV3(end, offset);
   DrawLine3V(start, end, color);
 }
 
 void DrawObj(U32 handle, V3 center, V3 offset, V3 color, B32 wireframe) {
-  V3AddV3(&center, &center, &offset);
+  center = V3AddV3(center, offset);
   DrawModelColorV(handle, center, V4_QUAT_IDENT, V3_ONES, color);
   if (wireframe) {
     RendererEnableWireframe();
@@ -89,18 +89,17 @@ int main(void) {
     }
 
     // NOTE: update points
-    for (U32 i = 0; i < a_points_size; i++) { V3AddV3(&a_points[i], &a_obj.meshes->points[i], &a_center); }
-    for (U32 i = 0; i < b_points_size; i++) { V3AddV3(&b_points[i], &b_obj.meshes->points[i], &b_center); }
+    for (U32 i = 0; i < a_points_size; i++) { a_points[i] = V3AddV3(a_obj.meshes->points[i], a_center); }
+    for (U32 i = 0; i < b_points_size; i++) { b_points[i] = V3AddV3(b_obj.meshes->points[i], b_center); }
     for (U32 i = 0; i < a_points_size; i++) {
       for (U32 j = 0; j < b_points_size; j++) {
-        V3SubV3(&minkowski_diff_points[(i * b_points_size) + j], &a_points[i], &b_points[j]);
+        minkowski_diff_points[(i * b_points_size) + j] = V3SubV3(a_points[i], b_points[j]);
       }
     }
 
     IntersectManifold3 manifold;
     if (ConvexHull3IntersectConvexHull3(a_points, a_points_size, b_points, b_points_size, &manifold)) {
-      V3 manifold_end;
-      V3MultF32(&manifold_end, &manifold.normal, manifold.penetration);
+      V3 manifold_end = V3MultF32(manifold.normal, manifold.penetration);
       DrawLine(V3_ZEROES, manifold_end, GJK_OFFSET, V3_BLUE);
     }
 

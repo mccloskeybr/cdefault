@@ -31,8 +31,8 @@ int main(void) {
 
   Camera* camera = RendererCamera3D();
   camera->pos = V3Assign(0, 20, 50);
-  // V3SubV3(&camera->look_dir, &V3_ZEROES, &camera->pos);
-  V3Normalize(&camera->look_dir, &camera->look_dir);
+  // camera->look_dir = V3SubV3(V3_ZEROES, camera->pos);
+  camera->look_dir = V3Normalize(camera->look_dir);
 
   Collider3* ground = Physics3RegisterColliderRect(V3_ZEROES, GROUND_SIZE);
   Physics3RegisterRigidBodyStatic(ground);

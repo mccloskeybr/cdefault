@@ -207,11 +207,11 @@ static Collider3* Collider3Allocate() {
 static void Collider3ConvexHullUpdateWorldPoints(Collider3* collider) {
   DEBUG_ASSERT(collider->type == Collider3Type_ConvexHull);
   MEMORY_COPY_ARRAY(collider->convex_hull.points_world, collider->convex_hull.points_local, collider->convex_hull.points_size);
-  ConvexHull3Offset(collider->convex_hull.points_world, collider->convex_hull.points_size, &collider->convex_hull.center);
+  ConvexHull3Offset(collider->convex_hull.points_world, collider->convex_hull.points_size, collider->convex_hull.center);
 }
 
 static B32 Collider3IntersectBroad(Collider3* a, Collider3* b, IntersectManifold3* manifold) {
-  return Sphere3IntersectSphere3(&a->center, a->broad_sphere_radius, &b->center, b->broad_sphere_radius, manifold);
+  return Sphere3IntersectSphere3(a->center, a->broad_sphere_radius, b->center, b->broad_sphere_radius, manifold);
 }
 
 static B32 Collider3IntersectNarrow(Collider3* a, Collider3* b, IntersectManifold3* manifold) {
@@ -219,11 +219,11 @@ static B32 Collider3IntersectNarrow(Collider3* a, Collider3* b, IntersectManifol
     case Collider3Type_Sphere: {
       switch (b->type) {
         case Collider3Type_Sphere: {
-          return Sphere3IntersectSphere3(&a->sphere.center, a->sphere.radius, &b->sphere.center, b->sphere.radius, manifold);
+          return Sphere3IntersectSphere3(a->sphere.center, a->sphere.radius, b->sphere.center, b->sphere.radius, manifold);
         } break;
         case Collider3Type_ConvexHull: {
           Collider3ConvexHullUpdateWorldPoints(b);
-          B32 result = Sphere3IntersectConvexHull3(&a->sphere.center, a->sphere.radius, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
+          B32 result = Sphere3IntersectConvexHull3(a->sphere.center, a->sphere.radius, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
           return result;
         }
       }
@@ -232,7 +232,7 @@ static B32 Collider3IntersectNarrow(Collider3* a, Collider3* b, IntersectManifol
       Collider3ConvexHullUpdateWorldPoints(a);
       switch (b->type) {
         case Collider3Type_Sphere: {
-          return ConvexHull3IntersectSphere3(a->convex_hull.points_world, a->convex_hull.points_size, &b->sphere.center, b->sphere.radius, manifold);
+          return ConvexHull3IntersectSphere3(a->convex_hull.points_world, a->convex_hull.points_size, b->sphere.center, b->sphere.radius, manifold);
         } break;
         case Collider3Type_ConvexHull: {
           Collider3ConvexHullUpdateWorldPoints(b);
@@ -272,13 +272,12 @@ static void Physics3RigidBodyUpdate(F32 dt_s) {
     RigidBody3* rigid_body = &rigid_body_internal->rigid_body;
     if (rigid_body->type != RigidBody3Type_Dynamic) { continue; }
 
-    V3 moment_acceleration, moment_velocity;
-    V3MultF32(&moment_acceleration, &rigid_body->force, rigid_body->mass_inv);
-    V3AddV3(&moment_acceleration, &moment_acceleration, &c->rigid_body_gravity);
-    V3MultF32(&moment_acceleration, &moment_acceleration, dt_s);
-    V3AddV3(&rigid_body->velocity, &rigid_body->velocity, &moment_acceleration);
-    V3MultF32(&moment_velocity, &rigid_body->velocity, dt_s);
-    V3AddV3(&rigid_body->collider->center, &rigid_body->collider->center, &moment_velocity);
+    V3 moment_acceleration = V3MultF32(rigid_body->force, rigid_body->mass_inv);
+    moment_acceleration = V3AddV3(moment_acceleration, c->rigid_body_gravity);
+    moment_acceleration = V3MultF32(moment_acceleration, dt_s);
+    rigid_body->velocity = V3AddV3(rigid_body->velocity, moment_acceleration);
+    V3 moment_velocity = V3MultF32(rigid_body->velocity, dt_s);
+    rigid_body->collider->center = V3AddV3(rigid_body->collider->center, moment_velocity);
 
     MEMORY_ZERO_STRUCT(&rigid_body->force);
   }
@@ -327,20 +326,19 @@ static void Physics3RigidBodyResolver(Collision3* collisions, U32 collisions_siz
       V3 a_separation = V3_ZEROES;
       if (a_rigid_body->type == RigidBody3Type_Dynamic) {
         F32 a_pen = a_rigid_body->mass_inv * pen_ratio;
-        V3MultF32(&a_separation, &manifold->normal, a_pen);
-        V3AddV3(&a->center, &a->center, &a_separation);
+        a_separation = V3MultF32(manifold->normal, a_pen);
+        a->center = V3AddV3(a->center, a_separation);
       }
       V3 b_separation = V3_ZEROES;
       if (b_rigid_body->type == RigidBody3Type_Dynamic) {
         F32 b_pen = b_rigid_body->mass_inv * pen_ratio;
-        V3MultF32(&b_separation, &manifold->normal, b_pen);
-        V3SubV3(&b->center, &b->center, &b_separation);
+        b_separation = V3MultF32(manifold->normal, b_pen);
+        b->center = V3SubV3(b->center, b_separation);
       }
 
       // NOTE: determine impulse
-      V3 relative_velocity;
-      V3SubV3(&relative_velocity, &a_rigid_body->velocity, &b_rigid_body->velocity);
-      F32 separating_velocity = V3DotV3(&relative_velocity, &manifold->normal);
+      V3 relative_velocity = V3SubV3(a_rigid_body->velocity, b_rigid_body->velocity);
+      F32 separating_velocity = V3DotV3(relative_velocity, manifold->normal);
       if (separating_velocity > 0) {
         // NOTE: remove from collisions, otherwise future iters will repeat the separation step
         DA_SWAP_REMOVE_EX(collisions, collisions_size, max_idx);
@@ -351,51 +349,46 @@ static void Physics3RigidBodyResolver(Collision3* collisions, U32 collisions_siz
       F32 j_denom = (a_rigid_body->mass_inv + b_rigid_body->mass_inv);
       DEBUG_ASSERT(j_denom != 0);
       F32 j = j_num / j_denom;
-      V3 impulse;
-      V3MultF32(&impulse, &manifold->normal, j);
+      V3 impulse = V3MultF32(manifold->normal, j);
 
       // NOTE: determine tangent / friction impulse
-      V3 tangent;
-      V3MultF32(&tangent, &manifold->normal, separating_velocity);
-      V3SubV3(&tangent, &relative_velocity, &tangent);
-      if (V3LengthSq(&tangent) > 0) { V3Normalize(&tangent, &tangent); }
-      F32 jt_num   = -1.0f * V3DotV3(&relative_velocity, &tangent);
+      V3 tangent = V3SubV3(relative_velocity, V3MultF32(manifold->normal, separating_velocity));
+      if (V3LengthSq(tangent) > 0) { tangent = V3Normalize(tangent); }
+      F32 jt_num   = -1.0f * V3DotV3(relative_velocity, tangent);
       F32 jt_denom = a_rigid_body->mass_inv + b_rigid_body->mass_inv;
       DEBUG_ASSERT(jt_denom != 0);
       F32 jt = jt_num / jt_denom;
       V2 static_friction  = V2Assign(a_rigid_body->static_friction, b_rigid_body->static_friction);
       V2 dynamic_friction = V2Assign(a_rigid_body->dynamic_friction, b_rigid_body->dynamic_friction);
-      F32 mu_static       = V2Length(&static_friction);
-      F32 mu_dynamic      = V2Length(&dynamic_friction);
+      F32 mu_static       = V2Length(static_friction);
+      F32 mu_dynamic      = V2Length(dynamic_friction);
       V3 friction_impulse;
-      if (F32Abs(jt) <= j * mu_static) { V3MultF32(&friction_impulse, &tangent, jt);              }
-      else                             { V3MultF32(&friction_impulse, &tangent, -j * mu_dynamic); }
-      V3AddV3(&impulse, &impulse, &friction_impulse);
+      if (F32Abs(jt) <= j * mu_static) { friction_impulse = V3MultF32(tangent, jt);              }
+      else                             { friction_impulse = V3MultF32(tangent, -j * mu_dynamic); }
+      impulse = V3AddV3(impulse, friction_impulse);
 
       // NOTE: apply impulse
       if (a_rigid_body->type == RigidBody3Type_Dynamic) {
-        V3 a_dv;
-        V3MultF32(&a_dv, &impulse, a_rigid_body->mass_inv);
-        V3AddV3(&a_rigid_body->velocity, &a_rigid_body->velocity, &a_dv);
+        V3 a_dv = V3MultF32(impulse, a_rigid_body->mass_inv);
+        a_rigid_body->velocity = V3AddV3(a_rigid_body->velocity, a_dv);
       }
       if (b_rigid_body->type == RigidBody3Type_Dynamic) {
-        V3 b_dv;
-        V3MultF32(&b_dv, &impulse, b_rigid_body->mass_inv);
-        V3SubV3(&b_rigid_body->velocity, &b_rigid_body->velocity, &b_dv);
+        V3 b_dv = V3MultF32(impulse, b_rigid_body->mass_inv);
+        b_rigid_body->velocity = V3SubV3(b_rigid_body->velocity, b_dv);
       }
 
       // NOTE: Update collisions
       for (U32 k = 0; k < collisions_size; k++) {
         Collision3* test = &collisions[k];
         if (test->a == a) {
-          test->manifold.penetration -= V3DotV3(&test->manifold.normal, &a_separation);
+          test->manifold.penetration -= V3DotV3(test->manifold.normal, a_separation);
         } else if (test->a == b) {
-          test->manifold.penetration += V3DotV3(&test->manifold.normal, &b_separation);
+          test->manifold.penetration += V3DotV3(test->manifold.normal, b_separation);
         }
         if (test->b == a) {
-          test->manifold.penetration += V3DotV3(&test->manifold.normal, &a_separation);
+          test->manifold.penetration += V3DotV3(test->manifold.normal, a_separation);
         } else if (test->b == b) {
-          test->manifold.penetration -= V3DotV3(&test->manifold.normal, &b_separation);
+          test->manifold.penetration -= V3DotV3(test->manifold.normal, b_separation);
         }
       }
     }
@@ -463,7 +456,7 @@ void Physics3Update(F32 dt_s) {
                 break;
               } else if (a_subtype->type == resolver->type_b && b_subtype->type == resolver->type_a) {
                 SWAP(Collider3*, collision.a, collision.b);
-                V3Negate(&collision.manifold.normal, &collision.manifold.normal);
+                collision.manifold.normal = V3Negate(collision.manifold.normal);
                 DA_PUSH_BACK_EX(resolver->collisions_arena, resolver->collisions, resolver->collisions_size, resolver->collisions_capacity, collision);
                 break;
               }
@@ -518,7 +511,7 @@ Collider3* Physics3RegisterColliderSphere(V3 center, F32 radius) {
 Collider3* Physics3RegisterColliderRect(V3 center, V3 size) {
   DEBUG_ASSERT(size.x > 0 && size.y > 0);
   V3 rect_points[8];
-  ConvexHull3FromAabb3(rect_points, NULL, &center, &size);
+  ConvexHull3FromAabb3(rect_points, NULL, center, size);
   return Physics3RegisterColliderConvexHull(rect_points, 8);
 }
 
@@ -533,9 +526,8 @@ Collider3* Physics3RegisterColliderConvexHull(V3* points, U32 points_size) {
   MEMORY_COPY_ARRAY(collider->convex_hull.points_world, points, points_size);
   collider->convex_hull.points_size = points_size;
   ConvexHull3GetEnclosingSphere3(points, points_size, &collider->convex_hull.center, &collider->broad_sphere_radius);
-  V3 neg_center;
-  V3Negate(&neg_center, &collider->convex_hull.center);
-  ConvexHull3Offset(collider->convex_hull.points_local, collider->convex_hull.points_size, &neg_center);
+  V3 neg_center = V3Negate(collider->convex_hull.center);
+  ConvexHull3Offset(collider->convex_hull.points_local, collider->convex_hull.points_size, neg_center);
   return collider;
 }
 

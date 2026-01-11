@@ -477,12 +477,12 @@ static void UiWidgetUpdateAnimation(UiWidget* widget) {
     widget->is_animating   = false;
     widget->animation_lock = false;
   } else {
-    V3Lerp(&widget->color, &widget->color, &widget->target_color, widget->anim_time / anim_max_time);
+    widget->color = V3Lerp(widget->color, widget->target_color, widget->anim_time / anim_max_time);
   }
 }
 
 static void UiWidgetAnimateTo(UiWidget* widget, V3 color, B32 lock) {
-  if (widget->animation_lock || V3Eq(&widget->target_color, &color)) { return; }
+  if (widget->animation_lock || V3Eq(widget->target_color, color)) { return; }
   widget->target_color = color;
   widget->anim_time = 0;
   widget->is_animating = true;
@@ -800,7 +800,6 @@ static void UiMaybeUpdateHot(UiWidget* widget, UiWidget** active_window, UiWidge
   min.y -= widget->size.y;
   max.x += widget->size.x;
   if (min.x <= m.x && m.x <= max.x && min.y <= m.y && m.y <= max.y) {
-    widget->hovered = true;
     c->deepest_hover_id = widget->id;
     for (UiWidget* child = widget->children_head; child != NULL; child = child->sibling_next) {
       UiMaybeUpdateHot(child, active_window, deepest_scrollable);
@@ -856,7 +855,7 @@ static void UiEnqueueDrawCommands(UiWidget* widget, UiDrawCommand** head, UiDraw
     command->rect.color    = widget->color;
     if (widget->options & UiWidgetOptions_RenderBorder) {
       V2 border_size = V2Assign(c->style.border_size * 2, c->style.border_size * 2);
-      V2SubV2(&command->rect.size, &command->rect.size, &border_size);
+      command->rect.size = V2SubV2(command->rect.size, border_size);
     }
   }
 
@@ -981,13 +980,13 @@ void UiDeinit() {
 
 void UiSetPointerState(V2 mouse_pos, F32 mouse_scroll, B32 is_lmb_down, B32 is_rmb_down) {
   UiContext* c = UiGetContext();
-  V2SubV2(&c->mouse_d_pos, &mouse_pos, &c->mouse_pos);
-  c->mouse_pos = mouse_pos;
+  c->mouse_d_pos  = V2SubV2(mouse_pos, c->mouse_pos);
+  c->mouse_pos    = mouse_pos;
   c->mouse_scroll = mouse_scroll;
   c->is_lmb_just_pressed = !c->is_lmb_down && is_lmb_down;
   c->is_rmb_just_pressed = !c->is_rmb_down && is_rmb_down;
-  c->is_lmb_down = is_lmb_down;
-  c->is_rmb_down = is_rmb_down;
+  c->is_lmb_down  = is_lmb_down;
+  c->is_rmb_down  = is_rmb_down;
 }
 
 void UiSetFontUserData(void* user_data) {
@@ -1032,6 +1031,7 @@ UiDrawCommand* UiEnd() {
   UiWidget* windows[UI_WIDGET_MAX_NUM_CHILDREN];
   U32 windows_size = 0;
   for (UiWidget* window = c->root->children_head; window != NULL; window = window->sibling_next) {
+    DEBUG_ASSERT(windows_size < STATIC_ARRAY_SIZE(windows));
     windows[windows_size++] = window;
   }
   SORT(UiWidget*, windows, windows_size, UiWidgetComparePriorityAsc);
@@ -1061,6 +1061,13 @@ UiDrawCommand* UiEnd() {
     // NOTE: since windows are sorted by priority, clobbering ensures that only the highest prio window wins here.
     if (current_hot_root_widget != NULL)    { hot_root_widget = current_hot_root_widget;       }
     if (current_deepest_scrollable != NULL) { deepest_scrollable = current_deepest_scrollable; }
+  }
+
+  // NOTE: propagate hover tag
+  if (c->deepest_hover_id != 0) {
+    for (UiWidget* widget = UiWidgetFind(c->root, c->deepest_hover_id); widget != NULL; widget = widget->parent) {
+      widget->hovered = true;
+    }
   }
 
   // NOTE: update active widget if just clicked
@@ -1125,7 +1132,7 @@ UiInteraction UiWindowFloatingBegin(U32 id, String8 title, V2 pos, V2 size, B32 
   UiContext* c = UiGetContext();
   UiInteraction result = UiWindowFixedBegin(id, title, pos, size, resizable);
   UiWidget* window = UiWidgetFind(c->root, id);
-  if (result.dragged) { V2AddV2(&window->pos, &window->pos, &c->mouse_d_pos); }
+  if (result.dragged) { window->pos = V2AddV2(window->pos, c->mouse_d_pos); }
   return result;
 }
 
@@ -1148,7 +1155,7 @@ void UiWindowEnd() {
     if (UiPopupBegin(popup_id, resize_pos, V2Assign(20, 20), false).dragged) {
       window->priority = S32_MAX;
       V2 d_size = V2Assign(c->mouse_d_pos.x, -c->mouse_d_pos.y);
-      V2AddV2(&size, &size, &d_size);
+      size = V2AddV2(size, d_size);
     }
     UiPopupEnd();
     UiWidget* popup = UiWidgetFind(c->root, popup_id);
@@ -1176,9 +1183,8 @@ void UiPopupEnd() {
   UiContext* c = UiGetContext();
   UiWidget* popup = c->current_widget;
   UiWidgetEnd();
-  UiWidget* parent = popup->parent;
   // NOTE: popups are windows, and windows should be children of the root widget
-  if (parent != c->root) {
+  if (popup->parent != c->root) {
     UiWidgetRemoveParent(popup);
     UiWidgetAddChild(c->root, popup);
   }
