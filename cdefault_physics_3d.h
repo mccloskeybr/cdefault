@@ -45,6 +45,7 @@ struct Collider3ConvexHull {
   V3* points_local; // NOTE: points in local space (centered around center).
 };
 
+// TODO: add undefined enum since these can be registered without being initialized?
 typedef enum Collider3Type Collider3Type;
 enum Collider3Type {
   Collider3Type_Sphere,
@@ -74,6 +75,7 @@ struct Collider3 {
   Collider3SubtypeHeader* subtypes;
 };
 
+// TODO: add undefined enum since these can be registered without being initialized?
 typedef enum RigidBody3Type RigidBody3Type;
 enum RigidBody3Type {
   RigidBody3Type_Dynamic, // NOTE: Movable / influenced by external forces.

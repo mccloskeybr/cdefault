@@ -55,8 +55,7 @@ int main(void) {
       exit(0);
     }
 
-    V2 mouse_pos;
-    WindowGetMousePositionV(&mouse_pos);
+    V2 mouse_pos = WindowGetMousePositionV();
     aabb_center = mouse_pos;
 
     DrawCircleV(circle_center, circle_radius, V3_BLUE);
@@ -86,7 +85,7 @@ int main(void) {
     if (Aabb2IntersectObb2(aabb_center, aabb_size, obb_center, obb_size, obb_angle_rad, &manifold)) {
       DrawIntersectManifold(aabb_center, manifold, V3_GREEN);
     }
-    if (Aabb2IntersectTri2(aabb_center, aabb_size, tri_points, &manifold)) {
+    if (Aabb2IntersectTri2(aabb_center, aabb_size, tri_points, V2_ZEROES, &manifold)) {
       DrawIntersectManifold(aabb_center, manifold, V3_GREEN);
     }
     if (Aabb2IntersectLine2(aabb_center, aabb_size, line_start, line_end, &enter, &exit)) {
@@ -97,7 +96,7 @@ int main(void) {
       DrawCircleV(enter, 10, V3_GREEN);
       DrawRingV(exit, 10, 5, V3_RED);
     }
-    if (Aabb2IntersectConvexHull2(aabb_center, aabb_size, hull_points, STATIC_ARRAY_SIZE(hull_points), &manifold)) {
+    if (Aabb2IntersectConvexHull2(aabb_center, aabb_size, hull_points, STATIC_ARRAY_SIZE(hull_points), V2_ZEROES, &manifold)) {
       DrawIntersectManifold(aabb_center, manifold, V3_GREEN);
     }
 

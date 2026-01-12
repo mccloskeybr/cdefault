@@ -180,19 +180,19 @@ void Line2IntersectTri2Test() {
   // NOTE: simple through-triangle intersection
   line0 = V2Assign(-1, -1); line1 = V2Assign(6, 6);
   tri[0] = V2Assign(0, 0); tri[1] = V2Assign(5, 0); tri[2] = V2Assign(0, 5);
-  EXPECT_TRUE(Line2IntersectTri2(line0, line1, tri, &enter, &exit));
+  EXPECT_TRUE(Line2IntersectTri2(line0, line1, tri, V2_ZEROES, &enter, &exit));
   EXPECT_V2_APPROX_EQ(enter, V2Assign(0, 0));
   EXPECT_V2_APPROX_EQ(exit,  V2Assign(2.5f, 2.5f));
 
   // NOTE: line segment fully misses the triangle
   line0 = V2Assign(10, 10); line1 = V2Assign(20, 20);
   tri[0] = V2Assign(0, 0); tri[1] = V2Assign(5, 0); tri[2] = V2Assign(0, 5);
-  EXPECT_FALSE(Line2IntersectTri2(line0, line1, tri, &enter, &exit));
+  EXPECT_FALSE(Line2IntersectTri2(line0, line1, tri, V2_ZEROES, &enter, &exit));
 
   // NOTE: line segment touches exactly one vertex
   line0 = V2Assign(5, -5); line1 = V2Assign(5,  5);
   tri[0] = V2Assign(0, 0); tri[1] = V2Assign(5, 0); tri[2] = V2Assign(0, 5);
-  EXPECT_TRUE(Line2IntersectTri2(line0, line1, tri, &enter, &exit));
+  EXPECT_TRUE(Line2IntersectTri2(line0, line1, tri, V2_ZEROES, &enter, &exit));
   EXPECT_V2_APPROX_EQ(enter, V2Assign(5, 0));
   EXPECT_V2_APPROX_EQ(exit,  V2Assign(5, 0));
 
@@ -200,21 +200,21 @@ void Line2IntersectTri2Test() {
   // TODO: in this case we should probably capture the full edge, instead of just one point.
   line0 = V2Assign(2, 0); line1 = V2Assign(4, 0);
   tri[0] = V2Assign(0, 0); tri[1] = V2Assign(5, 0); tri[2] = V2Assign(0, 5);
-  EXPECT_TRUE(Line2IntersectTri2(line0, line1, tri, &enter, &exit));
+  EXPECT_TRUE(Line2IntersectTri2(line0, line1, tri, V2_ZEROES, &enter, &exit));
   EXPECT_V2_APPROX_EQ(enter, V2Assign(2, 0));
   EXPECT_V2_APPROX_EQ(exit,  V2Assign(2, 0));
 
   // NOTE: line enters triangle but exits outside segment range
   line0 = V2Assign(-1, 2); line1 = V2Assign( 1, 2);
   tri[0] = V2Assign(0, 0); tri[1] = V2Assign(4, 0); tri[2] = V2Assign(0, 4);
-  EXPECT_TRUE(Line2IntersectTri2(line0, line1, tri, &enter, &exit));
+  EXPECT_TRUE(Line2IntersectTri2(line0, line1, tri, V2_ZEROES, &enter, &exit));
   EXPECT_V2_APPROX_EQ(enter, V2Assign(0, 2));
   EXPECT_V2_APPROX_EQ(exit,  V2Assign(0, 2));
 
   // NOTE: segment lies completely inside the triangle
   line0 = V2Assign(1, 1); line1 = V2Assign(4, 4);
   tri[0] = V2Assign(0, 0); tri[1] = V2Assign(4, 0); tri[2] = V2Assign(0, 4);
-  EXPECT_TRUE(Line2IntersectTri2(line0, line1, tri, &enter, &exit));
+  EXPECT_TRUE(Line2IntersectTri2(line0, line1, tri, V2_ZEROES, &enter, &exit));
   EXPECT_V2_APPROX_EQ(enter, V2Assign(2, 2));
   EXPECT_V2_APPROX_EQ(exit,  V2Assign(2, 2));
 }
@@ -298,40 +298,40 @@ void Line2IntersectConvexHull2Test() {
   // NOTE: simple square hull crossing
   line0 = V2Assign(-1, -1); line1 = V2Assign( 6,  6);
   hull[0] = V2Assign(0, 0); hull[1] = V2Assign(5, 0); hull[2] = V2Assign(5, 5); hull[3] = V2Assign(0, 5);
-  EXPECT_TRUE(Line2IntersectConvexHull2(line0, line1, hull, 4, &enter, &exit));
+  EXPECT_TRUE(Line2IntersectConvexHull2(line0, line1, hull, 4, V2_ZEROES, &enter, &exit));
   EXPECT_V2_APPROX_EQ(enter, V2Assign(0, 0));
   EXPECT_V2_APPROX_EQ(exit,  V2Assign(5, 5));
 
   // NOTE: no intersection (segment entirely outside)
   line0 = V2Assign(10, 10); line1 = V2Assign(12, 12);
   hull[0] = V2Assign(0, 0); hull[1] = V2Assign(5, 0); hull[2] = V2Assign(5, 5); hull[3] = V2Assign(0, 5);
-  EXPECT_FALSE(Line2IntersectConvexHull2(line0, line1, hull, 4, &enter, &exit));
+  EXPECT_FALSE(Line2IntersectConvexHull2(line0, line1, hull, 4, V2_ZEROES, &enter, &exit));
 
   // NOTE: segment touches exactly one vertex
   line0 = V2Assign(5, 5); line1 = V2Assign(10, 5);
   hull[0] = V2Assign(0, 0); hull[1] = V2Assign(5, 0); hull[2] = V2Assign(5, 5); hull[3] = V2Assign(0, 5);
-  EXPECT_TRUE(Line2IntersectConvexHull2(line0, line1, hull, 4, &enter, &exit));
+  EXPECT_TRUE(Line2IntersectConvexHull2(line0, line1, hull, 4, V2_ZEROES, &enter, &exit));
   EXPECT_V2_APPROX_EQ(enter, V2Assign(5, 5));
   EXPECT_V2_APPROX_EQ(exit,  V2Assign(5, 5));
 
   // NOTE: line segment overlaps an edge
   line0 = V2Assign(1, 0); line1 = V2Assign(3, 0);
   hull[0] = V2Assign(0, 0); hull[1] = V2Assign(5, 0); hull[2] = V2Assign(5, 5); hull[3] = V2Assign(0, 5);
-  EXPECT_TRUE(Line2IntersectConvexHull2(line0, line1, hull, 4, &enter, &exit));
+  EXPECT_TRUE(Line2IntersectConvexHull2(line0, line1, hull, 4, V2_ZEROES, &enter, &exit));
   EXPECT_V2_APPROX_EQ(enter, V2Assign(1, 0));
   EXPECT_V2_APPROX_EQ(exit,  V2Assign(1, 0));
 
   // NOTE: pentagon hull — diagonal intersection
   line0 = V2Assign(-10, 0); line1 = V2Assign( 10, 0);
   hull[0] = V2Assign(-3, -1); hull[1] = V2Assign( 0, -3); hull[2] = V2Assign( 3, -1); hull[3] = V2Assign( 2,  3); hull[4] = V2Assign(-2,  3);
-  EXPECT_TRUE(Line2IntersectConvexHull2(line0, line1, hull, 5, &enter, &exit));
+  EXPECT_TRUE(Line2IntersectConvexHull2(line0, line1, hull, 5, V2_ZEROES, &enter, &exit));
   EXPECT_V2_APPROX_EQ(enter, V2Assign(-2.75f, 0));
   EXPECT_V2_APPROX_EQ(exit,  V2Assign( 2.75f, 0));
 
   // NOTE: infinite line intersects hull, but segment does not
   line0 = V2Assign(6, 1); line1 = V2Assign(7, 1);
   hull[0] = V2Assign(0, 0); hull[1] = V2Assign(5, 0); hull[2] = V2Assign(5, 5); hull[3] = V2Assign(0, 5);
-  EXPECT_FALSE(Line2IntersectConvexHull2(line0, line1, hull, 4, &enter, &exit));
+  EXPECT_FALSE(Line2IntersectConvexHull2(line0, line1, hull, 4, V2_ZEROES, &enter, &exit));
 }
 
 void Ray2EqTest() {
@@ -427,13 +427,13 @@ void Ray2IntersectTri2Test() {
   tri[1] = V2Assign(5, 0);
   tri[2] = V2Assign(0, 5);
   r0 = V2Assign(-5, -5); rd = V2Normalize(V2Assign(1, 1));
-  EXPECT_TRUE(Ray2IntersectTri2(r0, rd, tri, &enter, &exit));
+  EXPECT_TRUE(Ray2IntersectTri2(r0, rd, tri, V2_ZEROES, &enter, &exit));
   EXPECT_V2_APPROX_EQ(enter, V2Assign(0, 0));   // triangle centroid hit
   EXPECT_V2_APPROX_EQ(exit,  V2Assign(2.5f, 2.5f));
 
   // NOTE: miss triangle
   r0 = V2Assign(10, 10); rd = V2Assign(1, 0);
-  EXPECT_FALSE(Ray2IntersectTri2(r0, rd, tri, &enter, &exit));
+  EXPECT_FALSE(Ray2IntersectTri2(r0, rd, tri, V2_ZEROES, &enter, &exit));
 }
 
 void Ray2IntersectAabb2Test() {
@@ -496,13 +496,13 @@ void Ray2IntersectConvexHull2Test() {
 
   // NOTE: hit square
   r0 = V2Assign(-5, 0); rd = V2Assign(1, 0);
-  EXPECT_TRUE(Ray2IntersectConvexHull2(r0, rd, hull, 4, &enter, &exit));
+  EXPECT_TRUE(Ray2IntersectConvexHull2(r0, rd, hull, 4, V2_ZEROES, &enter, &exit));
   EXPECT_V2_APPROX_EQ(enter, V2Assign(-1, 0));
   EXPECT_V2_APPROX_EQ(exit,  V2Assign( 1, 0));
 
   // NOTE: miss
   r0 = V2Assign(-5, 5); rd = V2Normalize(V2Assign(1, 1));
-  EXPECT_FALSE(Ray2IntersectConvexHull2(r0, rd, hull, 4, &enter, &exit));
+  EXPECT_FALSE(Ray2IntersectConvexHull2(r0, rd, hull, 4, V2_ZEROES, &enter, &exit));
 }
 
 void Tri2EqTest() {
@@ -556,23 +556,23 @@ void Tri2QueryTest() {
   EXPECT_V2_APPROX_EQ(center, V2Assign(4.0f/3.0f, 4.0f/3.0f));
 
   V2 c; F32 r;
-  Tri2GetEnclosingCircle2(tri, &c, &r);
+  Tri2GetEnclosingCircle2(tri, V2_ZEROES, &c, &r);
   EXPECT_TRUE(r > 2.0f && r < 3.0f);
   EXPECT_TRUE(c.x > 1 && c.x < 3);
   EXPECT_TRUE(c.y > 1 && c.y < 3);
 
   V2 aabb_c, aabb_s;
-  Tri2GetEnclosingAabb2(tri, &aabb_c, &aabb_s);
+  Tri2GetEnclosingAabb2(tri, V2_ZEROES, &aabb_c, &aabb_s);
   EXPECT_V2_APPROX_EQ(aabb_c, V2Assign(1.33333f, 1.33333f));
   EXPECT_V2_APPROX_EQ(aabb_s, V2Assign(4, 4));
 
   V2 p;
   p = V2Assign(1,1);
-  EXPECT_TRUE(Tri2ContainsPoint(tri, p));
+  EXPECT_TRUE(Tri2ContainsPoint(tri, V2_ZEROES, p));
   p = V2Assign(5,5);
-  EXPECT_FALSE(Tri2ContainsPoint(tri, p));
+  EXPECT_FALSE(Tri2ContainsPoint(tri, V2_ZEROES, p));
   p = V2Assign(2,0);
-  EXPECT_TRUE(Tri2ContainsPoint(tri, p));
+  EXPECT_TRUE(Tri2ContainsPoint(tri, V2_ZEROES, p));
 }
 
 void Tri2IntersectLine2Test() {
@@ -587,14 +587,14 @@ void Tri2IntersectLine2Test() {
   // NOTE: simple intersection - diagonal slice
   a = V2Assign(-1,-1);
   b = V2Assign(5, 5);
-  EXPECT_TRUE(Tri2IntersectLine2(tri, a, b, &enter, &exit));
+  EXPECT_TRUE(Tri2IntersectLine2(tri, V2_ZEROES, a, b, &enter, &exit));
   EXPECT_V2_APPROX_EQ(enter, V2Assign(0,0));
   EXPECT_V2_APPROX_EQ(exit,  V2Assign(2,2));
 
   // NOTE: no intersection
   a = V2Assign(10,10);
   b = V2Assign(20,20);
-  EXPECT_FALSE(Tri2IntersectLine2(tri, a, b, &enter, &exit));
+  EXPECT_FALSE(Tri2IntersectLine2(tri, V2_ZEROES, a, b, &enter, &exit));
 }
 
 void Tri2IntersectRay2Test() {
@@ -609,14 +609,14 @@ void Tri2IntersectRay2Test() {
   // NOTE: hit from bottom-left
   r0 = V2Assign(-5,-5);
   rd = V2Normalize(V2_ONES);
-  EXPECT_TRUE(Tri2IntersectRay2(tri, r0, rd, &enter, &exit));
+  EXPECT_TRUE(Tri2IntersectRay2(tri, V2_ZEROES, r0, rd, &enter, &exit));
   EXPECT_V2_APPROX_EQ(enter, V2Assign(0,0));
   EXPECT_V2_APPROX_EQ(exit,  V2Assign(2,2));
 
   // NOTE: miss
   r0 = V2Assign(-5,5);
   rd = V2Assign(1, 0);
-  EXPECT_FALSE(Tri2IntersectRay2(tri, r0, rd, &enter, &exit));
+  EXPECT_FALSE(Tri2IntersectRay2(tri, V2_ZEROES, r0, rd, &enter, &exit));
 }
 
 void Tri2IntersectTri2Test() {
@@ -627,13 +627,13 @@ void Tri2IntersectTri2Test() {
   a[0]=V2Assign(0,0); a[1]=V2Assign(4,0); a[2]=V2Assign(0,4);
   b[0]=V2Assign(1,1); b[1]=V2Assign(5,1); b[2]=V2Assign(1,5);
 
-  EXPECT_TRUE(Tri2IntersectTri2(a,b,&m));
+  EXPECT_TRUE(Tri2IntersectTri2(a,V2_ZEROES,b,V2_ZEROES,&m));
   EXPECT_TRUE(m.penetration > 0.0f);
   EXPECT_TRUE(V2Length(m.normal) > 0.9f);
 
   // NOTE: not intersecting
   b[0]=V2Assign(10,10); b[1]=V2Assign(14,10); b[2]=V2Assign(10,14);
-  EXPECT_FALSE(Tri2IntersectTri2(a,b,&m));
+  EXPECT_FALSE(Tri2IntersectTri2(a,V2_ZEROES,b,V2_ZEROES,&m));
 }
 
 void Tri2IntersectAabb2Test() {
@@ -645,12 +645,12 @@ void Tri2IntersectAabb2Test() {
   // NOTE: AABB overlapping
   c = V2Assign(1,1);
   s = V2Assign(1,1);
-  EXPECT_TRUE(Tri2IntersectAabb2(tri, c, s, &m));
+  EXPECT_TRUE(Tri2IntersectAabb2(tri, V2_ZEROES, c, s, &m));
   EXPECT_TRUE(m.penetration > 0);
 
   // NOTE: no overlap
   c = V2Assign(10,10);
-  EXPECT_FALSE(Tri2IntersectAabb2(tri, c, s, &m));
+  EXPECT_FALSE(Tri2IntersectAabb2(tri, V2_ZEROES, c, s, &m));
 }
 
 void Tri2IntersectObb2Test() {
@@ -663,12 +663,12 @@ void Tri2IntersectObb2Test() {
   s = V2Assign(1,1);
 
   // NOTE: rotated OBB intersecting
-  EXPECT_TRUE(Tri2IntersectObb2(tri, c, s, F32_PI/4.0f, &m));
+  EXPECT_TRUE(Tri2IntersectObb2(tri, V2_ZEROES, c, s, F32_PI/4.0f, &m));
   EXPECT_TRUE(m.penetration > 0);
 
   // NOTE: far away
   c = V2Assign(10,10);
-  EXPECT_FALSE(Tri2IntersectObb2(tri, c, s, 0.0f, &m));
+  EXPECT_FALSE(Tri2IntersectObb2(tri, V2_ZEROES, c, s, 0.0f, &m));
 }
 
 void Tri2IntersectCircle2Test() {
@@ -681,12 +681,12 @@ void Tri2IntersectCircle2Test() {
 
   // NOTE: circle intersecting
   cc = V2Assign(1,1);
-  EXPECT_TRUE(Tri2IntersectCircle2(tri, cc, 2.0f, &m));
+  EXPECT_TRUE(Tri2IntersectCircle2(tri, V2_ZEROES, cc, 2.0f, &m));
   EXPECT_TRUE(m.penetration > 0);
 
   // NOTE: circle far away
   cc = V2Assign(10,10);
-  EXPECT_FALSE(Tri2IntersectCircle2(tri, cc, 2.0f, &m));
+  EXPECT_FALSE(Tri2IntersectCircle2(tri, V2_ZEROES, cc, 2.0f, &m));
 }
 
 void Tri2IntersectConvexHull2Test() {
@@ -704,7 +704,7 @@ void Tri2IntersectConvexHull2Test() {
   hull[3]=V2Assign(1,3);
 
   // NOTE: convex hull overlapping triangle
-  EXPECT_TRUE(Tri2IntersectConvexHull2(tri, hull, 4, &m));
+  EXPECT_TRUE(Tri2IntersectConvexHull2(tri, V2_ZEROES, hull, 4, V2_ZEROES, &m));
   EXPECT_TRUE(m.penetration > 0);
 
   // NOTE: hull far away
@@ -712,7 +712,7 @@ void Tri2IntersectConvexHull2Test() {
   hull[1]=V2Assign(11,10);
   hull[2]=V2Assign(11,11);
   hull[3]=V2Assign(10,11);
-  EXPECT_FALSE(Tri2IntersectConvexHull2(tri, hull, 4, &m));
+  EXPECT_FALSE(Tri2IntersectConvexHull2(tri, V2_ZEROES, hull, 4, V2_ZEROES, &m));
 }
 
 void Aabb2EqTest() {
@@ -836,14 +836,14 @@ void Aabb2IntersectTri2Test() {
   tri[0] = V2Assign(1,1);
   tri[1] = V2Assign(5,1);
   tri[2] = V2Assign(1,5);
-  EXPECT_TRUE(Aabb2IntersectTri2(c,s,tri,&m));
+  EXPECT_TRUE(Aabb2IntersectTri2(c,s,tri,V2_ZEROES,&m));
   EXPECT_TRUE(m.penetration > 0);
 
   // NOTE: separate
   tri[0] = V2Assign(10,10);
   tri[1] = V2Assign(12,10);
   tri[2] = V2Assign(10,12);
-  EXPECT_FALSE(Aabb2IntersectTri2(c,s,tri,&m));
+  EXPECT_FALSE(Aabb2IntersectTri2(c,s,tri,V2_ZEROES,&m));
 }
 
 void Aabb2IntersectAabb2Test() {
@@ -900,7 +900,7 @@ void Aabb2IntersectConvexHull2Test() {
   hull[1]=V2Assign(3,1);
   hull[2]=V2Assign(3,3);
   hull[3]=V2Assign(1,3);
-  EXPECT_TRUE(Aabb2IntersectConvexHull2(c,s,hull,4,&m));
+  EXPECT_TRUE(Aabb2IntersectConvexHull2(c,s,hull,4,V2_ZEROES,&m));
   EXPECT_TRUE(m.penetration > 0);
 
   // NOTE: far away
@@ -908,7 +908,7 @@ void Aabb2IntersectConvexHull2Test() {
   hull[1]=V2Assign(12,10);
   hull[2]=V2Assign(12,12);
   hull[3]=V2Assign(10,12);
-  EXPECT_FALSE(Aabb2IntersectConvexHull2(c,s,hull,4,&m));
+  EXPECT_FALSE(Aabb2IntersectConvexHull2(c,s,hull,4,V2_ZEROES,&m));
 }
 
 void Obb2EqTest() {
@@ -1038,14 +1038,14 @@ void Obb2IntersectTri2Test() {
   tri[0]=V2Assign(1,1);
   tri[1]=V2Assign(5,1);
   tri[2]=V2Assign(1,5);
-  EXPECT_TRUE(Obb2IntersectTri2(c,s,ang,tri,&m));
+  EXPECT_TRUE(Obb2IntersectTri2(c,s,ang,tri,V2_ZEROES,&m));
   EXPECT_TRUE(m.penetration > 0);
 
   // NOTE: separated
   tri[0]=V2Assign(10,10);
   tri[1]=V2Assign(12,10);
   tri[2]=V2Assign(10,12);
-  EXPECT_FALSE(Obb2IntersectTri2(c,s,ang,tri,&m));
+  EXPECT_FALSE(Obb2IntersectTri2(c,s,ang,tri,V2_ZEROES,&m));
 }
 
 void Obb2IntersectAabb2Test() {
@@ -1109,7 +1109,7 @@ void Obb2IntersectConvexHull2Test() {
   hull[1]=V2Assign(3,1);
   hull[2]=V2Assign(3,3);
   hull[3]=V2Assign(1,3);
-  EXPECT_TRUE(Obb2IntersectConvexHull2(c,s,ang,hull,4,&m));
+  EXPECT_TRUE(Obb2IntersectConvexHull2(c,s,ang,hull,4,V2_ZEROES,&m));
   EXPECT_TRUE(m.penetration > 0);
 
   // NOTE: far away
@@ -1117,7 +1117,7 @@ void Obb2IntersectConvexHull2Test() {
   hull[1]=V2Assign(12,10);
   hull[2]=V2Assign(12,12);
   hull[3]=V2Assign(10,12);
-  EXPECT_FALSE(Obb2IntersectConvexHull2(c,s,ang,hull,4,&m));
+  EXPECT_FALSE(Obb2IntersectConvexHull2(c,s,ang,hull,4,V2_ZEROES,&m));
 }
 
 void Circle2EqTest() {
@@ -1215,14 +1215,14 @@ void Circle2IntersectTri2Test() {
   tri[0] = V2Assign(1,1);
   tri[1] = V2Assign(4,1);
   tri[2] = V2Assign(1,4);
-  EXPECT_TRUE(Circle2IntersectTri2(c,r,tri,&m));
+  EXPECT_TRUE(Circle2IntersectTri2(c,r,tri,V2_ZEROES,&m));
   EXPECT_TRUE(m.penetration > 0);
 
   // NOTE: triangle far away
   tri[0] = V2Assign(10,10);
   tri[1] = V2Assign(12,10);
   tri[2] = V2Assign(10,12);
-  EXPECT_FALSE(Circle2IntersectTri2(c,r,tri,&m));
+  EXPECT_FALSE(Circle2IntersectTri2(c,r,tri,V2_ZEROES,&m));
 }
 
 void Circle2IntersectAabb2Test() {
@@ -1290,7 +1290,7 @@ void Circle2IntersectConvexHull2Test() {
   hull[1] = V2Assign(3,1);
   hull[2] = V2Assign(3,3);
   hull[3] = V2Assign(1,3);
-  EXPECT_TRUE(Circle2IntersectConvexHull2(c,r,hull,4,&m));
+  EXPECT_TRUE(Circle2IntersectConvexHull2(c,r,hull,4,V2_ZEROES,&m));
   EXPECT_TRUE(m.penetration > 0);
 
   // NOTE: far away
@@ -1298,7 +1298,7 @@ void Circle2IntersectConvexHull2Test() {
   hull[1] = V2Assign(12,10);
   hull[2] = V2Assign(12,12);
   hull[3] = V2Assign(10,12);
-  EXPECT_FALSE(Circle2IntersectConvexHull2(c,r,hull,4,&m));
+  EXPECT_FALSE(Circle2IntersectConvexHull2(c,r,hull,4,V2_ZEROES,&m));
 }
 
 void ConvexHull2EqTest() {
@@ -1403,7 +1403,7 @@ void ConvexHull2GetEnclosingCircle2Test() {
   h[3]=V2Assign(1,5);
 
   V2 cc; F32 cr;
-  ConvexHull2GetEnclosingCircle2(h,4,&cc,&cr);
+  ConvexHull2GetEnclosingCircle2(h,4,V2_ZEROES,&cc,&cr);
 
   EXPECT_V2_APPROX_EQ(cc, V2Assign(3,3));  // center
   EXPECT_F32_APPROX_EQ(cr, 2.828427f);     // sqrt(2^2 + 2^2)
@@ -1416,7 +1416,7 @@ void ConvexHull2GetEnclosingAabb2Test() {
   h[2]=V2Assign(2,6);
 
   V2 c, s;
-  ConvexHull2GetEnclosingAabb2(h,3,&c,&s);
+  ConvexHull2GetEnclosingAabb2(h,3,V2_ZEROES,&c,&s);
 
   V2 min = V2Assign(1,2); V2 max = V2Assign(4,6);
 
@@ -1431,15 +1431,15 @@ void ConvexHull2ContainsPointTest() {
 
   // inside
   V2 p = V2Assign(2,2);
-  EXPECT_TRUE(ConvexHull2ContainsPoint(h,4,p));
+  EXPECT_TRUE(ConvexHull2ContainsPoint(h,4,V2_ZEROES,p));
 
   // on boundary
   p = V2Assign(4,2);
-  EXPECT_TRUE(ConvexHull2ContainsPoint(h,4,p));
+  EXPECT_TRUE(ConvexHull2ContainsPoint(h,4,V2_ZEROES,p));
 
   // outside
   p = V2Assign(5,5);
-  EXPECT_FALSE(ConvexHull2ContainsPoint(h,4,p));
+  EXPECT_FALSE(ConvexHull2ContainsPoint(h,4,V2_ZEROES,p));
 }
 
 void ConvexHull2IntersectLine2Test() {
@@ -1452,14 +1452,14 @@ void ConvexHull2IntersectLine2Test() {
   // NOTE: horizontal line through center
   a=V2Assign(-2,2);
   b=V2Assign( 6,2);
-  EXPECT_TRUE(ConvexHull2IntersectLine2(h,4,a,b,&enter,&exit));
+  EXPECT_TRUE(ConvexHull2IntersectLine2(h,4,V2_ZEROES,a,b,&enter,&exit));
   EXPECT_V2_APPROX_EQ(enter, V2Assign(0,2));
   EXPECT_V2_APPROX_EQ(exit,  V2Assign(4,2));
 
   // NOTE: miss
   a=V2Assign(-2,6);
   b=V2Assign(6,6);
-  EXPECT_FALSE(ConvexHull2IntersectLine2(h,4,a,b,&enter,&exit));
+  EXPECT_FALSE(ConvexHull2IntersectLine2(h,4,V2_ZEROES,a,b,&enter,&exit));
 }
 
 void ConvexHull2IntersectRay2Test() {
@@ -1472,18 +1472,18 @@ void ConvexHull2IntersectRay2Test() {
   // NOTE: hit from left
   r0 = V2Assign(-5,2);
   rd = V2Assign(1, 0);
-  EXPECT_TRUE(ConvexHull2IntersectRay2(h,4,r0,rd,&enter,&exit));
+  EXPECT_TRUE(ConvexHull2IntersectRay2(h,4,V2_ZEROES,r0,rd,&enter,&exit));
   EXPECT_V2_APPROX_EQ(enter, V2Assign(0,2));
 
   // NOTE: miss
   r0 = V2Assign(-5,6);
   rd = V2Assign(1, 0);
-  EXPECT_FALSE(ConvexHull2IntersectRay2(h,4,r0,rd,&enter,&exit));
+  EXPECT_FALSE(ConvexHull2IntersectRay2(h,4,V2_ZEROES,r0,rd,&enter,&exit));
 
   // NOTE: ray pointing away
   r0 = V2Assign(6,2);
   rd = V2Assign(1, 0);
-  EXPECT_FALSE(ConvexHull2IntersectRay2(h,4,r0,rd,&enter,&exit));
+  EXPECT_FALSE(ConvexHull2IntersectRay2(h,4,V2_ZEROES,r0,rd,&enter,&exit));
 }
 
 void ConvexHull2IntersectTri2Test() {
@@ -1497,14 +1497,14 @@ void ConvexHull2IntersectTri2Test() {
 
   // NOTE: triangle inside hull
   tri[0]=V2Assign(1,1); tri[1]=V2Assign(3,1); tri[2]=V2Assign(2,3);
-  EXPECT_TRUE(ConvexHull2IntersectTri2(hull,4,tri,&m));
+  EXPECT_TRUE(ConvexHull2IntersectTri2(hull,4,V2_ZEROES,tri,V2_ZEROES,&m));
   EXPECT_TRUE(m.penetration > 0);
 
   // NOTE: far away
   tri[0]=V2Assign(10,10);
   tri[1]=V2Assign(12,10);
   tri[2]=V2Assign(10,12);
-  EXPECT_FALSE(ConvexHull2IntersectTri2(hull,4,tri,&m));
+  EXPECT_FALSE(ConvexHull2IntersectTri2(hull,4,V2_ZEROES,tri,V2_ZEROES,&m));
 }
 
 void ConvexHull2IntersectAabb2Test() {
@@ -1519,12 +1519,12 @@ void ConvexHull2IntersectAabb2Test() {
   // NOTE: overlapping
   ac = V2Assign(3,3);
   as = V2Assign(4,4); // full size
-  EXPECT_TRUE(ConvexHull2IntersectAabb2(hull,4,ac,as,&m));
+  EXPECT_TRUE(ConvexHull2IntersectAabb2(hull,4,V2_ZEROES,ac,as,&m));
   EXPECT_TRUE(m.penetration > 0);
 
   // NOTE: separated
   ac = V2Assign(10,10);
-  EXPECT_FALSE(ConvexHull2IntersectAabb2(hull,4,ac,as,&m));
+  EXPECT_FALSE(ConvexHull2IntersectAabb2(hull,4,V2_ZEROES,ac,as,&m));
 }
 
 void ConvexHull2IntersectObb2Test() {
@@ -1538,11 +1538,11 @@ void ConvexHull2IntersectObb2Test() {
   F32 ang = F32_PI/4.0f;
   IntersectManifold2 m;
 
-  EXPECT_TRUE(ConvexHull2IntersectObb2(hull,4,oc,os,ang,&m));
+  EXPECT_TRUE(ConvexHull2IntersectObb2(hull,4,V2_ZEROES,oc,os,ang,&m));
   EXPECT_TRUE(m.penetration > 0);
 
   oc = V2Assign(10,10);
-  EXPECT_FALSE(ConvexHull2IntersectObb2(hull,4,oc,os,ang,&m));
+  EXPECT_FALSE(ConvexHull2IntersectObb2(hull,4,V2_ZEROES,oc,os,ang,&m));
 }
 
 void ConvexHull2IntersectCircle2Test() {
@@ -1557,12 +1557,12 @@ void ConvexHull2IntersectCircle2Test() {
   // NOTE: circle overlapping
   cc = V2Assign(3,2);
   r  = 2.0f;
-  EXPECT_TRUE(ConvexHull2IntersectCircle2(hull,4,cc,r,&m));
+  EXPECT_TRUE(ConvexHull2IntersectCircle2(hull,4,V2_ZEROES,cc,r,&m));
   EXPECT_TRUE(m.penetration > 0);
 
   // NOTE: separate
   cc = V2Assign(10,10);
-  EXPECT_FALSE(ConvexHull2IntersectCircle2(hull,4,cc,r,&m));
+  EXPECT_FALSE(ConvexHull2IntersectCircle2(hull,4,V2_ZEROES,cc,r,&m));
 }
 
 void ConvexHull2IntersectConvexHull2Test() {
@@ -1572,24 +1572,24 @@ void ConvexHull2IntersectConvexHull2Test() {
   // NOTE: no intersection
   a[0] = V2Assign(-1,-1); a[1] = V2Assign(1,-1); a[2] = V2Assign(1,1); a[3] = V2Assign(-1,1);
   b[0] = V2Assign(10,-1); b[1] = V2Assign(12,-1); b[2] = V2Assign(12,1); b[3] = V2Assign(10,1);
-  EXPECT_FALSE(ConvexHull2IntersectConvexHull2(a,4,b,4,&m));
+  EXPECT_FALSE(ConvexHull2IntersectConvexHull2(a,4,V2_ZEROES,b,4,V2_ZEROES,&m));
 
   // NOTE: touching at a single vertex
   a[0] = V2Assign(-1,-1); a[1] = V2Assign(1,-1); a[2] = V2Assign(1,1); a[3] = V2Assign(-1,1);
   b[0] = V2Assign(1,1);   b[1] = V2Assign(3,1);  b[2] = V2Assign(3,3); b[3] = V2Assign(1,3);
-  EXPECT_TRUE(ConvexHull2IntersectConvexHull2(a,4,b,4,&m));
+  EXPECT_TRUE(ConvexHull2IntersectConvexHull2(a,4,V2_ZEROES,b,4,V2_ZEROES,&m));
   EXPECT_TRUE(m.penetration >= 0);
 
   // NOTE: overlapping edges
   a[0] = V2Assign(-1,-1); a[1] = V2Assign(1,-1); a[2] = V2Assign(1,1); a[3] = V2Assign(-1,1);
   b[0] = V2Assign(0,-1); b[1] = V2Assign(2,-1); b[2] = V2Assign(2,1); b[3] = V2Assign(0,1);
-  EXPECT_TRUE(ConvexHull2IntersectConvexHull2(a,4,b,4,&m));
+  EXPECT_TRUE(ConvexHull2IntersectConvexHull2(a,4,V2_ZEROES,b,4,V2_ZEROES,&m));
   EXPECT_TRUE(m.penetration > 0);
 
   // NOTE: one hull inside the other
   a[0] = V2Assign(-2,-2); a[1] = V2Assign(2,-2); a[2] = V2Assign(2,2); a[3] = V2Assign(-2,2);
   b[0] = V2Assign(-0.5,-0.5); b[1] = V2Assign(0.5,-0.5); b[2] = V2Assign(0.5,0.5); b[3] = V2Assign(-0.5,0.5);
-  EXPECT_TRUE(ConvexHull2IntersectConvexHull2(a,4,b,4,&m));
+  EXPECT_TRUE(ConvexHull2IntersectConvexHull2(a,4,V2_ZEROES,b,4,V2_ZEROES,&m));
   EXPECT_TRUE(m.penetration > 0);
 }
 
@@ -1836,13 +1836,13 @@ void Plane3CreateTest() {
 
   // NOTE: well-formed triangle
   V3 good_tri[3] = { V3Assign(0, 0, 0), V3Assign(1, 0, 0), V3Assign(0, 0, 1) };
-  EXPECT_TRUE(Plane3FromTri3(&normal, &d, good_tri));
+  EXPECT_TRUE(Plane3FromTri3(&normal, &d, good_tri, V3_ZEROES));
   EXPECT_V3_APPROX_EQ(normal, V3Assign(0, -1, 0));
   EXPECT_F32_APPROX_EQ(d, 0);
 
   // NOTE: degenerate triangle
   V3 bad_tri[3] = { V3Assign(0, 0, 0), V3Assign(0, 0, 0), V3Assign(0, 0, 0) };
-  EXPECT_FALSE(Plane3FromTri3(&normal, &d, bad_tri));
+  EXPECT_FALSE(Plane3FromTri3(&normal, &d, bad_tri, V3_ZEROES));
 }
 
 void Plane3MutateTest() {
@@ -1972,7 +1972,7 @@ void ConvexPolygon3IntersectPlane3Test() {
   polygon[2] = V3Assign(2, 2, 1);
   polygon[3] = V3Assign(1, 2, 1);
   plane_normal = V3Assign(0, 0, 1); plane_d = 0.5f;
-  EXPECT_FALSE(ConvexPolygon3IntersectPlane3(polygon, 4, plane_normal, plane_d, &intersect_start, &intersect_end));
+  EXPECT_FALSE(ConvexPolygon3IntersectPlane3(polygon, 4, V3_ZEROES, plane_normal, plane_d, &intersect_start, &intersect_end));
 
   // NOTE: polygon below plane
   polygon[0] = V3Assign(1, 1, 1);
@@ -1980,7 +1980,7 @@ void ConvexPolygon3IntersectPlane3Test() {
   polygon[2] = V3Assign(2, 2, 1);
   polygon[3] = V3Assign(1, 2, 1);
   plane_normal = V3Assign(0, 0, 1); plane_d = 2.0f;
-  EXPECT_FALSE(ConvexPolygon3IntersectPlane3(polygon, 4, plane_normal, plane_d, &intersect_start, &intersect_end));
+  EXPECT_FALSE(ConvexPolygon3IntersectPlane3(polygon, 4, V3_ZEROES, plane_normal, plane_d, &intersect_start, &intersect_end));
 
   // NOTE: polygon crosses plane
   polygon[0] = V3Assign(1, 1, 1);
@@ -1988,7 +1988,7 @@ void ConvexPolygon3IntersectPlane3Test() {
   polygon[2] = V3Assign(2, 2, 2);
   polygon[3] = V3Assign(1, 2, 1);
   plane_normal = V3Assign(0, 0, 1); plane_d = 1.5f;
-  EXPECT_TRUE(ConvexPolygon3IntersectPlane3(polygon, 4, plane_normal, plane_d, &intersect_start, &intersect_end));
+  EXPECT_TRUE(ConvexPolygon3IntersectPlane3(polygon, 4, V3_ZEROES, plane_normal, plane_d, &intersect_start, &intersect_end));
   EXPECT_V3_APPROX_EQ(intersect_start, V3Assign(1.5f, 1, 1.5f));
   EXPECT_V3_APPROX_EQ(intersect_end,   V3Assign(1.5f, 2, 1.5f));
 
@@ -1998,7 +1998,7 @@ void ConvexPolygon3IntersectPlane3Test() {
   polygon[2] = V3Assign(1, 1, 1);
   polygon[3] = V3Assign(0, 1, 2);
   plane_normal = V3Assign(0, 0, 1); plane_d = 2.0f;
-  EXPECT_TRUE(ConvexPolygon3IntersectPlane3(polygon, 4, plane_normal, plane_d, &intersect_start, &intersect_end));
+  EXPECT_TRUE(ConvexPolygon3IntersectPlane3(polygon, 4, V3_ZEROES, plane_normal, plane_d, &intersect_start, &intersect_end));
   EXPECT_V3_APPROX_EQ(intersect_start, V3Assign(0, 1, 2));
   EXPECT_V3_APPROX_EQ(intersect_end,   V3Assign(0, 1, 2));
 }
@@ -2009,19 +2009,19 @@ void ConvexPolygon3IntersectConvexPolygon3Test() {
   // NOTE: non-intersecting
   V3 polyA1[3] = { V3Assign(0, 0, 0), V3Assign(1, 0, 0), V3Assign(0, 1, 0) };
   V3 polyB1[3] = { V3Assign(0, 0, 2), V3Assign(1, 0, 2), V3Assign(0, 1, 2) };
-  EXPECT_FALSE(ConvexPolygon3IntersectConvexPolygon3(polyA1, 3, polyB1, 3, &intersect_start, &intersect_end));
+  EXPECT_FALSE(ConvexPolygon3IntersectConvexPolygon3(polyA1, 3, V3_ZEROES, polyB1, 3, V3_ZEROES, &intersect_start, &intersect_end));
 
   // NOTE: sharing an edge
   V3 polyA2[3] = { V3Assign(0, 0, 0), V3Assign(1, 0, 0), V3Assign(0, 1, 0) };
   V3 polyB2[3] = { V3Assign(0, 0, 0), V3Assign(0, 0, 1), V3Assign(0, 1, 0) };
-  EXPECT_TRUE(ConvexPolygon3IntersectConvexPolygon3(polyA2, 3, polyB2, 3, &intersect_start, &intersect_end));
+  EXPECT_TRUE(ConvexPolygon3IntersectConvexPolygon3(polyA2, 3, V3_ZEROES, polyB2, 3, V3_ZEROES, &intersect_start, &intersect_end));
   EXPECT_V3_APPROX_EQ(intersect_start, V3Assign(0, 1, 0));
   EXPECT_V3_APPROX_EQ(intersect_end,   V3Assign(0, 0, 0));
 
   // NOTE: skew
   V3 polyA3[4] = { V3Assign(0, 0, 0), V3Assign(1, 0, 0), V3Assign(1, 1, 0), V3Assign(0, 1, 0) };
   V3 polyB3[4] = { V3Assign(0.25f, 0.25f, -1), V3Assign(0.75f, 0.75f, -1), V3Assign(0.75f, 0.75f, 1), V3Assign(0.25f, 0.25f, 1) };
-  EXPECT_TRUE(ConvexPolygon3IntersectConvexPolygon3(polyA3, 4, polyB3, 4, &intersect_start, &intersect_end));
+  EXPECT_TRUE(ConvexPolygon3IntersectConvexPolygon3(polyA3, 4, V3_ZEROES, polyB3, 4, V3_ZEROES, &intersect_start, &intersect_end));
   EXPECT_V3_APPROX_EQ(intersect_start, V3Assign(0.25f, 0.25f, 0));
   EXPECT_V3_APPROX_EQ(intersect_end,   V3Assign(0.75f, 0.75f, 0));
 }
@@ -2245,19 +2245,19 @@ void ConvexHull3ContainsPointTest() {
 
   // NOTE: contains point
   point = V3Assign(0, 0, 0);
-  EXPECT_TRUE(ConvexHull3ContainsPoint(hull_points, 8, hull_indices, 36, point));
+  EXPECT_TRUE(ConvexHull3ContainsPoint(hull_points, 8, hull_indices, 36, V3_ZEROES, point));
 
   // NOTE: point on face
   point = V3Assign(1, 0, 0);
-  EXPECT_TRUE(ConvexHull3ContainsPoint(hull_points, 8, hull_indices, 36, point));
+  EXPECT_TRUE(ConvexHull3ContainsPoint(hull_points, 8, hull_indices, 36, V3_ZEROES, point));
 
   // NOTE: point on corner
   point = V3Assign(1, 1, 1);
-  EXPECT_TRUE(ConvexHull3ContainsPoint(hull_points, 8, hull_indices, 36, point));
+  EXPECT_TRUE(ConvexHull3ContainsPoint(hull_points, 8, hull_indices, 36, V3_ZEROES, point));
 
   // NOTE: does not contain point
   point = V3Assign(100, 0, 0);
-  EXPECT_FALSE(ConvexHull3ContainsPoint(hull_points, 8, hull_indices, 36, point));
+  EXPECT_FALSE(ConvexHull3ContainsPoint(hull_points, 8, hull_indices, 36, V3_ZEROES, point));
 }
 
 void ConvexHull3IntersectConvexHull3Test() {

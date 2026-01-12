@@ -47,9 +47,7 @@ int main(void) {
       exit(0);
     }
 
-    V2 mouse_pos;
-    WindowGetMousePositionV(&mouse_pos);
-
+    V2 mouse_pos = WindowGetMousePositionV();
     if (WindowIsMouseButtonJustPressed(MouseButton_Left)) {
       ray_start = mouse_pos;
     }
@@ -91,7 +89,7 @@ int main(void) {
       DrawCircleV(enter, 10, V3_GREEN);
       DrawRingV(exit, 10, 5, V3_RED);
     }
-    if (Ray2IntersectTri2(ray_start, ray_dir, tri_points, &enter, &exit)) {
+    if (Ray2IntersectTri2(ray_start, ray_dir, tri_points, V2_ZEROES, &enter, &exit)) {
       DrawCircleV(enter, 10, V3_GREEN);
       DrawRingV(exit, 10, 5, V3_RED);
     }
@@ -101,7 +99,7 @@ int main(void) {
     if (Ray2IntersectRay2(ray_start, ray_dir, other_ray_start, other_ray_dir, &enter)) {
       DrawCircleV(enter, 10, V3_GREEN);
     }
-    if (Ray2IntersectConvexHull2(ray_start, ray_dir, hull_points, STATIC_ARRAY_SIZE(hull_points), &enter, &exit)) {
+    if (Ray2IntersectConvexHull2(ray_start, ray_dir, hull_points, STATIC_ARRAY_SIZE(hull_points), V2_ZEROES, &enter, &exit)) {
       DrawCircleV(enter, 10, V3_GREEN);
       DrawRingV(exit, 10, 5, V3_RED);
     }

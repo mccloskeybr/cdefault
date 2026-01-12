@@ -24,14 +24,18 @@ static void DrawVelocityArrow(Collider2* c) {
 }
 
 static void AddColliderCircle(V2 pos) {
-  Collider2* c = Physics2RegisterColliderCircle(pos, CIRCLE_RADIUS);
-  Physics2RegisterRigidBodyDynamic(c, 50);
+  Collider2* c = Physics2RegisterCollider();
+  RigidBody2* rb = Physics2RegisterRigidBody(c);
+  Collider2SetCircle(c, pos, CIRCLE_RADIUS);
+  RigidBody2SetDynamic(rb, 50);
   colliders[next_collider++] = c;
 }
 
 static void AddColliderRect(V2 pos) {
-  Collider2* c = Physics2RegisterColliderRect(pos, RECT_SIZE);
-  Physics2RegisterRigidBodyDynamic(c, 50);
+  Collider2* c = Physics2RegisterCollider();
+  RigidBody2* rb = Physics2RegisterRigidBody(c);
+  Collider2SetRect(c, pos, RECT_SIZE);
+  RigidBody2SetDynamic(rb, 50);
   colliders[next_collider++] = c;
 }
 
@@ -44,8 +48,10 @@ static void AddColliderConvexHull(V2 pos) {
     {-25 + pos.x, +25 + pos.y},
     {-50 + pos.x, +0  + pos.y},
   };
-  Collider2* c = Physics2RegisterColliderConvexHull(hull_points, 6);
-  Physics2RegisterRigidBodyDynamic(c, 50);
+  Collider2* c = Physics2RegisterCollider();
+  RigidBody2* rb = Physics2RegisterRigidBody(c);
+  Collider2SetConvexHull(c, hull_points, 6);
+  RigidBody2SetDynamic(rb, 50);
   colliders[next_collider++] = c;
 }
 
@@ -60,9 +66,11 @@ int main(void) {
 
   V2 g_pos  = V2Assign(500, 50);
   V2 g_size = V2Assign(10000, 100);
-  Collider2* ground = Physics2RegisterColliderRect(g_pos, g_size);
-  RigidBody2* ground_rigid_body = Physics2RegisterRigidBodyStatic(ground);
-  ground_rigid_body->fix_angle = true;
+  Collider2* ground_c = Physics2RegisterCollider();
+  RigidBody2* ground_rb = Physics2RegisterRigidBody(ground_c);
+  Collider2SetRect(ground_c, g_pos, g_size);
+  RigidBody2SetStatic(ground_rb);
+  ground_rb->fix_angle = true;
 
   F32 dt_s = 0.0f;
   Stopwatch frame_stopwatch;
@@ -74,8 +82,7 @@ int main(void) {
       exit(0);
     }
 
-    V2 mouse_pos;
-    WindowGetMousePositionV(&mouse_pos);
+    V2 mouse_pos = WindowGetMousePositionV();
     if (WindowIsMouseButtonJustPressed(MouseButton_Left)) {
       AddColliderCircle(mouse_pos);
     } else if (WindowIsMouseButtonJustPressed(MouseButton_Right)) {
@@ -85,7 +92,7 @@ int main(void) {
 
     Physics2Update(dt_s);
 
-    DrawRectangleV(ground->center, ground->rect.size, COLOR_BLUE);
+    DrawRectangleV(ground_c->center, ground_c->rect.size, COLOR_BLUE);
     for (U32 i = 0; i < next_collider; i++) {
       Collider2* c = colliders[i];
       DrawRingV(c->center, c->broad_circle_radius, 1, COLOR_BLUE);
