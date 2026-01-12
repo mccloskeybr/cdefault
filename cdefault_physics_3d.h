@@ -43,14 +43,17 @@ struct Collider3ConvexHull {
   V3 center;
   U32 points_size;
   V3* points_local; // NOTE: points in local space (centered around center).
-  V3* points_world; // NOTE: points in world space (rotated and translated).
-  Arena* arena;
 };
 
 typedef enum Collider3Type Collider3Type;
 enum Collider3Type {
   Collider3Type_Sphere,
   Collider3Type_ConvexHull,
+};
+
+static String8 Collider3Type_Names[] = {
+  Str8Static("Sphere"),
+  Str8Static("ConvexHull"),
 };
 
 // NOTE: Colliders can only collide with other colliders that share a group bit.
@@ -67,6 +70,7 @@ struct Collider3 {
   };
   F32 broad_sphere_radius; // TODO: switch to aabb?
   U32 group;
+  Arena* arena;
   Collider3SubtypeHeader* subtypes;
 };
 
@@ -74,6 +78,11 @@ typedef enum RigidBody3Type RigidBody3Type;
 enum RigidBody3Type {
   RigidBody3Type_Dynamic, // NOTE: Movable / influenced by external forces.
   RigidBody3Type_Static,  // NOTE: Immovable / not influenced by external forces.
+};
+
+static String8 RigidBody3Type_Names[] = {
+  Str8Static("Dynamic"),
+  Str8Static("Static"),
 };
 
 // TODO: allow rigid bodies to sleep.
@@ -122,10 +131,11 @@ void Physics3RegisterResolver(U32 type_a, U32 type_b, Collision3Resolver_Fn* res
 // NOTE: This must be called, e.g. 1x per frame. A fixed timestep can be implemented in the user's program.
 void Physics3Update(F32 dt_s);
 
-Collider3* Physics3RegisterColliderSphere(V3 center, F32 radius);
-Collider3* Physics3RegisterColliderRect(V3 center, V3 size);
-Collider3* Physics3RegisterColliderConvexHull(V3* points, U32 points_size); // NOTE: points is copied. TODO: separate fn for w/ center?
-void Physics3DeregisterCollider(Collider3* collider); // NOTE: Must be called after all subtypes are deinitialized.
+Collider3* Physics3ColliderRegister();
+void Physics3ColliderDeregister(Collider3* collider); // NOTE: Must be called after all subtypes are deinitialized.
+void Collider3SetSphere(Collider3* collider, V3 center, F32 radius);
+void Collider3SetRect(Collider3* collider, V3 center, V3 size);
+void Collider3SetConvexHull(Collider3* collider, V3* points, U32 points_size); // NOTE: points is copied. TODO: separate fn for w/ center?
 void Collider3SetSubtype(Collider3* collider, Collider3SubtypeHeader* subtype);
 B32  Collider3RemoveSubtype(Collider3* collider, U32 type);
 Collider3SubtypeHeader* Collider3GetSubtype(Collider3* collider, U32 type);
@@ -134,10 +144,10 @@ Collider3SubtypeHeader* Collider3GetSubtype(Collider3* collider, U32 type);
 // TODO: rigid body functions
 // TODO: AddForce fn that takes a force and a point, breaks into force / torque components.
 // NOTE: Rigid body registration automatically attaches the rigid body to the collider.
-RigidBody3* Physics3RegisterRigidBodyStatic(Collider3* collider);
-RigidBody3* Physics3RegisterRigidBodyDynamic(Collider3* collider, F32 mass);
-RigidBody3* Physics3RegisterRigidBody(Collider3* collider); // NOTE: expects user to complete initialization.
-void Physics3DeregisterRigidBody(RigidBody3* rigid_body);
+RigidBody3* Physics3RigidBodyRegister(Collider3* collider);
+void Physics3RigidBodyDeregister(RigidBody3* rigid_body);
+void RigidBody3SetStatic(RigidBody3* rigid_body);
+void RigidBody3SetDynamic(RigidBody3* rigid_body, F32 mass);
 
 #endif // CDEFAULT_PHYSICS3_H_
 
@@ -190,26 +200,6 @@ struct Physics3Context {
 };
 static Physics3Context _cdef_phys_3d_context;
 
-static Collider3* Collider3Allocate() {
-  Physics3Context* c = &_cdef_phys_3d_context;
-  Collider3Internal* collider;
-  if (c->collider_free_list != NULL) {
-    collider = c->collider_free_list;
-    SLL_STACK_POP(c->collider_free_list, next);
-  } else {
-    collider = ARENA_PUSH_STRUCT(c->collider_pool, Collider3Internal);
-  }
-  MEMORY_ZERO_STRUCT(collider);
-  DLL_PUSH_BACK(c->collider_head, c->collider_tail, collider, prev, next);
-  return &collider->collider;
-}
-
-static void Collider3ConvexHullUpdateWorldPoints(Collider3* collider) {
-  DEBUG_ASSERT(collider->type == Collider3Type_ConvexHull);
-  MEMORY_COPY_ARRAY(collider->convex_hull.points_world, collider->convex_hull.points_local, collider->convex_hull.points_size);
-  ConvexHull3Offset(collider->convex_hull.points_world, collider->convex_hull.points_size, collider->convex_hull.center);
-}
-
 static B32 Collider3IntersectBroad(Collider3* a, Collider3* b, IntersectManifold3* manifold) {
   return Sphere3IntersectSphere3(a->center, a->broad_sphere_radius, b->center, b->broad_sphere_radius, manifold);
 }
@@ -222,21 +212,18 @@ static B32 Collider3IntersectNarrow(Collider3* a, Collider3* b, IntersectManifol
           return Sphere3IntersectSphere3(a->sphere.center, a->sphere.radius, b->sphere.center, b->sphere.radius, manifold);
         } break;
         case Collider3Type_ConvexHull: {
-          Collider3ConvexHullUpdateWorldPoints(b);
-          B32 result = Sphere3IntersectConvexHull3(a->sphere.center, a->sphere.radius, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
+          B32 result = Sphere3IntersectConvexHull3(a->sphere.center, a->sphere.radius, b->convex_hull.points_local, b->convex_hull.points_size, b->convex_hull.center, manifold);
           return result;
         }
       }
     } break;
     case Collider3Type_ConvexHull: {
-      Collider3ConvexHullUpdateWorldPoints(a);
       switch (b->type) {
         case Collider3Type_Sphere: {
-          return ConvexHull3IntersectSphere3(a->convex_hull.points_world, a->convex_hull.points_size, b->sphere.center, b->sphere.radius, manifold);
+          return ConvexHull3IntersectSphere3(a->convex_hull.points_local, a->convex_hull.points_size, a->convex_hull.center, b->sphere.center, b->sphere.radius, manifold);
         } break;
         case Collider3Type_ConvexHull: {
-          Collider3ConvexHullUpdateWorldPoints(b);
-          return ConvexHull3IntersectConvexHull3(a->convex_hull.points_world, a->convex_hull.points_size, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
+          return ConvexHull3IntersectConvexHull3(a->convex_hull.points_local, a->convex_hull.points_size, a->convex_hull.center, b->convex_hull.points_local, b->convex_hull.points_size, b->convex_hull.center, manifold);
         } break;
       }
     } break;
@@ -246,24 +233,6 @@ static B32 Collider3IntersectNarrow(Collider3* a, Collider3* b, IntersectManifol
 }
 
 static RigidBody3* RigidBody3Allocate() {
-  Physics3Context* c = &_cdef_phys_3d_context;
-  RigidBody3Internal* rigid_body_internal;
-  if (c->rigid_body_free_list != NULL) {
-    rigid_body_internal = c->rigid_body_free_list;
-    SLL_STACK_POP(c->rigid_body_free_list, next);
-  } else {
-    rigid_body_internal = ARENA_PUSH_STRUCT(c->rigid_body_pool, RigidBody3Internal);
-  }
-  MEMORY_ZERO_STRUCT(rigid_body_internal);
-  DLL_PUSH_BACK(c->rigid_body_head, c->rigid_body_tail, rigid_body_internal, prev, next);
-  return &rigid_body_internal->rigid_body;
-}
-
-static void RigidBody3CommonInit(RigidBody3* rigid_body) {
-  rigid_body->header.type = COLLIDER3_RIGID_BODY;
-  rigid_body->restitution = 0.2f;
-  rigid_body->static_friction = 0.2f;
-  rigid_body->dynamic_friction = 0.2f;
 }
 
 static void Physics3RigidBodyUpdate(F32 dt_s) {
@@ -497,46 +466,58 @@ void Physics3RegisterResolver(U32 type_a, U32 type_b, Collision3Resolver_Fn* res
   SLL_STACK_PUSH(c->resolvers, entry, next);
 }
 
-Collider3* Physics3RegisterColliderSphere(V3 center, F32 radius) {
-  DEBUG_ASSERT(radius > 0);
-  Collider3* collider = Collider3Allocate();
+Collider3* Physics3ColliderRegister() {
+  Physics3Context* c = &_cdef_phys_3d_context;
+  Collider3Internal* collider_internal;
+  if (c->collider_free_list != NULL) {
+    collider_internal = c->collider_free_list;
+    SLL_STACK_POP(c->collider_free_list, next);
+  } else {
+    collider_internal = ARENA_PUSH_STRUCT(c->collider_pool, Collider3Internal);
+  }
+  MEMORY_ZERO_STRUCT(collider_internal);
+  DLL_PUSH_BACK(c->collider_head, c->collider_tail, collider_internal, prev, next);
+
+  Collider3* collider = &collider_internal->collider;
   collider->group = COLLIDER3_GROUP_ALL;
+  collider->arena = ArenaAllocate();
+  return collider;
+}
+
+void Physics3ColliderDeregister(Collider3* collider) {
+  Physics3Context* c = &_cdef_phys_3d_context;
+  ArenaRelease(collider->arena);
+  Collider3Internal* c_internal = (Collider3Internal*) collider;
+  DLL_REMOVE(c->collider_head, c->collider_tail, c_internal, prev, next);
+  SLL_STACK_PUSH(c->collider_free_list, c_internal, next);
+}
+
+void Collider3SetSphere(Collider3* collider, V3 center, F32 radius) {
+  DEBUG_ASSERT(radius > 0);
+  ArenaClear(collider->arena);
   collider->type = Collider3Type_Sphere;
   collider->sphere.center = center;
   collider->sphere.radius = radius;
   collider->broad_sphere_radius = radius;
-  return collider;
 }
 
-Collider3* Physics3RegisterColliderRect(V3 center, V3 size) {
+void Collider3SetRect(Collider3* collider, V3 center, V3 size) {
   DEBUG_ASSERT(size.x > 0 && size.y > 0);
+  ArenaClear(collider->arena);
   V3 rect_points[8];
   ConvexHull3FromAabb3(rect_points, NULL, center, size);
-  return Physics3RegisterColliderConvexHull(rect_points, 8);
+  Collider3SetConvexHull(collider, rect_points, 8);
 }
 
-Collider3* Physics3RegisterColliderConvexHull(V3* points, U32 points_size) {
-  Collider3* collider = Collider3Allocate();
-  collider->group = COLLIDER3_GROUP_ALL;
+void Collider3SetConvexHull(Collider3* collider, V3* points, U32 points_size) {
+  ArenaClear(collider->arena);
   collider->type = Collider3Type_ConvexHull;
-  collider->convex_hull.arena = ArenaAllocate();
-  collider->convex_hull.points_local = ARENA_PUSH_ARRAY(collider->convex_hull.arena, V3, points_size);
-  collider->convex_hull.points_world = ARENA_PUSH_ARRAY(collider->convex_hull.arena, V3, points_size);
+  collider->convex_hull.points_local = ARENA_PUSH_ARRAY(collider->arena, V3, points_size);
   MEMORY_COPY_ARRAY(collider->convex_hull.points_local, points, points_size);
-  MEMORY_COPY_ARRAY(collider->convex_hull.points_world, points, points_size);
   collider->convex_hull.points_size = points_size;
-  ConvexHull3GetEnclosingSphere3(points, points_size, &collider->convex_hull.center, &collider->broad_sphere_radius);
+  ConvexHull3GetEnclosingSphere3(points, points_size, V3_ZEROES, &collider->convex_hull.center, &collider->broad_sphere_radius);
   V3 neg_center = V3Negate(collider->convex_hull.center);
   ConvexHull3Offset(collider->convex_hull.points_local, collider->convex_hull.points_size, neg_center);
-  return collider;
-}
-
-void Physics3DeregisterCollider(Collider3* collider) {
-  Physics3Context* c = &_cdef_phys_3d_context;
-  if (collider->type == Collider3Type_ConvexHull) { ArenaRelease(collider->convex_hull.arena); }
-  Collider3Internal* c_internal = (Collider3Internal*) collider;
-  DLL_REMOVE(c->collider_head, c->collider_tail, c_internal, prev, next);
-  SLL_STACK_PUSH(c->collider_free_list, c_internal, next);
 }
 
 void Collider3SetSubtype(Collider3* collider, Collider3SubtypeHeader* subtype) {
@@ -570,36 +551,45 @@ B32 Collider3RemoveSubtype(Collider3* collider, U32 type) {
   return false;
 }
 
-RigidBody3* Physics3RegisterRigidBody(Collider3* collider) {
-  RigidBody3* rigid_body = RigidBody3Allocate();
+RigidBody3* Physics3RigidBodyRegister(Collider3* collider) {
+  Physics3Context* c = &_cdef_phys_3d_context;
+  RigidBody3Internal* rigid_body_internal;
+  if (c->rigid_body_free_list != NULL) {
+    rigid_body_internal = c->rigid_body_free_list;
+    SLL_STACK_POP(c->rigid_body_free_list, next);
+  } else {
+    rigid_body_internal = ARENA_PUSH_STRUCT(c->rigid_body_pool, RigidBody3Internal);
+  }
+  MEMORY_ZERO_STRUCT(rigid_body_internal);
+  DLL_PUSH_BACK(c->rigid_body_head, c->rigid_body_tail, rigid_body_internal, prev, next);
+
+  RigidBody3* rigid_body = &rigid_body_internal->rigid_body;
+  rigid_body->header.type = COLLIDER3_RIGID_BODY;
+  rigid_body->restitution = 0.2f;
+  rigid_body->static_friction = 0.2f;
+  rigid_body->dynamic_friction = 0.2f;
+  rigid_body->collider = collider;
+
   Collider3SetSubtype(collider, &rigid_body->header);
   return rigid_body;
 }
 
-RigidBody3* Physics3RegisterRigidBodyStatic(Collider3* collider) {
-  RigidBody3* rigid_body = Physics3RegisterRigidBody(collider);
-  RigidBody3CommonInit(rigid_body);
-  rigid_body->type = RigidBody3Type_Static;
-  rigid_body->collider = collider;
-  rigid_body->mass_inv = 0;
-  return rigid_body;
-}
-
-RigidBody3* Physics3RegisterRigidBodyDynamic(Collider3* collider, F32 mass) {
-  RigidBody3* rigid_body = Physics3RegisterRigidBody(collider);
-  RigidBody3CommonInit(rigid_body);
-  rigid_body->type = RigidBody3Type_Dynamic;
-  rigid_body->collider = collider;
-  DEBUG_ASSERT(mass > 0);
-  rigid_body->mass_inv = 1.0f / mass;
-  return rigid_body;
-}
-
-void Physics3DeregisterRigidBody(RigidBody3* rigid_body) {
+void Physics3RigidBodyDeregister(RigidBody3* rigid_body) {
   Physics3Context* c = &_cdef_phys_3d_context;
   RigidBody3Internal* rigid_body_internal = (RigidBody3Internal*) rigid_body;
   DLL_REMOVE(c->rigid_body_head, c->rigid_body_tail, rigid_body_internal, prev, next);
   SLL_STACK_PUSH(c->rigid_body_free_list, rigid_body_internal, next);
+}
+
+void RigidBody3SetStatic(RigidBody3* rigid_body) {
+  rigid_body->type     = RigidBody3Type_Static;
+  rigid_body->mass_inv = 0;
+}
+
+void RigidBody3SetDynamic(RigidBody3* rigid_body, F32 mass) {
+  DEBUG_ASSERT(mass > 0);
+  rigid_body->type     = RigidBody3Type_Dynamic;
+  rigid_body->mass_inv = 1.0f / mass;
 }
 
 #endif // CDEFAULT_PHYSICS3_IMPLEMENTATION

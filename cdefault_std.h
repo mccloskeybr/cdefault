@@ -719,6 +719,7 @@ String8 Str8Range(U8* str, U8* one_past_last);
 String8 _Str8CStr(U8* c_str);
 #define Str8CStr(s) _Str8CStr((U8*) s)
 #define Str8Lit(s) Str8((U8*) s, sizeof(s) - 1)
+#define Str8Static(s) { (U8*) s, sizeof(s) - 1 }
 String8 Str8Copy(Arena* arena, String8 string);
 String8 Str8Substring(String8 s, U32 start, U32 one_past_last);
 String8 Str8TrimFront(String8 s);

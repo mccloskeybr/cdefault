@@ -24,7 +24,7 @@ enum ProfileMetricType {
 
 // NOTE: Can retrieve a String8 copy of the metric's name via PROFILE_METRIC_STR8(METRIC_NAME)
 #define PROFILE_METRIC_STR8(metric) ProfileMetricType_Names[ProfileMetricType_##metric]
-#define PROFILE_DEFINE_METRIC_STR8(metric) { (U8*) #metric, sizeof(#metric) },
+#define PROFILE_DEFINE_METRIC_STR8(metric) Str8Static(#metric),
 static String8 ProfileMetricType_Names[ProfileMetricType_Count] = {
   PROFILE_REGISTRY(PROFILE_DEFINE_METRIC_STR8)
 };

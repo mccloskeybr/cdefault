@@ -129,6 +129,7 @@ B32  Circle2IntersectObb2(V2 circle_center, F32 circle_radius, V2 obb_center, V2
 B32  Circle2IntersectCircle2(V2 a_center, F32 a_radius, V2 b_center, F32 b_radius, IntersectManifold2* manifold);
 B32  Circle2IntersectConvexHull2(V2 circle_center, F32 circle_radius, V2* hull_points, U32 hull_points_size, IntersectManifold2* manifold);
 
+// TODO: add offset param to relevant fns instead of requiring higher-level caching
 // TODO: flatten / triangulate fns
 B32  ConvexHull2Validate(U32 hull_points_size);
 B32  ConvexHull2Eq(V2* a_points, U32 a_points_size, V2* b_points, U32 b_points_size);
@@ -178,8 +179,8 @@ B32  Line3IntersectTri3(V3 line_start, V3 line_end, V3 tri_points[3], V3* inters
 B32  Line3IntersectConvexPolygon3(V3 line_start, V3 line_end, V3* polygon_points, U32 polygon_points_size, V3* intersect_point);
 B32  Line3IntersectSphere3(V3 line_start, V3 line_end, V3 sphere_center, F32 sphere_radius, V3* enter_point, V3* exit_point);
 B32  Line3IntersectAabb3(V3 line_start, V3 line_end, V3 aabb_center, V3 aabb_size, V3* enter_point, V3* exit_point);
-B32  Line3IntersectConvexHull3(V3 line_start, V3 line_end, V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3* enter_point, V3* exit_point);
-B32  Line3IntersectMesh3(V3 line_start, V3 line_end, V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3* enter_point, V3* exit_point);
+B32  Line3IntersectConvexHull3(V3 line_start, V3 line_end, V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3 hull_offset, V3* enter_point, V3* exit_point);
+B32  Line3IntersectMesh3(V3 line_start, V3 line_end, V3* mesh_points, U32 mesh_points_size, U32* mesh_indices, U32 mesh_indices_size, V3 mesh_offset, V3* enter_point, V3* exit_point);
 
 B32  Ray3Validate(V3 ray_dir);
 B32  Ray3Eq(V3 a_start, V3 a_dir, V3 b_start, V3 b_dir);
@@ -194,8 +195,8 @@ B32  Ray3IntersectTri3(V3 ray_start, V3 ray_dir, V3 tri_points[3], V3* intersect
 B32  Ray3IntersectConvexPolygon3(V3 ray_start, V3 ray_dir, V3* polygon_points, U32 polygon_points_size, V3* intersect_point);
 B32  Ray3IntersectSphere3(V3 ray_start, V3 ray_dir, V3 sphere_center, F32 sphere_radius, V3* enter_point, V3* exit_point);
 B32  Ray3IntersectAabb3(V3 ray_start, V3 ray_dir, V3 aabb_center, V3 aabb_size, V3* enter_point, V3* exit_point);
-B32  Ray3IntersectConvexHull3(V3 ray_start, V3 ray_dir, V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3* enter_point, V3* exit_point);
-B32  Ray3IntersectMesh3(V3 ray_start, V3 ray_dir, V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3* enter_point, V3* exit_point);
+B32  Ray3IntersectConvexHull3(V3 ray_start, V3 ray_dir, V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3 hull_offset, V3* enter_point, V3* exit_point);
+B32  Ray3IntersectMesh3(V3 ray_start, V3 ray_dir, V3* mesh_points, U32 mesh_points_size, U32* mesh_indices, U32 mesh_indices_size, V3 mesh_offset, V3* enter_point, V3* exit_point);
 
 // TODO: plane contains flat shape fns
 B32  Plane3Validate(V3 plane_normal);
@@ -225,8 +226,8 @@ void Tri3Offset(V3 tri_points[3], V3 offset);
 void Tri3SetCenter(V3 tri_points[3], V3 center);
 V3   Tri3GetCenter(V3 tri_points[3]);
 V3   Tri3GetNormal(V3 tri_points[3]);
-void Tri3GetEnclosingAabb3(V3 tri_points[3], V3* aabb_center, V3* aabb_size);
-void Tri3GetEnclosingSphere3(V3 tri_points[3], V3* sphere_center, F32* sphere_radius);
+void Tri3GetEnclosingAabb3(V3 tri_points[3], V3 tri_offset, V3* aabb_center, V3* aabb_size);
+void Tri3GetEnclosingSphere3(V3 tri_points[3], V3 tri_offset, V3* sphere_center, F32* sphere_radius);
 void Tri3RotateAroundPoint(V3 tri_points[3], V3 point, M3 rot);
 B32  Tri3ContainsPoint(V3 tri_points[3], V3 point);
 B32  Tri3IntersectLine3(V3 tri_points[3], V3 line_start, V3 line_end, V3* intersect_point);
@@ -245,8 +246,8 @@ B32  ConvexPolygon3ApproxEq(V3* a_points, U32 a_points_size, V3* b_points, U32 b
 void ConvexPolygon3Offset(V3* polygon_points, U32 polygon_points_size, V3 offset);
 V3   ConvexPolygon3GetCenter(V3* polygon_points, U32 polygon_points_size);
 void ConvexPolygon3SetCenter(V3* polygon_points, U32 polygon_points_size, V3 center);
-void ConvexPolygon3GetEnclosingAabb3(V3* polygon_points, U32 polygon_points_size, V3* aabb_center, V3* aabb_size);
-void ConvexPolygon3GetEnclosingSphere3(V3* polygon_points, U32 polygon_points_size, V3* sphere_center, F32* sphere_radius);
+void ConvexPolygon3GetEnclosingAabb3(V3* polygon_points, U32 polygon_points_size, V3 polygon_offset, V3* aabb_center, V3* aabb_size);
+void ConvexPolygon3GetEnclosingSphere3(V3* polygon_points, U32 polygon_points_size, V3 polygon_offset, V3* sphere_center, F32* sphere_radius);
 void ConvexPolygon3RotateAroundPoint(V3* polygon_points, U32 polygon_points_size, V3 point, M3 rot);
 B32  ConvexPolygon3ContainsPoint(V3* polygon_points, U32 polygon_points_size, V3 point);
 B32  ConvexPolygon3IntersectLine3(V3* polygon_points, U32 polygon_points_size, V3 line_start, V3 line_end, V3* intersect_point);
@@ -269,7 +270,7 @@ B32  Aabb3IntersectLine3(V3 aabb_center, V3 aabb_size, V3 line_start, V3 line_en
 B32  Aabb3IntersectRay3(V3 aabb_center, V3 aabb_size, V3 ray_start, V3 ray_dir, V3* enter_point, V3* exit_point);
 B32  Aabb3IntersectAabb3(V3 a_center, V3 a_size, V3 b_center, V3 b_size, IntersectManifold3* manifold);
 B32  Aabb3IntersectSphere3(V3 aabb_center, V3 aabb_size, V3 sphere_center, F32 sphere_radius, IntersectManifold3* manifold);
-B32  Aabb3IntersectConvexHull3(V3 aabb_center, V3 aabb_size, V3* hull_points, U32 hull_points_size, IntersectManifold3* manifold);
+B32  Aabb3IntersectConvexHull3(V3 aabb_center, V3 aabb_size, V3* hull_points, U32 hull_points_size, V3 hull_offset, IntersectManifold3* manifold);
 // TODO: intersect plane etc
 
 B32  Sphere3Validate(F32 sphere_radius);
@@ -282,7 +283,7 @@ B32  Sphere3IntersectLine3(V3 sphere_center, F32 sphere_radius, V3 line_start, V
 B32  Sphere3IntersectRay3(V3 sphere_center, F32 sphere_radius, V3 ray_start, V3 ray_dir, V3* enter_point, V3* exit_point);
 B32  Sphere3IntersectSphere3(V3 a_center, F32 a_radius, V3 b_center, F32 b_radius, IntersectManifold3* manifold);
 B32  Sphere3IntersectAabb3(V3 sphere_center, F32 sphere_radius, V3 aabb_center, V3 aabb_size, IntersectManifold3* manifold);
-B32  Sphere3IntersectConvexHull3(V3 sphere_center, F32 sphere_radius, V3* hull_points, U32 hull_points_size, IntersectManifold3* manifold);
+B32  Sphere3IntersectConvexHull3(V3 sphere_center, F32 sphere_radius, V3* hull_points, U32 hull_points_size, V3 hull_offset, IntersectManifold3* manifold);
 // TODO: intersect plane etc
 
 // TODO: triangulate given flattened convex hull. quickhull
@@ -295,27 +296,27 @@ void ConvexHull3Flatten(Arena* arena, V3* src_points, U32 src_points_size, V3** 
 void ConvexHull3FromAabb3(V3 hull_points[8], U32 hull_indices[36], V3 aabb_center, V3 aabb_size);
 V3   ConvexHull3GetCenter(V3* hull_points, U32 hull_points_size);
 void ConvexHull3SetCenter(V3* hull_points, U32 hull_points_size, V3 center);
-void ConvexHull3GetEnclosingAabb3(V3* hull_points, U32 hull_points_size, V3* aabb_center, V3* aabb_size);
-void ConvexHull3GetEnclosingSphere3(V3* hull_points, U32 hull_points_size, V3* sphere_center, F32* sphere_radius);
+void ConvexHull3GetEnclosingAabb3(V3* hull_points, U32 hull_points_size, V3 hull_offset, V3* aabb_center, V3* aabb_size);
+void ConvexHull3GetEnclosingSphere3(V3* hull_points, U32 hull_points_size, V3 hull_offset, V3* sphere_center, F32* sphere_radius);
 B32  ConvexHull3ContainsPoint(V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3 point);
-B32  ConvexHull3IntersectLine3(V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3 line_start, V3 line_end, V3* enter_point, V3* exit_point);
-B32  ConvexHull3IntersectRay3(V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3 ray_start, V3 ray_dir, V3* enter_point, V3* exit_point);
-B32  ConvexHull3IntersectAabb3(V3* hull_points, U32 hull_points_size, V3 aabb_center, V3 aabb_size, IntersectManifold3* manifold);
-B32  ConvexHull3IntersectSphere3(V3* hull_points, U32 hull_points_size, V3 sphere_center, F32 sphere_radius, IntersectManifold3* manifold);
-B32  ConvexHull3IntersectConvexHull3(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size, IntersectManifold3* manifold);
+B32  ConvexHull3IntersectLine3(V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3 hull_offset, V3 line_start, V3 line_end, V3* enter_point, V3* exit_point);
+B32  ConvexHull3IntersectRay3(V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3 hull_offset, V3 ray_start, V3 ray_dir, V3* enter_point, V3* exit_point);
+B32  ConvexHull3IntersectAabb3(V3* hull_points, U32 hull_points_size, V3 hull_offset, V3 aabb_center, V3 aabb_size, IntersectManifold3* manifold);
+B32  ConvexHull3IntersectSphere3(V3* hull_points, U32 hull_points_size, V3 hull_offset, V3 sphere_center, F32 sphere_radius, IntersectManifold3* manifold);
+B32  ConvexHull3IntersectConvexHull3(V3* a_points, U32 a_points_size, V3 a_offset, V3* b_points, U32 b_points_size, V3 b_offset, IntersectManifold3* manifold);
 
-B32  Mesh3Validate(U32 hull_points_size, U32 indices_size);
+B32  Mesh3Validate(U32 mesh_points_size, U32 indices_size);
 B32  Mesh3Eq(V3* a_points, U32 a_points_size, U32* a_indices, U32 a_indices_size, V3* b_points, U32 b_points_size, U32* b_indices, U32 b_indices_size);
 B32  Mesh3ApproxEq(V3* a_points, U32 a_points_size, U32* a_indices, U32 a_indices_size, V3* b_points, U32 b_points_size, U32* b_indices, U32 b_indices_size);
-void Mesh3Offset(V3* hull_points, U32 hull_points_size, V3 offset);
-void Mesh3RotateAroundPoint(V3* hull_points, U32 hull_points_size, V3 point, M3 rot);
-void Mesh3FromAabb3(V3 hull_points[8], U32 hull_indices[36], V3 aabb_center, V3 aabb_size);
-V3   Mesh3GetCenter(V3* hull_points, U32 hull_points_size);
-void Mesh3SetCenter(V3* hull_points, U32 hull_points_size, V3 center);
-void Mesh3GetEnclosingAabb3(V3* hull_points, U32 hull_points_size, V3* aabb_center, V3* aabb_size);
-void Mesh3GetEnclosingSphere3(V3* hull_points, U32 hull_points_size, V3* sphere_center, F32* sphere_radius);
-B32  Mesh3IntersectLine3(V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3 line_start, V3 line_end, V3* enter_point, V3* exit_point);
-B32  Mesh3IntersectRay3(V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3 ray_start, V3 ray_dir, V3* enter_point, V3* exit_point);
+void Mesh3Offset(V3* mesh_points, U32 mesh_points_size, V3 offset);
+void Mesh3RotateAroundPoint(V3* mesh_points, U32 mesh_points_size, V3 point, M3 rot);
+void Mesh3FromAabb3(V3 mesh_points[8], U32 mesh_indices[36], V3 aabb_center, V3 aabb_size);
+V3   Mesh3GetCenter(V3* mesh_points, U32 mesh_points_size);
+void Mesh3SetCenter(V3* mesh_points, U32 mesh_points_size, V3 center);
+void Mesh3GetEnclosingAabb3(V3* mesh_points, U32 mesh_points_size, V3 mesh_offset, V3* aabb_center, V3* aabb_size);
+void Mesh3GetEnclosingSphere3(V3* mesh_points, U32 mesh_points_size, V3 mesh_offset, V3* sphere_center, F32* sphere_radius);
+B32  Mesh3IntersectLine3(V3* mesh_points, U32 mesh_points_size, U32* mesh_indices, U32 mesh_indices_size, V3 mesh_offset, V3 line_start, V3 line_end, V3* enter_point, V3* exit_point);
+B32  Mesh3IntersectRay3(V3* mesh_points, U32 mesh_points_size, U32* mesh_indices, U32 mesh_indices_size, V3 mesh_offset, V3 ray_start, V3 ray_dir, V3* enter_point, V3* exit_point);
 
 // TODO: OBB3
 // TODO: capsule
@@ -337,7 +338,7 @@ typedef struct GjkSupportContext GjkSupportContext;
 struct GjkSupportContext { GjkSupport_Fn* support_fn; void* user_data; };
 
 typedef struct GjkSupportParamsConvexHull3 GjkSupportParamsConvexHull3;
-struct GjkSupportParamsConvexHull3 { V3* points; U32 points_size; };
+struct GjkSupportParamsConvexHull3 { V3* points; U32 points_size; V3 offset; };
 V3 GjkSupportConvexHull3(void* user_data, V3 search_dir);
 
 typedef struct GjkSupportParamsSphere3 GjkSupportParamsSphere3;
@@ -1447,17 +1448,17 @@ B32 Line3IntersectAabb3(V3 line_start, V3 line_end, V3 aabb_center, V3 aabb_size
   return true;
 }
 
-B32 Line3IntersectConvexHull3(V3 line_start, V3 line_end, V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3* enter_point, V3* exit_point) {
-  return Line3IntersectMesh3(line_start, line_end, hull_points, hull_points_size, hull_indices, hull_indices_size, enter_point, exit_point);
+B32 Line3IntersectConvexHull3(V3 line_start, V3 line_end, V3* mesh_points, U32 mesh_points_size, U32* mesh_indices, U32 mesh_indices_size, V3 mesh_offset, V3* enter_point, V3* exit_point) {
+  return Line3IntersectMesh3(line_start, line_end, mesh_points, mesh_points_size, mesh_indices, mesh_indices_size, mesh_offset, enter_point, exit_point);
 }
 
-B32 Line3IntersectMesh3(V3 line_start, V3 line_end, V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3* enter_point, V3* exit_point) {
+B32 Line3IntersectMesh3(V3 line_start, V3 line_end, V3* mesh_points, U32 mesh_points_size, U32* mesh_indices, U32 mesh_indices_size, V3 mesh_offset, V3* enter_point, V3* exit_point) {
   F32 length_sq = Line3GetLengthSq(line_start, line_end);
   if (UNLIKELY(length_sq == 0)) { return false; }
   V3 line_dir = Line3GetDir(line_start, line_end);
 
   V3 enter, exit;
-  if (!Ray3IntersectMesh3(line_start, line_dir, hull_points, hull_points_size, hull_indices, hull_indices_size, &enter, &exit)) { return false; }
+  if (!Ray3IntersectMesh3(line_start, line_dir, mesh_points, mesh_points_size, mesh_indices, mesh_indices_size, mesh_offset, &enter, &exit)) { return false; }
 
   if (length_sq < Line3GetLengthSq(line_start, enter)) { return false; }
   if (length_sq < Line3GetLengthSq(line_start, exit))  { exit = enter; }
@@ -1591,24 +1592,28 @@ B32 Ray3IntersectAabb3(V3 ray_start, V3 ray_dir, V3 aabb_center, V3 aabb_size, V
   V3  aabb_points[8];
   U32 aabb_indices[36];
   ConvexHull3FromAabb3(aabb_points, aabb_indices, aabb_center, aabb_size);
-  return Ray3IntersectConvexHull3(ray_start, ray_dir, aabb_points, 8, aabb_indices, 36, enter_point, exit_point);
+  return Ray3IntersectConvexHull3(ray_start, ray_dir, aabb_points, 8, aabb_indices, 36, V3_ZEROES, enter_point, exit_point);
 }
 
-B32 Ray3IntersectConvexHull3(V3 ray_start, V3 ray_dir, V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3* enter_point, V3* exit_point) {
-  return Ray3IntersectMesh3(ray_start, ray_dir, hull_points, hull_points_size, hull_indices, hull_indices_size, enter_point, exit_point);
+B32 Ray3IntersectConvexHull3(V3 ray_start, V3 ray_dir, V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3 hull_offset, V3* enter_point, V3* exit_point) {
+  return Ray3IntersectMesh3(ray_start, ray_dir, hull_points, hull_points_size, hull_indices, hull_indices_size, hull_offset, enter_point, exit_point);
 }
 
-B32 Ray3IntersectMesh3(V3 ray_start, V3 ray_dir, V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3* enter_point, V3* exit_point) {
-  DEBUG_ASSERT(hull_indices_size % 3 == 0);
+B32 Ray3IntersectMesh3(V3 ray_start, V3 ray_dir, V3* mesh_points, U32 mesh_points_size, U32* mesh_indices, U32 mesh_indices_size, V3 mesh_offset, V3* enter_point, V3* exit_point) {
+  DEBUG_ASSERT(mesh_indices_size % 3 == 0);
   V3  i_min, i_max;
   F32 i_min_dist = F32_MAX;
   F32 i_max_dist = F32_MIN;
-  for (U32 i = 0; i < hull_indices_size; i += 3) {
-    U32 i0 = hull_indices[i + 0];
-    U32 i1 = hull_indices[i + 1];
-    U32 i2 = hull_indices[i + 2];
-    DEBUG_ASSERT(i0 < hull_points_size && i1 < hull_points_size && i2 < hull_points_size);
-    V3 tri[3] = { hull_points[i0], hull_points[i1], hull_points[i2] };
+  for (U32 i = 0; i < mesh_indices_size; i += 3) {
+    U32 i0 = mesh_indices[i + 0];
+    U32 i1 = mesh_indices[i + 1];
+    U32 i2 = mesh_indices[i + 2];
+    DEBUG_ASSERT(i0 < mesh_points_size && i1 < mesh_points_size && i2 < mesh_points_size);
+    V3 tri[3] = {
+      V3AddV3(mesh_points[i0], mesh_offset),
+      V3AddV3(mesh_points[i1], mesh_offset),
+      V3AddV3(mesh_points[i2], mesh_offset),
+    };
     V3 i;
     if (Ray3IntersectTri3(ray_start, ray_dir, tri, &i)) {
       if (enter_point == NULL && exit_point == NULL) { return true; }
@@ -1789,12 +1794,12 @@ V3 Tri3GetNormal(V3 tri_points[3]) {
   return V3Normalize(V3CrossV3(ab, ac));
 }
 
-void Tri3GetEnclosingAabb3(V3 tri_points[3], V3* aabb_center, V3* aabb_size) {
-  ConvexPolygon3GetEnclosingAabb3(tri_points, 3, aabb_center, aabb_size);
+void Tri3GetEnclosingAabb3(V3 tri_points[3], V3 tri_offset, V3* aabb_center, V3* aabb_size) {
+  ConvexPolygon3GetEnclosingAabb3(tri_points, 3, tri_offset, aabb_center, aabb_size);
 }
 
-void Tri3GetEnclosingSphere3(V3 tri_points[3], V3* sphere_center, F32* sphere_radius) {
-  ConvexPolygon3GetEnclosingSphere3(tri_points, 3, sphere_center, sphere_radius);
+void Tri3GetEnclosingSphere3(V3 tri_points[3], V3 tri_offset, V3* sphere_center, F32* sphere_radius) {
+  ConvexPolygon3GetEnclosingSphere3(tri_points, 3, tri_offset, sphere_center, sphere_radius);
 }
 
 void Tri3RotateAroundPoint(V3 tri_points[3], V3 point, M3 rot) {
@@ -1865,12 +1870,12 @@ void ConvexPolygon3SetCenter(V3* polygon_points, U32 polygon_points_size, V3 cen
   ConvexPolygon3Offset(polygon_points, polygon_points_size, offset);
 }
 
-void ConvexPolygon3GetEnclosingAabb3(V3* polygon_points, U32 polygon_points_size, V3* aabb_center, V3* aabb_size) {
-  ConvexHull3GetEnclosingAabb3(polygon_points, polygon_points_size, aabb_center, aabb_size);
+void ConvexPolygon3GetEnclosingAabb3(V3* polygon_points, U32 polygon_points_size, V3 polygon_offset, V3* aabb_center, V3* aabb_size) {
+  ConvexHull3GetEnclosingAabb3(polygon_points, polygon_points_size, polygon_offset, aabb_center, aabb_size);
 }
 
-void ConvexPolygon3GetEnclosingSphere3(V3* polygon_points, U32 polygon_points_size, V3* sphere_center, F32* sphere_radius) {
-  ConvexHull3GetEnclosingSphere3(polygon_points, polygon_points_size, sphere_center, sphere_radius);
+void ConvexPolygon3GetEnclosingSphere3(V3* polygon_points, U32 polygon_points_size, V3 polygon_offset, V3* sphere_center, F32* sphere_radius) {
+  ConvexHull3GetEnclosingSphere3(polygon_points, polygon_points_size, polygon_offset, sphere_center, sphere_radius);
 }
 
 void ConvexPolygon3RotateAroundPoint(V3* polygon_points, U32 polygon_points_size, V3 point, M3 rot) {
@@ -2082,13 +2087,13 @@ B32 Aabb3IntersectSphere3(V3 aabb_center, V3 aabb_size, V3 sphere_center, F32 sp
   // TODO: likely don't need to use GJK here. will get a more accurate manifold if implemented.
   V3 aabb_points[8];
   ConvexHull3FromAabb3(aabb_points, NULL, aabb_center, aabb_size);
-  return ConvexHull3IntersectSphere3(aabb_points, 8, sphere_center, sphere_radius, manifold);
+  return ConvexHull3IntersectSphere3(aabb_points, 8, V3_ZEROES, sphere_center, sphere_radius, manifold);
 }
 
-B32 Aabb3IntersectConvexHull3(V3 aabb_center, V3 aabb_size, V3* hull_points, U32 hull_points_size, IntersectManifold3* manifold) {
+B32 Aabb3IntersectConvexHull3(V3 aabb_center, V3 aabb_size, V3* hull_points, U32 hull_points_size, V3 hull_offset, IntersectManifold3* manifold) {
   V3 aabb_points[8];
   ConvexHull3FromAabb3(aabb_points, NULL, aabb_center, aabb_size);
-  return ConvexHull3IntersectConvexHull3(aabb_points, 8, hull_points, hull_points_size, manifold);
+  return ConvexHull3IntersectConvexHull3(aabb_points, 8, V3_ZEROES, hull_points, hull_points_size, hull_offset, manifold);
 }
 
 B32 Sphere3Validate(F32 sphere_radius) {
@@ -2140,10 +2145,10 @@ B32 Sphere3IntersectSphere3(V3 a_center, F32 a_radius, V3 b_center, F32 b_radius
 B32 Sphere3IntersectAabb3(V3 sphere_center, F32 sphere_radius, V3 aabb_center, V3 aabb_size, IntersectManifold3* manifold) {
   V3 aabb_points[8];
   ConvexHull3FromAabb3(aabb_points, NULL, aabb_center, aabb_size);
-  return Sphere3IntersectConvexHull3(sphere_center, sphere_radius, aabb_points, 8, manifold);
+  return Sphere3IntersectConvexHull3(sphere_center, sphere_radius, aabb_points, 8, V3_ZEROES, manifold);
 }
 
-B32 Sphere3IntersectConvexHull3(V3 sphere_center, F32 sphere_radius, V3* hull_points, U32 hull_points_size, IntersectManifold3* manifold) {
+B32 Sphere3IntersectConvexHull3(V3 sphere_center, F32 sphere_radius, V3* hull_points, U32 hull_points_size, V3 hull_offset, IntersectManifold3* manifold) {
   GjkSupportContext a;
   GjkSupportParamsSphere3 a_params;
   a_params.center = sphere_center;
@@ -2155,6 +2160,7 @@ B32 Sphere3IntersectConvexHull3(V3 sphere_center, F32 sphere_radius, V3* hull_po
   GjkSupportParamsConvexHull3 b_params;
   b_params.points = hull_points;
   b_params.points_size = hull_points_size;
+  b_params.offset = hull_offset;
   b.support_fn = GjkSupportConvexHull3;
   b.user_data = &b_params;
 
@@ -2212,12 +2218,12 @@ void ConvexHull3SetCenter(V3* hull_points, U32 hull_points_size, V3 center) {
   Mesh3SetCenter(hull_points, hull_points_size, center);
 }
 
-void ConvexHull3GetEnclosingAabb3(V3* hull_points, U32 hull_points_size, V3* aabb_center, V3* aabb_size) {
-  Mesh3GetEnclosingAabb3(hull_points, hull_points_size, aabb_center, aabb_size);
+void ConvexHull3GetEnclosingAabb3(V3* hull_points, U32 hull_points_size, V3 hull_offset, V3* aabb_center, V3* aabb_size) {
+  Mesh3GetEnclosingAabb3(hull_points, hull_points_size, hull_offset, aabb_center, aabb_size);
 }
 
-void ConvexHull3GetEnclosingSphere3(V3* hull_points, U32 hull_points_size, V3* sphere_center, F32* sphere_radius) {
-  Mesh3GetEnclosingSphere3(hull_points, hull_points_size, sphere_center, sphere_radius);
+void ConvexHull3GetEnclosingSphere3(V3* hull_points, U32 hull_points_size, V3 hull_offset, V3* sphere_center, F32* sphere_radius) {
+  Mesh3GetEnclosingSphere3(hull_points, hull_points_size, hull_offset, sphere_center, sphere_radius);
 }
 
 B32 ConvexHull3ContainsPoint(V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3 point) {
@@ -2235,25 +2241,26 @@ B32 ConvexHull3ContainsPoint(V3* hull_points, U32 hull_points_size, U32* hull_in
   return true;
 }
 
-B32 ConvexHull3IntersectLine3(V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3 line_start, V3 line_end, V3* enter_point, V3* exit_point) {
-  return Line3IntersectConvexHull3(line_start, line_end, hull_points, hull_points_size, hull_indices, hull_indices_size, enter_point, exit_point);
+B32 ConvexHull3IntersectLine3(V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3 hull_offset, V3 line_start, V3 line_end, V3* enter_point, V3* exit_point) {
+  return Line3IntersectConvexHull3(line_start, line_end, hull_points, hull_points_size, hull_indices, hull_indices_size, hull_offset, enter_point, exit_point);
 }
 
-B32 ConvexHull3IntersectRay3(V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3 ray_start, V3 ray_dir, V3* enter_point, V3* exit_point) {
-  return Ray3IntersectConvexHull3(ray_start, ray_dir, hull_points, hull_points_size, hull_indices, hull_indices_size, enter_point, exit_point);
+B32 ConvexHull3IntersectRay3(V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3 hull_offset, V3 ray_start, V3 ray_dir, V3* enter_point, V3* exit_point) {
+  return Ray3IntersectConvexHull3(ray_start, ray_dir, hull_points, hull_points_size, hull_indices, hull_indices_size, hull_offset, enter_point, exit_point);
 }
 
-B32 ConvexHull3IntersectAabb3(V3* hull_points, U32 hull_points_size, V3 aabb_center, V3 aabb_size, IntersectManifold3* manifold) {
+B32 ConvexHull3IntersectAabb3(V3* hull_points, U32 hull_points_size, V3 hull_offset, V3 aabb_center, V3 aabb_size, IntersectManifold3* manifold) {
   V3 aabb_points[8];
   ConvexHull3FromAabb3(aabb_points, NULL, aabb_center, aabb_size);
-  return ConvexHull3IntersectConvexHull3(hull_points, hull_points_size, aabb_points, 8, manifold);
+  return ConvexHull3IntersectConvexHull3(hull_points, hull_points_size, hull_offset, aabb_points, 8, V3_ZEROES, manifold);
 }
 
-B32 ConvexHull3IntersectSphere3(V3* hull_points, U32 hull_points_size, V3 sphere_center, F32 sphere_radius, IntersectManifold3* manifold) {
+B32 ConvexHull3IntersectSphere3(V3* hull_points, U32 hull_points_size, V3 hull_offset, V3 sphere_center, F32 sphere_radius, IntersectManifold3* manifold) {
   GjkSupportContext a;
   GjkSupportParamsConvexHull3 a_params;
   a_params.points = hull_points;
   a_params.points_size = hull_points_size;
+  a_params.offset = hull_offset;
   a.support_fn = GjkSupportConvexHull3;
   a.user_data = &a_params;
 
@@ -2268,11 +2275,12 @@ B32 ConvexHull3IntersectSphere3(V3* hull_points, U32 hull_points_size, V3 sphere
 }
 
 
-B32 ConvexHull3IntersectConvexHull3(V3* a_points, U32 a_points_size, V3* b_points, U32 b_points_size, IntersectManifold3* manifold) {
+B32 ConvexHull3IntersectConvexHull3(V3* a_points, U32 a_points_size, V3 a_offset, V3* b_points, U32 b_points_size, V3 b_offset, IntersectManifold3* manifold) {
   GjkSupportContext a;
   GjkSupportParamsConvexHull3 a_params;
   a_params.points = a_points;
   a_params.points_size = a_points_size;
+  a_params.offset = a_offset;
   a.support_fn = GjkSupportConvexHull3;
   a.user_data = &a_params;
 
@@ -2280,14 +2288,15 @@ B32 ConvexHull3IntersectConvexHull3(V3* a_points, U32 a_points_size, V3* b_point
   GjkSupportParamsConvexHull3 b_params;
   b_params.points = b_points;
   b_params.points_size = b_points_size;
+  b_params.offset = b_offset;
   b.support_fn = GjkSupportConvexHull3;
   b.user_data = &b_params;
 
   return GjkIntersection3(&a, &b, manifold);
 }
 
-B32 Mesh3Validate(U32 hull_points_size, U32 indices_size) {
-  return (hull_points_size > 2) && (indices_size > 0) && (indices_size % 3 == 0);
+B32 Mesh3Validate(U32 mesh_points_size, U32 indices_size) {
+  return (mesh_points_size > 2) && (indices_size > 0) && (indices_size % 3 == 0);
 }
 
 B32 Mesh3Eq(V3* a_points, U32 a_points_size, U32* a_indices, U32 a_indices_size, V3* b_points, U32 b_points_size, U32* b_indices, U32 b_indices_size) {
@@ -2318,33 +2327,33 @@ B32 Mesh3ApproxEq(V3* a_points, U32 a_points_size, U32* a_indices, U32 a_indices
   return true;
 }
 
-void Mesh3Offset(V3* hull_points, U32 hull_points_size, V3 offset) {
-  for (U32 i = 0; i < hull_points_size; i++) {
-    hull_points[i] = V3AddV3(hull_points[i], offset);
+void Mesh3Offset(V3* mesh_points, U32 mesh_points_size, V3 offset) {
+  for (U32 i = 0; i < mesh_points_size; i++) {
+    mesh_points[i] = V3AddV3(mesh_points[i], offset);
   }
 }
 
-void Mesh3RotateAroundPoint(V3* hull_points, U32 hull_points_size, V3 point, M3 rot) {
-  for (U32 i = 0; i < hull_points_size; i++) {
-    hull_points[i] = V3RotateAroundV3M3(hull_points[i], point, rot);
+void Mesh3RotateAroundPoint(V3* mesh_points, U32 mesh_points_size, V3 point, M3 rot) {
+  for (U32 i = 0; i < mesh_points_size; i++) {
+    mesh_points[i] = V3RotateAroundV3M3(mesh_points[i], point, rot);
   }
 }
 
-void Mesh3FromAabb3(V3 hull_points[8], U32 hull_indices[36], V3 aabb_center, V3 aabb_size) {
+void Mesh3FromAabb3(V3 mesh_points[8], U32 mesh_indices[36], V3 aabb_center, V3 aabb_size) {
   V3 min, max;
   Aabb3GetMinMax(aabb_center, aabb_size, &min, &max);
-  hull_points[0] = V3Assign(min.x, min.y, min.z);
-  hull_points[1] = V3Assign(max.x, min.y, min.z);
-  hull_points[2] = V3Assign(max.x, max.y, min.z);
-  hull_points[3] = V3Assign(min.x, max.y, min.z);
+  mesh_points[0] = V3Assign(min.x, min.y, min.z);
+  mesh_points[1] = V3Assign(max.x, min.y, min.z);
+  mesh_points[2] = V3Assign(max.x, max.y, min.z);
+  mesh_points[3] = V3Assign(min.x, max.y, min.z);
 
-  hull_points[4] = V3Assign(min.x, min.y, max.z);
-  hull_points[5] = V3Assign(max.x, min.y, max.z);
-  hull_points[6] = V3Assign(max.x, max.y, max.z);
-  hull_points[7] = V3Assign(min.x, max.y, max.z);
+  mesh_points[4] = V3Assign(min.x, min.y, max.z);
+  mesh_points[5] = V3Assign(max.x, min.y, max.z);
+  mesh_points[6] = V3Assign(max.x, max.y, max.z);
+  mesh_points[7] = V3Assign(min.x, max.y, max.z);
 
-  if (hull_indices != NULL) {
-    U32 static_hull_indices[36] = {
+  if (mesh_indices != NULL) {
+    U32 static_mesh_indices[36] = {
       0, 1, 2,   0, 2, 3,
       4, 6, 5,   4, 7, 6,
       3, 2, 6,   3, 6, 7,
@@ -2352,30 +2361,30 @@ void Mesh3FromAabb3(V3 hull_points[8], U32 hull_indices[36], V3 aabb_center, V3 
       1, 5, 6,   1, 6, 2,
       0, 3, 7,   0, 7, 4,
     };
-    MEMORY_MOVE_STATIC_ARRAY(hull_indices, static_hull_indices);
+    MEMORY_MOVE_STATIC_ARRAY(mesh_indices, static_mesh_indices);
   }
 }
 
-V3 Mesh3GetCenter(V3* hull_points, U32 hull_points_size) {
+V3 Mesh3GetCenter(V3* mesh_points, U32 mesh_points_size) {
   V3 center = V3_ZEROES;
-  for (U32 i = 0; i < hull_points_size; i++) {
-    center = V3AddV3(center, hull_points[i]);
+  for (U32 i = 0; i < mesh_points_size; i++) {
+    center = V3AddV3(center, mesh_points[i]);
   }
-  return V3DivF32(center, hull_points_size);
+  return V3DivF32(center, mesh_points_size);
 }
 
-void Mesh3SetCenter(V3* hull_points, U32 hull_points_size, V3 center) {
-  V3 curr_center = ConvexHull3GetCenter(hull_points, hull_points_size);
+void Mesh3SetCenter(V3* mesh_points, U32 mesh_points_size, V3 center) {
+  V3 curr_center = ConvexHull3GetCenter(mesh_points, mesh_points_size);
   V3 offset = V3SubV3(center, curr_center);
-  ConvexHull3Offset(hull_points, hull_points_size, offset);
+  ConvexHull3Offset(mesh_points, mesh_points_size, offset);
 }
 
-void Mesh3GetEnclosingAabb3(V3* hull_points, U32 hull_points_size, V3* aabb_center, V3* aabb_size) {
-  *aabb_center = ConvexHull3GetCenter(hull_points, hull_points_size);
-  V3 max = V3Splat(F32_MAX);
-  V3 min = V3Splat(F32_MIN);
-  for (U32 i = 0; i < hull_points_size; i++) {
-    V3 to_pt = V3SubV3(hull_points[i], *aabb_center);
+void Mesh3GetEnclosingAabb3(V3* mesh_points, U32 mesh_points_size, V3 mesh_offset, V3* aabb_center, V3* aabb_size) {
+  *aabb_center = ConvexHull3GetCenter(mesh_points, mesh_points_size);
+  V3 max = V3Splat(F32_MIN);
+  V3 min = V3Splat(F32_MAX);
+  for (U32 i = 0; i < mesh_points_size; i++) {
+    V3 to_pt = V3SubV3(V3AddV3(mesh_points[i], mesh_offset), *aabb_center);
     min.x = MIN(min.x, to_pt.x);
     min.y = MIN(min.y, to_pt.y);
     min.z = MIN(min.z, to_pt.z);
@@ -2386,23 +2395,23 @@ void Mesh3GetEnclosingAabb3(V3* hull_points, U32 hull_points_size, V3* aabb_cent
   *aabb_size = V3SubV3(max, min);
 }
 
-void Mesh3GetEnclosingSphere3(V3* hull_points, U32 hull_points_size, V3* sphere_center, F32* sphere_radius) {
-  *sphere_center = ConvexHull3GetCenter(hull_points, hull_points_size);
+void Mesh3GetEnclosingSphere3(V3* mesh_points, U32 mesh_points_size, V3 mesh_offset, V3* sphere_center, F32* sphere_radius) {
+  *sphere_center = ConvexHull3GetCenter(mesh_points, mesh_points_size);
   F32 max_dist = F32_MIN;
-  for (U32 i = 0; i < hull_points_size; i++) {
-    V3 to_pt    = V3SubV3(hull_points[i], *sphere_center);
+  for (U32 i = 0; i < mesh_points_size; i++) {
+    V3 to_pt    = V3SubV3(V3AddV3(mesh_points[i], mesh_offset), *sphere_center);
     F32 dist_sq = V3LengthSq(to_pt);
     if (max_dist < dist_sq) { max_dist = dist_sq; }
   }
   *sphere_radius = F32Sqrt(max_dist);
 }
 
-B32 Mesh3IntersectLine3(V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3 line_start, V3 line_end, V3* enter_point, V3* exit_point) {
-  return Line3IntersectMesh3(line_start, line_end, hull_points, hull_points_size, hull_indices, hull_indices_size, enter_point, exit_point);
+B32 Mesh3IntersectLine3(V3* mesh_points, U32 mesh_points_size, U32* mesh_indices, U32 mesh_indices_size, V3 mesh_offset, V3 line_start, V3 line_end, V3* enter_point, V3* exit_point) {
+  return Line3IntersectMesh3(line_start, line_end, mesh_points, mesh_points_size, mesh_indices, mesh_indices_size, mesh_offset, enter_point, exit_point);
 }
 
-B32 Mesh3IntersectRay3(V3* hull_points, U32 hull_points_size, U32* hull_indices, U32 hull_indices_size, V3 ray_start, V3 ray_dir, V3* enter_point, V3* exit_point) {
-  return Ray3IntersectMesh3(ray_start, ray_dir, hull_points, hull_points_size, hull_indices, hull_indices_size, enter_point, exit_point);
+B32 Mesh3IntersectRay3(V3* mesh_points, U32 mesh_points_size, U32* mesh_indices, U32 mesh_indices_size, V3 mesh_offset, V3 ray_start, V3 ray_dir, V3* enter_point, V3* exit_point) {
+  return Ray3IntersectMesh3(ray_start, ray_dir, mesh_points, mesh_points_size, mesh_indices, mesh_indices_size, mesh_offset, enter_point, exit_point);
 }
 
 typedef struct EpaPolytopeFace EpaPolytopeFace;
@@ -2434,18 +2443,18 @@ struct EpaHorizon {
 
 V3 GjkSupportConvexHull3(void* user_data, V3 search_dir) {
   GjkSupportParamsConvexHull3* params = (GjkSupportParamsConvexHull3*) user_data;
-  V3* max_point = NULL;
+  V3  max_point;
   F32 max_point_dot = F32_MIN;
   for (U32 i = 0; i < params->points_size; i++) {
-    V3* test     = &params->points[i];
-    F32 test_dot = V3DotV3(*test, search_dir);
+    V3  test     = V3AddV3(params->points[i], params->offset);
+    F32 test_dot = V3DotV3(V3AddV3(test, params->offset), search_dir);
     if (test_dot > max_point_dot) {
       max_point     = test;
       max_point_dot = test_dot;
     }
   }
   DEBUG_ASSERT(max_point_dot != F32_MIN);
-  return *max_point;
+  return max_point;
 }
 
 V3 GjkSupportSphere3(void* user_data, V3 search_dir) {

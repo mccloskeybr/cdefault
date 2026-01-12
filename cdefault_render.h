@@ -49,9 +49,9 @@ B32  WindowIsMouseButtonJustPressed(MouseButton button);
 B32  WindowIsMouseButtonJustReleased(MouseButton button);
 F32  WindowGetMouseScrollSign();
 void WindowGetMousePosition(F32* x, F32* y); // NOTE: In screen coordinates. May need to project to renderer / viewport space separately (RendererCastRay).
-void WindowGetMousePositionV(V2* pos);
+V2   WindowGetMousePositionV();
 void WindowGetMouseDeltaPosition(F32* x, F32* y);
-void WindowGetMouseDeltaPositionV(V2* pos);
+V2   WindowGetMouseDeltaPositionV();
 
 void RendererSetProjection2D(M4 projection);
 void RendererSetProjection3D(M4 projection);
@@ -1111,8 +1111,8 @@ void RendererCastRay3(F32 x, F32 y, V3* start, V3* dir) {
   M4 view                = M4LookAt(r->camera_3d.pos, target, r->camera_3d.up_dir);
   M4 world_to_camera     = M4MultM4(r->projection_3d, view);
   M4 world_to_camera_inv = M4Invert(world_to_camera);
-  V3 n = UnprojectPoint((V3) { x2, y2, -1}, world_to_camera_inv);
-  V3 f = UnprojectPoint((V3) { x2, y2, +1}, world_to_camera_inv);
+  V3 n = UnprojectPoint(V3Assign(x2, y2, -1), world_to_camera_inv);
+  V3 f = UnprojectPoint(V3Assign(x2, y2, +1), world_to_camera_inv);
   V3 delta = V3Normalize(V3SubV3(f, n));
 
   if (start != NULL) { *start = n; }
@@ -2219,8 +2219,10 @@ void WIN_WindowGetMousePosition(F32* x, F32* y) {
   *y = window->mouse_pos.y;
 }
 
-void WIN_WindowGetMousePositionV(V2* pos) {
-  WIN_WindowGetMousePosition(&pos->x, &pos->y);
+V2 WIN_WindowGetMousePositionV() {
+  V2 result;
+  WIN_WindowGetMousePosition(&result.x, &result.y);
+  return result;
 }
 
 void WIN_WindowGetMouseDeltaPosition(F32* x, F32* y) {
@@ -2230,8 +2232,10 @@ void WIN_WindowGetMouseDeltaPosition(F32* x, F32* y) {
   *y = window->mouse_pos_delta.y;
 }
 
-void WIN_WindowGetMouseDeltaPositionV(V2* pos) {
-  WIN_WindowGetMouseDeltaPosition(&pos->x, &pos->y);
+V2 WIN_WindowGetMouseDeltaPositionV() {
+  V2 result;
+  WIN_WindowGetMouseDeltaPosition(&result.x, &result.y);
+  return result;
 }
 
 #else
@@ -2321,16 +2325,16 @@ void WindowGetMousePosition(F32* x, F32* y) {
   CDEFAULT_RENDER_BACKEND_FN(WindowGetMousePosition(x, y));
 }
 
-void WindowGetMousePositionV(V2* pos) {
-  CDEFAULT_RENDER_BACKEND_FN(WindowGetMousePositionV(pos));
+V2 WindowGetMousePositionV() {
+  return CDEFAULT_RENDER_BACKEND_FN(WindowGetMousePositionV());
 }
 
 void WindowGetMouseDeltaPosition(F32* x, F32* y) {
   CDEFAULT_RENDER_BACKEND_FN(WindowGetMouseDeltaPosition(x, y));
 }
 
-void WindowGetMouseDeltaPositionV(V2* pos) {
-  CDEFAULT_RENDER_BACKEND_FN(WindowGetMouseDeltaPositionV(pos));
+V2 WindowGetMouseDeltaPositionV() {
+  return CDEFAULT_RENDER_BACKEND_FN(WindowGetMouseDeltaPositionV());
 }
 
 #endif // CDEFAULT_RENDER_IMPLEMENTATION

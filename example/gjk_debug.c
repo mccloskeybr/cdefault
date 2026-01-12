@@ -98,7 +98,7 @@ int main(void) {
     }
 
     IntersectManifold3 manifold;
-    if (ConvexHull3IntersectConvexHull3(a_points, a_points_size, b_points, b_points_size, &manifold)) {
+    if (ConvexHull3IntersectConvexHull3(a_points, a_points_size, V3_ZEROES, b_points, b_points_size, V3_ZEROES, &manifold)) {
       V3 manifold_end = V3MultF32(manifold.normal, manifold.penetration);
       DrawLine(V3_ZEROES, manifold_end, GJK_OFFSET, V3_BLUE);
     }

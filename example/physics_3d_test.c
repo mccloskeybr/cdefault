@@ -9,14 +9,18 @@ Collider3* colliders[255];
 U32 next_collider = 0;
 
 static void AddColliderSphere(V3 pos) {
-  Collider3* c = Physics3RegisterColliderSphere(pos, SPHERE_RADIUS);
-  Physics3RegisterRigidBodyDynamic(c, 50);
+  Collider3* c = Physics3ColliderRegister();
+  RigidBody3* rb = Physics3RigidBodyRegister(c);
+  Collider3SetSphere(c, pos, SPHERE_RADIUS);
+  RigidBody3SetDynamic(rb, 50);
   colliders[next_collider++] = c;
 }
 
 static void AddColliderRect(V3 pos) {
-  Collider3* c = Physics3RegisterColliderRect(pos, RECT_SIZE);
-  Physics3RegisterRigidBodyDynamic(c, 50);
+  Collider3* c = Physics3ColliderRegister();
+  RigidBody3* rb = Physics3RigidBodyRegister(c);
+  Collider3SetRect(c, pos, RECT_SIZE);
+  RigidBody3SetDynamic(rb, 50);
   colliders[next_collider++] = c;
 }
 
@@ -34,8 +38,10 @@ int main(void) {
   // camera->look_dir = V3SubV3(V3_ZEROES, camera->pos);
   camera->look_dir = V3Normalize(camera->look_dir);
 
-  Collider3* ground = Physics3RegisterColliderRect(V3_ZEROES, GROUND_SIZE);
-  Physics3RegisterRigidBodyStatic(ground);
+  Collider3* ground_c = Physics3ColliderRegister();
+  Collider3SetRect(ground_c, V3_ZEROES, GROUND_SIZE);
+  RigidBody3* ground_rb = Physics3RigidBodyRegister(ground_c);
+  RigidBody3SetStatic(ground_rb);
 
   F32 dt_s = 0.0f;
   Stopwatch frame_stopwatch;
@@ -55,7 +61,7 @@ int main(void) {
 
     Physics3Update(dt_s);
 
-    DrawCubeV(ground->center, V4_QUAT_IDENT, GROUND_SIZE, V3_BLUE);
+    DrawCubeV(ground_c->center, V4_QUAT_IDENT, GROUND_SIZE, V3_BLUE);
     for (U32 i = 0; i < next_collider; i++) {
       Collider3* c = colliders[i];
       switch (c->type) {

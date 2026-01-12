@@ -1706,33 +1706,33 @@ void Ray3IntersectConvexHull3Test() {
 
   // NOTE: ray hits hull front → exit at +x, enter at -x
   ray_start = V3Assign(-3, 0, 0); ray_dir = V3Assign(1, 0, 0);
-  EXPECT_TRUE(Ray3IntersectConvexHull3(ray_start, ray_dir, hull_points, 8, hull_indices, 36, &enter, &exit));
+  EXPECT_TRUE(Ray3IntersectConvexHull3(ray_start, ray_dir, hull_points, 8, hull_indices, 36, V3_ZEROES, &enter, &exit));
   EXPECT_V3_APPROX_EQ(enter, V3Assign(-1, 0, 0));
   EXPECT_V3_APPROX_EQ(exit,  V3Assign( 1, 0, 0));
 
   // NOTE: ray misses (parallel, offset on Y)
   ray_start = V3Assign(-3, 3, 0); ray_dir = V3Assign(1, 0, 0);
-  EXPECT_FALSE(Ray3IntersectConvexHull3(ray_start, ray_dir, hull_points, 8, hull_indices, 36, NULL, NULL));
+  EXPECT_FALSE(Ray3IntersectConvexHull3(ray_start, ray_dir, hull_points, 8, hull_indices, 36, V3_ZEROES, NULL, NULL));
 
   // NOTE: ray pointing away → miss (but hits when t < 0)
   ray_start = V3Assign(3, 0, 0); ray_dir = V3Assign(1, 0, 0);
-  EXPECT_FALSE(Ray3IntersectConvexHull3(ray_start, ray_dir, hull_points, 8, hull_indices, 36, NULL, NULL));
+  EXPECT_FALSE(Ray3IntersectConvexHull3(ray_start, ray_dir, hull_points, 8, hull_indices, 36, V3_ZEROES, NULL, NULL));
 
   // NOTE: ray starts inside hull
   ray_start = V3Assign(0, 0, 0); ray_dir = V3Assign(0, 1, 0);
-  EXPECT_TRUE(Ray3IntersectConvexHull3(ray_start, ray_dir, hull_points, 8, hull_indices, 36, &enter, &exit));
+  EXPECT_TRUE(Ray3IntersectConvexHull3(ray_start, ray_dir, hull_points, 8, hull_indices, 36, V3_ZEROES, &enter, &exit));
   EXPECT_V3_APPROX_EQ(enter, V3Assign(0, 1, 0));
   EXPECT_V3_APPROX_EQ(exit,  V3Assign(0, 1, 0));
 
   // NOTE: ray grazes face
   ray_start = V3Assign(-3, 1, -1); ray_dir = V3Assign(1, 0, 0);
-  EXPECT_TRUE(Ray3IntersectConvexHull3(ray_start, ray_dir, hull_points, 8, hull_indices, 36, &enter, &exit));
+  EXPECT_TRUE(Ray3IntersectConvexHull3(ray_start, ray_dir, hull_points, 8, hull_indices, 36, V3_ZEROES, &enter, &exit));
   EXPECT_V3_APPROX_EQ(enter, V3Assign(-1, 1, -1));
   EXPECT_V3_APPROX_EQ(exit,  V3Assign(1, 1, -1));
 
   // NOTE: ray intersects infinite planes but misses actual hull region
   ray_start = V3Assign(0, 0, 3); ray_dir = V3Assign(0, 0, 1);
-  EXPECT_FALSE(Ray3IntersectConvexHull3(ray_start, ray_dir, hull_points, 8, hull_indices, 36, NULL, NULL));
+  EXPECT_FALSE(Ray3IntersectConvexHull3(ray_start, ray_dir, hull_points, 8, hull_indices, 36, V3_ZEROES, NULL, NULL));
 }
 
 void Line3ContainsPointTest() {
@@ -2101,23 +2101,23 @@ void Aabb3IntersectConvexHull3Test() {
 
   // NOTE: no intersection
   ac = V3Assign(0, 0, 5);  as = V3Assign(1, 1, 1);
-  EXPECT_FALSE(Aabb3IntersectConvexHull3(ac, as, hull, 8, &manifold));
+  EXPECT_FALSE(Aabb3IntersectConvexHull3(ac, as, hull, 8, V3_ZEROES, &manifold));
 
   // NOTE: deep intersection
   ac = V3Assign(0, 0, 0.75f);  as = V3Assign(1, 1, 1);
-  EXPECT_TRUE(Aabb3IntersectConvexHull3(ac, as, hull, 8, &manifold));
+  EXPECT_TRUE(Aabb3IntersectConvexHull3(ac, as, hull, 8, V3_ZEROES, &manifold));
   EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, 1));
   EXPECT_F32_APPROX_EQ(manifold.penetration, 0.75f);
 
   // NOTE: touching face
   ac = V3Assign(0, 0, 2);  as = V3Assign(2, 2, 2);
-  EXPECT_TRUE(Aabb3IntersectConvexHull3(ac, as, hull, 8, &manifold));
+  EXPECT_TRUE(Aabb3IntersectConvexHull3(ac, as, hull, 8, V3_ZEROES, &manifold));
   EXPECT_F32_APPROX_EQ(manifold.penetration, 0.0f);
   EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, 1));
 
   // NOTE: a entirely in b
   ac = V3Assign(0, 0, 0);  as = V3Assign(1, 1, 1);
-  EXPECT_TRUE(Aabb3IntersectConvexHull3(ac, as, hull, 8, &manifold));
+  EXPECT_TRUE(Aabb3IntersectConvexHull3(ac, as, hull, 8, V3_ZEROES, &manifold));
   EXPECT_F32_APPROX_EQ(manifold.penetration, 1.11803f);
   EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(-0.89443f, -0.00000f, 0.44721f));
 }
@@ -2268,26 +2268,26 @@ void ConvexHull3IntersectConvexHull3Test() {
   // NOTE: not intersecting
   ConvexHull3FromAabb3(a, NULL, V3Assign(0, 0, 0), size);
   ConvexHull3FromAabb3(b, NULL, V3Assign(0, 0, 4), size);
-  EXPECT_FALSE(ConvexHull3IntersectConvexHull3(a, 8, b, 8, &manifold));
+  EXPECT_FALSE(ConvexHull3IntersectConvexHull3(a, 8, V3_ZEROES, b, 8, V3_ZEROES, &manifold));
 
   // NOTE: deep intersection
   ConvexHull3FromAabb3(a, NULL, V3Assign(0, 0, 0), size);
   ConvexHull3FromAabb3(b, NULL, V3Assign(0, 0, 1), size);
-  EXPECT_TRUE(ConvexHull3IntersectConvexHull3(a, 8, b, 8, &manifold));
+  EXPECT_TRUE(ConvexHull3IntersectConvexHull3(a, 8, V3_ZEROES, b, 8, V3_ZEROES, &manifold));
   EXPECT_F32_APPROX_EQ(manifold.penetration, 1);
   EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, -1));
 
   // NOTE: intersecting one face
   ConvexHull3FromAabb3(a, NULL, V3Assign(0, 0, 0), size);
   ConvexHull3FromAabb3(b, NULL, V3Assign(0, 0, 2), size);
-  EXPECT_TRUE(ConvexHull3IntersectConvexHull3(a, 8, b, 8, &manifold));
+  EXPECT_TRUE(ConvexHull3IntersectConvexHull3(a, 8, V3_ZEROES, b, 8, V3_ZEROES, &manifold));
   EXPECT_F32_APPROX_EQ(manifold.penetration, 0);
   EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, -1));
 
   // NOTE: intersecting one corner
   ConvexHull3FromAabb3(a, NULL, V3Assign(0, 0, 0), size);
   ConvexHull3FromAabb3(b, NULL, V3Assign(2, 2, 2), size);
-  EXPECT_TRUE(ConvexHull3IntersectConvexHull3(a, 8, b, 8, &manifold));
+  EXPECT_TRUE(ConvexHull3IntersectConvexHull3(a, 8, V3_ZEROES, b, 8, V3_ZEROES, &manifold));
   EXPECT_F32_APPROX_EQ(manifold.penetration, 0);
   EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, -1, 0));
 }
@@ -2300,24 +2300,24 @@ void ConvexHull3IntersectSphere3Test() {
 
   // NOTE: miss
   sc = V3Assign(0, 0, 5); r = 1;
-  EXPECT_FALSE(ConvexHull3IntersectSphere3(hull, 8, sc, r, &manifold));
+  EXPECT_FALSE(ConvexHull3IntersectSphere3(hull, 8, V3_ZEROES, sc, r, &manifold));
 
   // NOTE: intersection
   sc = V3Assign(0, 0, 1); r = 1;
-  EXPECT_TRUE(ConvexHull3IntersectSphere3(hull, 8, sc, r, &manifold));
+  EXPECT_TRUE(ConvexHull3IntersectSphere3(hull, 8, V3_ZEROES, sc, r, &manifold));
   // NOTE: should be V3_Z_NEG, but not, due to EPA convergence memes.
   EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0.18434f, -0.31337f, -0.93157f));
   EXPECT_F32_APPROX_EQ(manifold.penetration, 0.40127f);
 
   // NOTE: face intersection
   sc = V3Assign(0, 0, 1.5f); r = 1;
-  EXPECT_TRUE(ConvexHull3IntersectSphere3(hull, 8, sc, r, &manifold));
+  EXPECT_TRUE(ConvexHull3IntersectSphere3(hull, 8, V3_ZEROES, sc, r, &manifold));
   EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0, 0, -1));
   EXPECT_F32_APPROX_EQ(manifold.penetration, 0);
 
   // NOTE: sphere enclosed in hull
   sc = V3Assign(0, 0, 0); r = 0.25f;
-  EXPECT_TRUE(ConvexHull3IntersectSphere3(hull, 8, sc, r, &manifold));
+  EXPECT_TRUE(ConvexHull3IntersectSphere3(hull, 8, V3_ZEROES, sc, r, &manifold));
   EXPECT_V3_APPROX_EQ(manifold.normal, V3Assign(0.15726f, -0.10484f, 0.98198f));
   EXPECT_F32_APPROX_EQ(manifold.penetration, 0.49099f);
 }

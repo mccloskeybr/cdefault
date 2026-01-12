@@ -47,7 +47,6 @@ struct UiInteraction {
   B8  right_clicked;
   B8  dragged;
   B8  open;
-  U32 selected;
 };
 
 // NOTE: Create & pass this struct to modify the colors, etc. of various UI components.
@@ -117,6 +116,9 @@ void UiSetFontCallbacks(UiFontMeasureText_Fn* ui_font_measure_text_fn, UiFontGet
 UiStyle* UiGetStyle(); // NOTE: get / update the style (colors, etc.) of UI widgets.
 B32 UiContainsMouse(); // NOTE: e.g. to determine if a click should potentially be delegated to the UI system or some other system.
 
+B32 UiWidgetGetPos(U32 id, V2* pos);
+B32 UiWidgetGetSize(U32 id, V2* size);
+
 // NOTE: begin and end calls for determining UI layout position, sizes, etc.
 void UiBegin(F32 dt_s); // NOTE: Must be called before any widgets are placed. Delta time is passed for animations.
 UiDrawCommand* UiEnd(); // NOTE: returns a doubly-linked list of instructions for how to render the UI (which can be processed in-order).
@@ -162,8 +164,8 @@ UiInteraction UiGrow(U32 id);
 // NOTE: A size of 0 defaults to a grow scheme.
 UiInteraction UiButton(U32 id, String8 text, V2 size);
 UiInteraction UiButtonToggle(U32 id, String8 text, B32* toggled, V2 size);
-UiInteraction UiButtonRadio(U32 id, String8* options, U32 options_size, V2 button_size, V2 child_gap);
-UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, V2 size, F32 child_gap);
+UiInteraction UiButtonRadio(U32 id, String8* options, U32 options_size, U32* selected, V2 button_size, V2 child_gap);
+UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, U32* selected, V2 size, F32 child_gap);
 UiInteraction UiText(U32 id, String8 text, V2 size);
 UiInteraction UiSliderF32(U32 id, F32* value, F32 min, F32 max, F32 resolution, V2 size);
 UiInteraction UiSliderU32(U32 id, U32* value, U32 min, U32 max, F32 resolution, V2 size);
@@ -513,7 +515,6 @@ static UiInteraction UiWidgetGetInteraction(UiWidget* widget) {
 
   // NOTE: tracked manually / separately.
   result.open     = false;
-  result.selected = 0;
 
   return result;
 }
@@ -524,7 +525,6 @@ static void UiInteractionMerge(UiInteraction* dest, UiInteraction src) {
   dest->right_clicked = dest->right_clicked || src.right_clicked;
   dest->dragged       = dest->dragged || src.dragged;
   dest->open          = dest->open || src.open;
-  dest->selected      = (src.selected != 0) ? src.selected : dest->selected;
 }
 
 static UiWidget* UiWidgetBegin(U32 id, UiWidgetOptions options) {
@@ -1012,6 +1012,22 @@ B32 UiContainsMouse() {
   return c->deepest_hover_id != 0 || c->drag_id != 0;
 }
 
+B32 UiWidgetGetPos(U32 id, V2* pos) {
+  UiContext* c = UiGetContext();
+  UiWidget* widget = UiWidgetFind(c->prev_root, id);
+  if (widget == NULL) { return false; }
+  *pos = widget->pos;
+  return true;
+}
+
+B32 UiWidgetGetSize(U32 id, V2* size) {
+  UiContext* c = UiGetContext();
+  UiWidget* widget = UiWidgetFind(c->prev_root, id);
+  if (widget == NULL) { return false; }
+  *size = widget->size;
+  return true;
+}
+
 void UiBegin(F32 dt_s) {
   UiContext* c = UiGetContext();
   DEBUG_ASSERT(c->root == NULL);
@@ -1324,18 +1340,19 @@ UiInteraction UiButtonToggle(U32 id, String8 text, B32* toggled, V2 size) {
   return interaction;
 }
 
-UiInteraction UiButtonRadio(U32 id, String8* options, U32 options_size, V2 button_size, V2 child_gap) {
+UiInteraction UiButtonRadio(U32 id, String8* options, U32 options_size, U32* selected, V2 button_size, V2 child_gap) {
   UiWidgetOptions widget_options = UiWidgetOptions_DirectionVertical |
                                    UiWidgetOptions_SizingFit |
                                    UiWidgetOptions_AlignStart;
   UiWidget* radio_group = UiWidgetBegin(id, widget_options);
+  if (radio_group->cached == NULL) { radio_group->selected = *selected; }
   radio_group->child_gap = child_gap.y;
   UiInteraction result;
   MEMORY_ZERO_STRUCT(&result);
   for (U32 i = 0; i < options_size; i++) {
-    B32 selected = radio_group->selected == i;
+    B32 this_button_selected = radio_group->selected == i;
     UiInteraction option_interaction = UiPanelHorizontalBegin(UIID_INT(id + i), V2_ZEROES, child_gap.x);
-    UiInteractionMerge(&option_interaction, UiButtonToggle(UIID_INT(id + i), Str8Lit(""), &selected, button_size));
+    UiInteractionMerge(&option_interaction, UiButtonToggle(UIID_INT(id + i), Str8Lit(""), &this_button_selected, button_size));
     UiInteractionMerge(&option_interaction, UiGrow(UIID_INT(id + i)));
     UiInteractionMerge(&option_interaction, UiText(UIID_INT(id + i), options[i], V2_ZEROES));
     UiPanelEnd();
@@ -1343,11 +1360,11 @@ UiInteraction UiButtonRadio(U32 id, String8* options, U32 options_size, V2 butto
     UiInteractionMerge(&result, option_interaction);
   }
   UiWidgetEnd();
-  result.selected = radio_group->selected;
+  *selected = radio_group->selected;
   return result;
 }
 
-UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, V2 size, F32 child_gap) {
+UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, U32* selected, V2 size, F32 child_gap) {
   UiContext* c = UiGetContext();
   UiWidgetOptions widget_options = UiWidgetOptions_DirectionHorizontal |
                                    UiWidgetOptions_AlignCenter |
@@ -1355,6 +1372,7 @@ UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, V2 size, F3
                                    UiWidgetOptions_RenderRect;
   UiWidgetApplySizeDefaultGrow(&widget_options, size);
   UiWidget* combo_box = UiWidgetBegin(id, widget_options);
+  if (combo_box->cached == NULL) { combo_box->selected = *selected; }
   combo_box->pref_size = size;
   combo_box->color = c->style.background_color;
   UiInteraction result = UiWidgetGetInteraction(combo_box);
@@ -1407,6 +1425,7 @@ UiInteraction UiComboBox(U32 id, String8* options, U32 options_size, V2 size, F3
     UiPopupEnd();
   }
   if (!result.hovered) { combo_box->open = false; }
+  *selected = combo_box->selected;
   UiWidgetEnd();
   return result;
 }
@@ -1446,7 +1465,8 @@ UiInteraction UiSliderF32(U32 id, F32* value, F32 min, F32 max, F32 resolution, 
   UiContext* c = UiGetContext();
   UiInteraction result;
   UiWidget* slider = UiSliderBegin(id, size, resolution, Str8Format(c->widget_arena, "%0.2f", *value), &result);
-  slider->slider_value = CLAMP(min, slider->slider_value, max);
+  if (slider->cached == NULL) { slider->slider_value = *value;                                }
+  else                        { slider->slider_value = CLAMP(min, slider->slider_value, max); }
   *value = slider->slider_value;
   UiWidgetEnd();
   return result;
@@ -1457,7 +1477,8 @@ UiInteraction UiSliderU32(U32 id, U32* value, U32 min, U32 max, F32 resolution, 
   UiInteraction result;
   UiWidget* slider = UiSliderBegin(id, size, resolution, Str8Format(c->widget_arena, "%d", *value), &result);
   slider->slider_value = CLAMP(min, slider->slider_value, max);
-  *value = slider->slider_value;
+  if (slider->cached == NULL) { slider->slider_value = *value;                                }
+  else                        { slider->slider_value = CLAMP(min, slider->slider_value, max); }
   UiWidgetEnd();
   return result;
 }
@@ -1467,7 +1488,8 @@ UiInteraction UiSliderS32(U32 id, S32* value, S32 min, S32 max, F32 resolution, 
   UiInteraction result;
   UiWidget* slider = UiSliderBegin(id, size, resolution, Str8Format(c->widget_arena, "%d", *value), &result);
   slider->slider_value = CLAMP(min, slider->slider_value, max);
-  *value = slider->slider_value;
+  if (slider->cached == NULL) { slider->slider_value = *value;                                }
+  else                        { slider->slider_value = CLAMP(min, slider->slider_value, max); }
   UiWidgetEnd();
   return result;
 }

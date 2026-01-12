@@ -43,6 +43,7 @@ int main(void) {
   UiSetFontCallbacks(UiFontMeasureTextImpl, UiFontGetAttributesImpl);
   UiSetFontUserData(&font_atlas);
 
+  U32 ignored = 0;
   Arena* temp_arena = ArenaAllocate();
   while (!WindowShouldClose()) {
     ArenaClear(temp_arena);
@@ -56,8 +57,7 @@ int main(void) {
       plot_values[i] = F32Sin(TimeSecondsSinceStart() + i);
     }
 
-    V2 mouse_pos;
-    WindowGetMousePositionV(&mouse_pos);
+    V2 mouse_pos = WindowGetMousePositionV();
     UiSetPointerState(mouse_pos, WindowGetMouseScrollSign(), WindowIsMouseButtonPressed(MouseButton_Left), WindowIsMouseButtonPressed(MouseButton_Right));
 
     UiBegin(dt_s);
@@ -83,7 +83,7 @@ int main(void) {
               Str8Lit("super long option 2"),
               Str8Lit("option 3"),
             };
-            UiComboBox(UIID(), combo_options, STATIC_ARRAY_SIZE(combo_options), V2_ZEROES, 5);
+            UiComboBox(UIID(), combo_options, STATIC_ARRAY_SIZE(combo_options), &ignored, V2_ZEROES, 5);
           UiPanelEnd();
 
           UiPanelHorizontalBegin(UIID(), V2_ZEROES, 0);
@@ -94,7 +94,7 @@ int main(void) {
               Str8Lit("radio 2"),
               Str8Lit("radio 3"),
             };
-            UiButtonRadio(UIID(), radio_options, STATIC_ARRAY_SIZE(radio_options), V2Assign(25, 25), V2Assign(10, 0));
+            UiButtonRadio(UIID(), radio_options, STATIC_ARRAY_SIZE(radio_options), &ignored, V2Assign(25, 25), V2Assign(10, 0));
           UiPanelEnd();
 
           UiPanelHorizontalBegin(UIID(), V2_ZEROES, 0);

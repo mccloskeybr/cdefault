@@ -808,7 +808,7 @@ B32 LogInitFile(String8 file_path) {
 
 static void LogV(LogLevel level, String8 file, U32 loc, String8 fmt, va_list args) {
   LogConfig* c = &_cdef_log_config;
-  if (!c->is_initialized) { return; }
+  DEBUG_ASSERT(c->is_initialized);
 
   String8 file_name;
   if (!PathPop(file, NULL, &file_name)) { file_name = file; }
