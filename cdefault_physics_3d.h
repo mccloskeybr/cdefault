@@ -43,6 +43,7 @@ struct Collider3ConvexHull {
   V3 center;
   U32 points_size;
   V3* points_local; // NOTE: points in local space (centered around center).
+  V3* points_world;
 };
 
 // TODO: add undefined enum since these can be registered without being initialized?
@@ -202,6 +203,12 @@ struct Physics3Context {
 };
 static Physics3Context _cdef_phys_3d_context;
 
+static void Collider3ConvexHullUpdateWorldPoints(Collider3* collider) {
+  DEBUG_ASSERT(collider->type == Collider3Type_ConvexHull);
+  MEMORY_COPY_ARRAY(collider->convex_hull.points_world, collider->convex_hull.points_local, collider->convex_hull.points_size);
+  ConvexHull3Offset(collider->convex_hull.points_world, collider->convex_hull.points_size, collider->convex_hull.center);
+}
+
 static B32 Collider3IntersectBroad(Collider3* a, Collider3* b, IntersectManifold3* manifold) {
   return Sphere3IntersectSphere3(a->center, a->broad_sphere_radius, b->center, b->broad_sphere_radius, manifold);
 }
@@ -214,18 +221,21 @@ static B32 Collider3IntersectNarrow(Collider3* a, Collider3* b, IntersectManifol
           return Sphere3IntersectSphere3(a->sphere.center, a->sphere.radius, b->sphere.center, b->sphere.radius, manifold);
         } break;
         case Collider3Type_ConvexHull: {
-          B32 result = Sphere3IntersectConvexHull3(a->sphere.center, a->sphere.radius, b->convex_hull.points_local, b->convex_hull.points_size, b->convex_hull.center, manifold);
+          Collider3ConvexHullUpdateWorldPoints(b);
+          B32 result = Sphere3IntersectConvexHull3(a->sphere.center, a->sphere.radius, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
           return result;
         }
       }
     } break;
     case Collider3Type_ConvexHull: {
+      Collider3ConvexHullUpdateWorldPoints(a);
       switch (b->type) {
         case Collider3Type_Sphere: {
-          return ConvexHull3IntersectSphere3(a->convex_hull.points_local, a->convex_hull.points_size, a->convex_hull.center, b->sphere.center, b->sphere.radius, manifold);
+          return ConvexHull3IntersectSphere3(a->convex_hull.points_world, a->convex_hull.points_size, b->sphere.center, b->sphere.radius, manifold);
         } break;
         case Collider3Type_ConvexHull: {
-          return ConvexHull3IntersectConvexHull3(a->convex_hull.points_local, a->convex_hull.points_size, a->convex_hull.center, b->convex_hull.points_local, b->convex_hull.points_size, b->convex_hull.center, manifold);
+          Collider3ConvexHullUpdateWorldPoints(b);
+          return ConvexHull3IntersectConvexHull3(a->convex_hull.points_world, a->convex_hull.points_size, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
         } break;
       }
     } break;
@@ -515,9 +525,11 @@ void Collider3SetConvexHull(Collider3* collider, V3* points, U32 points_size) {
   ArenaClear(collider->arena);
   collider->type = Collider3Type_ConvexHull;
   collider->convex_hull.points_local = ARENA_PUSH_ARRAY(collider->arena, V3, points_size);
+  collider->convex_hull.points_world = ARENA_PUSH_ARRAY(collider->arena, V3, points_size);
   MEMORY_COPY_ARRAY(collider->convex_hull.points_local, points, points_size);
+  MEMORY_COPY_ARRAY(collider->convex_hull.points_world, points, points_size);
   collider->convex_hull.points_size = points_size;
-  ConvexHull3GetEnclosingSphere3(points, points_size, V3_ZEROES, &collider->convex_hull.center, &collider->broad_sphere_radius);
+  ConvexHull3GetEnclosingSphere3(points, points_size, &collider->convex_hull.center, &collider->broad_sphere_radius);
   V3 neg_center = V3Negate(collider->convex_hull.center);
   ConvexHull3Offset(collider->convex_hull.points_local, collider->convex_hull.points_size, neg_center);
 }

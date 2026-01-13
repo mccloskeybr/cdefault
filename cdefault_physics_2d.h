@@ -235,7 +235,7 @@ static B32 Collider2IntersectNarrow(Collider2* a, Collider2* b, IntersectManifol
         } break;
         case Collider2Type_ConvexHull: {
           Collider2ConvexHullUpdateWorldPoints(b);
-          B32 result = Circle2IntersectConvexHull2(a->circle.center, a->circle.radius, b->convex_hull.points_world, b->convex_hull.points_size, V2_ZEROES, manifold);
+          B32 result = Circle2IntersectConvexHull2(a->circle.center, a->circle.radius, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
           return result;
         }
       }
@@ -250,7 +250,7 @@ static B32 Collider2IntersectNarrow(Collider2* a, Collider2* b, IntersectManifol
         } break;
         case Collider2Type_ConvexHull: {
           Collider2ConvexHullUpdateWorldPoints(b);
-          return Obb2IntersectConvexHull2(a->rect.center, a->rect.size, a->angle_rad, b->convex_hull.points_world, b->convex_hull.points_size, V2_ZEROES, manifold);
+          return Obb2IntersectConvexHull2(a->rect.center, a->rect.size, a->angle_rad, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
         }
       }
     } break;
@@ -258,14 +258,14 @@ static B32 Collider2IntersectNarrow(Collider2* a, Collider2* b, IntersectManifol
       Collider2ConvexHullUpdateWorldPoints(a);
       switch (b->type) {
         case Collider2Type_Circle: {
-          return ConvexHull2IntersectCircle2(a->convex_hull.points_world, a->convex_hull.points_size, V2_ZEROES, b->circle.center, b->circle.radius, manifold);
+          return ConvexHull2IntersectCircle2(a->convex_hull.points_world, a->convex_hull.points_size, b->circle.center, b->circle.radius, manifold);
         } break;
         case Collider2Type_Rect: {
-          return ConvexHull2IntersectObb2(a->convex_hull.points_world, a->convex_hull.points_size, V2_ZEROES, b->rect.center, b->rect.size, b->angle_rad, manifold);
+          return ConvexHull2IntersectObb2(a->convex_hull.points_world, a->convex_hull.points_size, b->rect.center, b->rect.size, b->angle_rad, manifold);
         } break;
         case Collider2Type_ConvexHull: {
           Collider2ConvexHullUpdateWorldPoints(b);
-          return ConvexHull2IntersectConvexHull2(a->convex_hull.points_world, a->convex_hull.points_size, V2_ZEROES, b->convex_hull.points_world, b->convex_hull.points_size, V2_ZEROES, manifold);
+          return ConvexHull2IntersectConvexHull2(a->convex_hull.points_world, a->convex_hull.points_size, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
         } break;
       }
     } break;
@@ -608,7 +608,7 @@ void Collider2SetConvexHull(Collider2* collider, V2* points, U32 points_size) {
   MEMORY_COPY_ARRAY(collider->convex_hull.points_local, points, points_size);
   MEMORY_COPY_ARRAY(collider->convex_hull.points_world, points, points_size);
   collider->convex_hull.points_size = points_size;
-  ConvexHull2GetEnclosingCircle2(points, points_size, V2_ZEROES, &collider->convex_hull.center, &collider->broad_circle_radius);
+  ConvexHull2GetEnclosingCircle2(points, points_size, &collider->convex_hull.center, &collider->broad_circle_radius);
   V2 neg_center = V2Negate(collider->convex_hull.center);
   ConvexHull2Offset(collider->convex_hull.points_local, collider->convex_hull.points_size, neg_center);
 }
