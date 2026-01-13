@@ -42,7 +42,6 @@ typedef struct Collider2ConvexHull Collider2ConvexHull;
 struct Collider2ConvexHull {
   V2 center;
   U32 points_size;
-  // TODO: this can be removed if the angle is passed through to the geo library.
   V2* points_world; // NOTE: points in world space.
   V2* points_local; // NOTE: points in local space (unrotated).
 };
@@ -51,13 +50,15 @@ struct Collider2ConvexHull {
 typedef enum Collider2Type Collider2Type;
 enum Collider2Type {
   Collider2Type_Circle,
-  Collider2Type_Rect,
+  Collider2Type_Aabb,
+  Collider2Type_Obb,
   Collider2Type_ConvexHull,
 };
 
 static String8 Collider2Type_Names[] = {
   Str8Static("Circle"),
-  Str8Static("Rect"),
+  Str8Static("Aabb"),
+  Str8Static("Obb"),
   Str8Static("ConvexHull"),
 };
 
@@ -71,7 +72,8 @@ struct Collider2 {
   union {
     V2                  center;
     Collider2Circle     circle;
-    Collider2Rect       rect;
+    Collider2Rect       aabb;
+    Collider2Rect       obb;
     Collider2ConvexHull convex_hull;
   };
   F32 broad_circle_radius; // TODO: switch to aabb?
@@ -146,7 +148,8 @@ void Physics2Update(F32 dt_s);
 Collider2* Physics2RegisterCollider();
 void Physics2DeregisterCollider(Collider2* collider); // NOTE: Must be called after all subtypes are deinitialized.
 void Collider2SetCircle(Collider2* collider, V2 center, F32 radius);
-void Collider2SetRect(Collider2* collider, V2 center, V2 size);
+void Collider2SetAabb(Collider2* collider, V2 center, V2 size);
+void Collider2SetObb(Collider2* collider, V2 center, V2 size);
 void Collider2SetConvexHull(Collider2* collider, V2* points, U32 points_size); // NOTE: points is copied. TODO: separate fn for w/ center?
 void Collider2SetSubtype(Collider2* collider, Collider2SubtypeHeader* subtype);
 B32  Collider2RemoveSubtype(Collider2* collider, U32 type);
@@ -212,6 +215,8 @@ struct Physics2Context {
 };
 static Physics2Context _cdef_phys_2d_context;
 
+// TODO: unideal to re-derive the world points all the time like this, an alternative could be to add a setter for collider position / angle
+// that applies deltas to this in real time, but that's annoying for different reasons. better solutions?
 static void Collider2ConvexHullUpdateWorldPoints(Collider2* collider) {
   DEBUG_ASSERT(collider->type == Collider2Type_ConvexHull);
   MEMORY_COPY_ARRAY(collider->convex_hull.points_world, collider->convex_hull.points_local, collider->convex_hull.points_size);
@@ -230,8 +235,12 @@ static B32 Collider2IntersectNarrow(Collider2* a, Collider2* b, IntersectManifol
         case Collider2Type_Circle: {
           return Circle2IntersectCircle2(a->circle.center, a->circle.radius, b->circle.center, b->circle.radius, manifold);
         } break;
-        case Collider2Type_Rect: {
-          return Circle2IntersectObb2(a->circle.center, a->circle.radius, b->rect.center, b->rect.size, b->angle_rad, manifold);
+        case Collider2Type_Aabb: {
+          b->angle_rad = 0;
+          return Circle2IntersectAabb2(a->circle.center, a->circle.radius, b->aabb.center, b->aabb.size, manifold);
+        } break;
+        case Collider2Type_Obb: {
+          return Circle2IntersectObb2(a->circle.center, a->circle.radius, b->obb.center, b->obb.size, b->angle_rad, manifold);
         } break;
         case Collider2Type_ConvexHull: {
           Collider2ConvexHullUpdateWorldPoints(b);
@@ -240,17 +249,41 @@ static B32 Collider2IntersectNarrow(Collider2* a, Collider2* b, IntersectManifol
         }
       }
     } break;
-    case Collider2Type_Rect: {
+    case Collider2Type_Aabb: {
+      a->angle_rad = 0;
       switch (b->type) {
         case Collider2Type_Circle: {
-          return Obb2IntersectCircle2(a->rect.center, a->rect.size, a->angle_rad, b->circle.center, b->circle.radius, manifold);
+          return Aabb2IntersectCircle2(a->aabb.center, a->aabb.size, b->circle.center, b->circle.radius, manifold);
         } break;
-        case Collider2Type_Rect: {
-          return Obb2IntersectObb2(a->rect.center, a->rect.size, a->angle_rad, b->rect.center, b->rect.size, b->angle_rad, manifold);
+        case Collider2Type_Aabb: {
+          b->angle_rad = 0;
+          return Aabb2IntersectAabb2(a->aabb.center, a->aabb.size, b->aabb.center, b->aabb.size, manifold);
+        } break;
+        case Collider2Type_Obb: {
+          return Aabb2IntersectObb2(a->aabb.center, a->aabb.size, b->obb.center, b->obb.size, b->angle_rad, manifold);
         } break;
         case Collider2Type_ConvexHull: {
           Collider2ConvexHullUpdateWorldPoints(b);
-          return Obb2IntersectConvexHull2(a->rect.center, a->rect.size, a->angle_rad, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
+          B32 result = Aabb2IntersectConvexHull2(a->aabb.center, a->aabb.size, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
+          return result;
+        }
+      }
+    } break;
+    case Collider2Type_Obb: {
+      switch (b->type) {
+        case Collider2Type_Circle: {
+          return Obb2IntersectCircle2(a->obb.center, a->obb.size, a->angle_rad, b->circle.center, b->circle.radius, manifold);
+        } break;
+        case Collider2Type_Aabb: {
+          b->angle_rad = 0;
+          return Obb2IntersectAabb2(a->aabb.center, a->aabb.size, a->angle_rad, b->aabb.center, b->aabb.size, manifold);
+        } break;
+        case Collider2Type_Obb: {
+          return Obb2IntersectObb2(a->obb.center, a->obb.size, a->angle_rad, b->obb.center, b->obb.size, b->angle_rad, manifold);
+        } break;
+        case Collider2Type_ConvexHull: {
+          Collider2ConvexHullUpdateWorldPoints(b);
+          return Obb2IntersectConvexHull2(a->obb.center, a->obb.size, a->angle_rad, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
         }
       }
     } break;
@@ -260,8 +293,12 @@ static B32 Collider2IntersectNarrow(Collider2* a, Collider2* b, IntersectManifol
         case Collider2Type_Circle: {
           return ConvexHull2IntersectCircle2(a->convex_hull.points_world, a->convex_hull.points_size, b->circle.center, b->circle.radius, manifold);
         } break;
-        case Collider2Type_Rect: {
-          return ConvexHull2IntersectObb2(a->convex_hull.points_world, a->convex_hull.points_size, b->rect.center, b->rect.size, b->angle_rad, manifold);
+        case Collider2Type_Aabb: {
+          b->angle_rad = 0;
+          return ConvexHull2IntersectAabb2(a->convex_hull.points_world, a->convex_hull.points_size, b->aabb.center, b->aabb.size, manifold);
+        } break;
+        case Collider2Type_Obb: {
+          return ConvexHull2IntersectObb2(a->convex_hull.points_world, a->convex_hull.points_size, b->obb.center, b->obb.size, b->angle_rad, manifold);
         } break;
         case Collider2Type_ConvexHull: {
           Collider2ConvexHullUpdateWorldPoints(b);
@@ -290,6 +327,12 @@ static void Physics2RigidBodyUpdate(F32 dt_s) {
 
     MEMORY_ZERO_STRUCT(&rigid_body->force);
   }
+}
+
+static void Physics2SetIfRotatable(F32* old_value, F32 new_value, RigidBody2* rb) {
+  Collider2* c = rb->collider;
+  if (rb->fix_angle || c->type == Collider2Type_Aabb) { return; }
+  *old_value = new_value;
 }
 
 static void Physics2RigidBodyResolver(Collision2* collisions, U32 collisions_size) {
@@ -386,8 +429,8 @@ static void Physics2RigidBodyResolver(Collision2* collisions, U32 collisions_siz
       V2 b_dv                = V2MultF32(impulse, b_rigid_body->mass_inv);
       b_rigid_body->velocity = V2SubV2(b_rigid_body->velocity, b_dv);
 
-      a_rigid_body->angular_velocity += V2CrossV2(ra[i], impulse) * a_rigid_body->moment_inertia_inv * !a_rigid_body->fix_angle;
-      b_rigid_body->angular_velocity -= V2CrossV2(rb[i], impulse) * b_rigid_body->moment_inertia_inv * !b_rigid_body->fix_angle;
+      Physics2SetIfRotatable(&a_rigid_body->angular_velocity, a_rigid_body->angular_velocity + V2CrossV2(ra[i], impulse) * a_rigid_body->moment_inertia_inv, a_rigid_body);
+      Physics2SetIfRotatable(&b_rigid_body->angular_velocity, b_rigid_body->angular_velocity - V2CrossV2(rb[i], impulse) * b_rigid_body->moment_inertia_inv, b_rigid_body);
     }
 
     // NOTE: determine tangent / friction impulse
@@ -591,12 +634,21 @@ void Collider2SetCircle(Collider2* collider, V2 center, F32 radius) {
   collider->broad_circle_radius = radius;
 }
 
-void Collider2SetRect(Collider2* collider, V2 center, V2 size) {
+void Collider2SetAabb(Collider2* collider, V2 center, V2 size) {
   DEBUG_ASSERT(size.x > 0 && size.y > 0);
   ArenaClear(collider->arena);
-  collider->type = Collider2Type_Rect;
-  collider->rect.center = center;
-  collider->rect.size = size;
+  collider->type = Collider2Type_Aabb;
+  collider->aabb.center = center;
+  collider->aabb.size = size;
+  Aabb2GetEnclosingCircle2(center, size, &collider->broad_circle_radius);
+}
+
+void Collider2SetObb(Collider2* collider, V2 center, V2 size) {
+  DEBUG_ASSERT(size.x > 0 && size.y > 0);
+  ArenaClear(collider->arena);
+  collider->type = Collider2Type_Obb;
+  collider->obb.center = center;
+  collider->obb.size = size;
   Obb2GetEnclosingCircle2(center, size, 0, &collider->broad_circle_radius);
 }
 
@@ -692,8 +744,12 @@ void RigidBody2SetDynamic(RigidBody2* rigid_body, F32 mass) {
       F32 radius = rigid_body->collider->circle.radius;
       moment_inertia = (2.0f / 3.0f) * mass * radius * radius;
     } break;
-    case Collider2Type_Rect: {
-      V2 size = rigid_body->collider->rect.size;
+    case Collider2Type_Aabb: {
+      V2 size = rigid_body->collider->aabb.size;
+      moment_inertia = (1.0f / 12.0f) * mass * (size.x * size.x + size.y * size.y);
+    } break;
+    case Collider2Type_Obb: {
+      V2 size = rigid_body->collider->obb.size;
       moment_inertia = (1.0f / 12.0f) * mass * (size.x * size.x + size.y * size.y);
     } break;
     case Collider2Type_ConvexHull: {

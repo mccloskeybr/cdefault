@@ -2055,29 +2055,20 @@ B32 Aabb3IntersectRay3(V3 aabb_center, V3 aabb_size, V3 ray_start, V3 ray_dir, V
 }
 
 B32 Aabb3IntersectAabb3(V3 a_center, V3 a_size, V3 b_center, V3 b_size, IntersectManifold3* manifold) {
-  V3 a_half = V3DivF32(a_size, 2);
-  V3 b_half = V3DivF32(b_size, 2);
-
-  V3 dist    = V3Abs(V3SubV3(a_center, b_center));
-  V3 overlap = V3SubV3(V3AddV3(a_half, b_half), dist);
+  V3 half_size = V3DivF32(V3AddV3(a_size, b_size), 2);
+  V3 dist      = V3SubV3(a_center, b_center);
+  V3 overlap   = V3SubV3(half_size, V3Abs(dist));
   if (overlap.x <= 0 || overlap.y <= 0 || overlap.z <= 0) { return false; }
-
   if (manifold == NULL) { return true; }
-  U32 axis = 0;
-  manifold->penetration = overlap.x;
-  if (overlap.y < manifold->penetration) {
-    axis = 1;
+  if (overlap.x < overlap.y && overlap.x < overlap.z) {
+    manifold->penetration = overlap.x;
+    manifold->normal = (dist.x < 0) ? V3_X_NEG : V3_X_POS;
+  } else if (overlap.y < overlap.z) {
     manifold->penetration = overlap.y;
-  }
-  if (overlap.z < manifold->penetration) {
-    axis = 2;
+    manifold->normal = (dist.y < 0) ? V3_Y_NEG : V3_Y_POS;
+  } else {
     manifold->penetration = overlap.z;
-  }
-  switch (axis) {
-    case 0:  { manifold->normal = (dist.x < 0) ? V3_X_NEG : V3_X_POS; } break;
-    case 1:  { manifold->normal = (dist.y < 0) ? V3_Y_NEG : V3_Y_POS; } break;
-    case 2:  { manifold->normal = (dist.z < 0) ? V3_Z_NEG : V3_Z_POS; } break;
-    default: { UNREACHABLE(); } break;
+    manifold->normal = (dist.z < 0) ? V3_Z_NEG : V3_Z_POS;
   }
   return true;
 }

@@ -31,10 +31,18 @@ static void AddColliderCircle(V2 pos) {
   colliders[next_collider++] = c;
 }
 
-static void AddColliderRect(V2 pos) {
+static void AddColliderAabb(V2 pos) {
   Collider2* c = Physics2RegisterCollider();
   RigidBody2* rb = Physics2RegisterRigidBody(c);
-  Collider2SetRect(c, pos, RECT_SIZE);
+  Collider2SetAabb(c, pos, RECT_SIZE);
+  RigidBody2SetDynamic(rb, 50);
+  colliders[next_collider++] = c;
+}
+
+static void AddColliderObb(V2 pos) {
+  Collider2* c = Physics2RegisterCollider();
+  RigidBody2* rb = Physics2RegisterRigidBody(c);
+  Collider2SetObb(c, pos, RECT_SIZE);
   RigidBody2SetDynamic(rb, 50);
   colliders[next_collider++] = c;
 }
@@ -68,9 +76,8 @@ int main(void) {
   V2 g_size = V2Assign(10000, 100);
   Collider2* ground_c = Physics2RegisterCollider();
   RigidBody2* ground_rb = Physics2RegisterRigidBody(ground_c);
-  Collider2SetRect(ground_c, g_pos, g_size);
+  Collider2SetAabb(ground_c, g_pos, g_size);
   RigidBody2SetStatic(ground_rb);
-  ground_rb->fix_angle = true;
 
   F32 dt_s = 0.0f;
   Stopwatch frame_stopwatch;
@@ -86,13 +93,13 @@ int main(void) {
     if (WindowIsMouseButtonJustPressed(MouseButton_Left)) {
       AddColliderCircle(mouse_pos);
     } else if (WindowIsMouseButtonJustPressed(MouseButton_Right)) {
-      // AddColliderRect(mouse_pos);
-      AddColliderConvexHull(mouse_pos);
+      AddColliderAabb(mouse_pos);
+      // AddColliderConvexHull(mouse_pos);
     }
 
     Physics2Update(dt_s);
 
-    DrawRectangleV(ground_c->center, ground_c->rect.size, COLOR_BLUE);
+    DrawRectangleV(ground_c->center, ground_c->aabb.size, COLOR_BLUE);
     for (U32 i = 0; i < next_collider; i++) {
       Collider2* c = colliders[i];
       DrawRingV(c->center, c->broad_circle_radius, 1, COLOR_BLUE);
@@ -100,8 +107,11 @@ int main(void) {
         case Collider2Type_Circle: {
           DrawCircleV(c->circle.center, c->circle.radius, COLOR_RED);
         } break;
-        case Collider2Type_Rect: {
-          DrawRectangleRotV(c->rect.center, c->rect.size, c->angle_rad, COLOR_RED);
+        case Collider2Type_Aabb: {
+          DrawRectangleV(c->obb.center, c->obb.size, COLOR_RED);
+        } break;
+        case Collider2Type_Obb: {
+          DrawRectangleRotV(c->obb.center, c->obb.size, c->angle_rad, COLOR_RED);
         } break;
         case Collider2Type_ConvexHull: {
           DrawConvexHullV(c->convex_hull.points_world, c->convex_hull.points_size, COLOR_RED);

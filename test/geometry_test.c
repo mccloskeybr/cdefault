@@ -2040,34 +2040,34 @@ void Aabb3IntersectAabb3Test() {
   cb = V3Assign(3,0,0); sb = V3Assign(4,4,4);
   EXPECT_TRUE(Aabb3IntersectAabb3(ca,sa,cb,sb,&m));
   EXPECT_F32_APPROX_EQ(m.penetration, 1.0f);
-  EXPECT_V3_APPROX_EQ(m.normal, V3Assign(1,0,0));
+  EXPECT_V3_APPROX_EQ(m.normal, V3Assign(-1,0,0));
 
   // NOTE: overlap on Y axis (A below B)
   ca = V3Assign(0,0,0);
   cb = V3Assign(0,1,0);
   EXPECT_TRUE(Aabb3IntersectAabb3(ca,sa,cb,sb,&m));
   EXPECT_F32_APPROX_EQ(m.penetration, 3.0f);
-  EXPECT_V3_APPROX_EQ(m.normal, V3Assign(0,1,0));
+  EXPECT_V3_APPROX_EQ(m.normal, V3Assign(0,-1,0));
 
   // NOTE: overlap on Z axis (A in front of B)
   ca = V3Assign(0,0,0);
   cb = V3Assign(0,0,1);
   EXPECT_TRUE(Aabb3IntersectAabb3(ca,sa,cb,sb,&m));
   EXPECT_F32_APPROX_EQ(m.penetration, 3.0f);
-  EXPECT_V3_APPROX_EQ(m.normal, V3Assign(0,0,1));
+  EXPECT_V3_APPROX_EQ(m.normal, V3Assign(0,0,-1));
 
   // NOTE: diagonal overlap → smallest axis is X
   ca = V3Assign(0,0,0); cb = V3Assign(1.5f, 1.0f, 0.5f);
   EXPECT_TRUE(Aabb3IntersectAabb3(ca,sa,cb,sb,&m));
   EXPECT_F32_APPROX_EQ(m.penetration, 2.5f);
-  EXPECT_V3_APPROX_EQ(m.normal, V3Assign(1,0,0));
+  EXPECT_V3_APPROX_EQ(m.normal, V3Assign(-1,0,0));
 
   // NOTE: A fully inside B (all overlaps positive)
   ca = V3Assign(0,0,0); sa = V3Assign(2,2,2);
   cb = V3Assign(0,0,0); sb = V3Assign(10,10,10);
   EXPECT_TRUE(Aabb3IntersectAabb3(ca,sa,cb,sb,&m));
   EXPECT_F32_APPROX_EQ(m.penetration, 6.0f);
-  EXPECT_V3_APPROX_EQ(m.normal, V3Assign(1,0,0));
+  EXPECT_V3_APPROX_EQ(m.normal, V3Assign(0,0,1));
 }
 
 void Aabb3IntersectSphere3Test() {

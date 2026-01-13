@@ -50,11 +50,13 @@ struct Collider3ConvexHull {
 typedef enum Collider3Type Collider3Type;
 enum Collider3Type {
   Collider3Type_Sphere,
+  Collider3Type_Aabb,
   Collider3Type_ConvexHull,
 };
 
 static String8 Collider3Type_Names[] = {
   Str8Static("Sphere"),
+  Str8Static("Aabb"),
   Str8Static("ConvexHull"),
 };
 
@@ -68,6 +70,7 @@ struct Collider3 {
   union {
     V3                  center;
     Collider3Sphere     sphere;
+    Collider3Rect       aabb;
     Collider3ConvexHull convex_hull;
   };
   F32 broad_sphere_radius; // TODO: switch to aabb?
@@ -137,7 +140,7 @@ void Physics3Update(F32 dt_s);
 Collider3* Physics3ColliderRegister();
 void Physics3ColliderDeregister(Collider3* collider); // NOTE: Must be called after all subtypes are deinitialized.
 void Collider3SetSphere(Collider3* collider, V3 center, F32 radius);
-void Collider3SetRect(Collider3* collider, V3 center, V3 size);
+void Collider3SetAabb(Collider3* collider, V3 center, V3 size);
 void Collider3SetConvexHull(Collider3* collider, V3* points, U32 points_size); // NOTE: points is copied. TODO: separate fn for w/ center?
 void Collider3SetSubtype(Collider3* collider, Collider3SubtypeHeader* subtype);
 B32  Collider3RemoveSubtype(Collider3* collider, U32 type);
@@ -203,6 +206,8 @@ struct Physics3Context {
 };
 static Physics3Context _cdef_phys_3d_context;
 
+// TODO: unideal to re-derive the world points all the time like this, an alternative could be to add a setter for collider position / angle
+// that applies deltas to this in real time, but that's annoying for different reasons. better solutions?
 static void Collider3ConvexHullUpdateWorldPoints(Collider3* collider) {
   DEBUG_ASSERT(collider->type == Collider3Type_ConvexHull);
   MEMORY_COPY_ARRAY(collider->convex_hull.points_world, collider->convex_hull.points_local, collider->convex_hull.points_size);
@@ -220,9 +225,27 @@ static B32 Collider3IntersectNarrow(Collider3* a, Collider3* b, IntersectManifol
         case Collider3Type_Sphere: {
           return Sphere3IntersectSphere3(a->sphere.center, a->sphere.radius, b->sphere.center, b->sphere.radius, manifold);
         } break;
+        case Collider3Type_Aabb: {
+          return Sphere3IntersectAabb3(a->sphere.center, a->sphere.radius, b->aabb.center, b->aabb.size, manifold);
+        } break;
         case Collider3Type_ConvexHull: {
           Collider3ConvexHullUpdateWorldPoints(b);
           B32 result = Sphere3IntersectConvexHull3(a->sphere.center, a->sphere.radius, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
+          return result;
+        }
+      }
+    } break;
+    case Collider3Type_Aabb: {
+      switch (b->type) {
+        case Collider3Type_Sphere: {
+          return Aabb3IntersectSphere3(a->aabb.center, a->aabb.size, b->sphere.center, b->sphere.radius, manifold);
+        } break;
+        case Collider3Type_Aabb: {
+          return Aabb3IntersectAabb3(a->aabb.center, a->aabb.size, b->aabb.center, b->aabb.size, manifold);
+        } break;
+        case Collider3Type_ConvexHull: {
+          Collider3ConvexHullUpdateWorldPoints(b);
+          B32 result = Aabb3IntersectConvexHull3(a->aabb.center, a->aabb.size, b->convex_hull.points_world, b->convex_hull.points_size, manifold);
           return result;
         }
       }
@@ -232,6 +255,9 @@ static B32 Collider3IntersectNarrow(Collider3* a, Collider3* b, IntersectManifol
       switch (b->type) {
         case Collider3Type_Sphere: {
           return ConvexHull3IntersectSphere3(a->convex_hull.points_world, a->convex_hull.points_size, b->sphere.center, b->sphere.radius, manifold);
+        } break;
+        case Collider3Type_Aabb: {
+          return ConvexHull3IntersectAabb3(a->convex_hull.points_world, a->convex_hull.points_size, b->aabb.center, b->aabb.size, manifold);
         } break;
         case Collider3Type_ConvexHull: {
           Collider3ConvexHullUpdateWorldPoints(b);
@@ -513,12 +539,13 @@ void Collider3SetSphere(Collider3* collider, V3 center, F32 radius) {
   collider->broad_sphere_radius = radius;
 }
 
-void Collider3SetRect(Collider3* collider, V3 center, V3 size) {
-  DEBUG_ASSERT(size.x > 0 && size.y > 0);
+void Collider3SetAabb(Collider3* collider, V3 center, V3 size) {
+  DEBUG_ASSERT(size.x >= 0 && size.y >= 0 && size.z >= 0);
   ArenaClear(collider->arena);
-  V3 rect_points[8];
-  ConvexHull3FromAabb3(rect_points, NULL, center, size);
-  Collider3SetConvexHull(collider, rect_points, 8);
+  collider->type = Collider3Type_Aabb;
+  collider->aabb.center = center;
+  collider->aabb.size = size;
+  Aabb3GetEnclosingSphere3(center, size, &collider->broad_sphere_radius);
 }
 
 void Collider3SetConvexHull(Collider3* collider, V3* points, U32 points_size) {

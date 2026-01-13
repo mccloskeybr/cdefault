@@ -16,10 +16,10 @@ static void AddColliderSphere(V3 pos) {
   colliders[next_collider++] = c;
 }
 
-static void AddColliderRect(V3 pos) {
+static void AddColliderAabb(V3 pos) {
   Collider3* c = Physics3ColliderRegister();
   RigidBody3* rb = Physics3RigidBodyRegister(c);
-  Collider3SetRect(c, pos, RECT_SIZE);
+  Collider3SetAabb(c, pos, RECT_SIZE);
   RigidBody3SetDynamic(rb, 50);
   colliders[next_collider++] = c;
 }
@@ -39,7 +39,7 @@ int main(void) {
   camera->look_dir = V3Normalize(camera->look_dir);
 
   Collider3* ground_c = Physics3ColliderRegister();
-  Collider3SetRect(ground_c, V3_ZEROES, GROUND_SIZE);
+  Collider3SetAabb(ground_c, V3_ZEROES, GROUND_SIZE);
   RigidBody3* ground_rb = Physics3RigidBodyRegister(ground_c);
   RigidBody3SetStatic(ground_rb);
 
@@ -56,7 +56,7 @@ int main(void) {
     if (WindowIsMouseButtonJustPressed(MouseButton_Left)) {
       AddColliderSphere(V3Assign(2.0f, 50, 0));
     } else if (WindowIsMouseButtonJustPressed(MouseButton_Right)) {
-      AddColliderRect(V3Assign(0, 50, 0));
+      AddColliderAabb(V3Assign(0, 50, 0));
     }
 
     Physics3Update(dt_s);
@@ -71,11 +71,14 @@ int main(void) {
           DrawSphereV(c->sphere.center, V4_QUAT_IDENT, c->sphere.radius, V3_BLACK);
           RendererDisableWireframe();
         } break;
-        case Collider3Type_ConvexHull: {
+        case Collider3Type_Aabb: {
           DrawCubeV(c->center, V4_QUAT_IDENT, RECT_SIZE, V3_RED);
           RendererEnableWireframe();
           DrawCubeV(c->center, V4_QUAT_IDENT, RECT_SIZE, V3_BLACK);
           RendererDisableWireframe();
+        } break;
+        case Collider3Type_ConvexHull: {
+          LOG_ERROR("Can't render arbitrary convex hulls.");
         } break;
       }
     }
