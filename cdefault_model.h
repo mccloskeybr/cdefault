@@ -38,6 +38,8 @@ struct Model {
 
 B32 ModelLoadFile(Arena* arena, Model* model, String8 file_path);
 B32 ModelLoad(Arena* arena, Model* model, U8* file_data, U32 file_data_size);
+B32 ModelCopy(Arena* arena, Model* dest, Model* src);
+B32 MeshCopy(Arena* arena, Mesh* dest, Mesh* src);
 
 B32 ModelLoadObj(Arena* arena, Model* model, U8* file_data, U32 file_data_size);
 B32 ModelLoadGlb(Arena* arena, Model* model, U8* file_data, U32 file_data_size);
@@ -844,6 +846,51 @@ B32 ModelLoadFile(Arena* arena, Model* model, String8 file_path) {
 mesh_load_file_exit:
   ArenaRelease(file_arena);
   return success;
+}
+
+B32 ModelCopy(Arena* arena, Model* dest, Model* src) {
+  U64 arena_base = ArenaPos(arena);
+  B32 success    = false;
+
+  MEMORY_ZERO_STRUCT(dest);
+  for (Mesh* mesh_orig = src->meshes; mesh_orig != NULL; mesh_orig = mesh_orig->next) {
+    Mesh* mesh_copy = ARENA_PUSH_STRUCT(arena, Mesh);
+    if (!MeshCopy(arena, mesh_copy, mesh_orig)) { goto model_copy_exit; }
+    SLL_STACK_PUSH(dest->meshes, mesh_copy, next);
+  }
+
+  success = true;
+model_copy_exit:
+  if (!success) { ArenaPopTo(arena, arena_base); }
+  return success;
+}
+
+B32 MeshCopy(Arena* arena, Mesh* dest, Mesh* src) {
+  if (src->points == NULL) {
+    LOG_ERROR("[MESH] ModelCopy failed; source vertices are NULL.");
+    return false;
+  }
+  if (src->indices == NULL) {
+    LOG_ERROR("[MESH] ModelCopy failed; source indices are NULL.");
+    return false;
+  }
+
+  MEMORY_ZERO_STRUCT(dest);
+  dest->vertices_size = src->vertices_size;
+  dest->points        = ARENA_PUSH_ARRAY(arena, V3, src->vertices_size);
+  MEMORY_COPY_ARRAY(dest->points, src->points, src->vertices_size);
+  if (src->normals != NULL) {
+    dest->normals = ARENA_PUSH_ARRAY(arena, V3, src->vertices_size);
+    MEMORY_COPY_ARRAY(dest->normals, src->normals, src->vertices_size);
+  }
+  if (src->uvs != NULL) {
+    dest->uvs = ARENA_PUSH_ARRAY(arena, V2, src->vertices_size);
+    MEMORY_COPY_ARRAY(dest->uvs, src->uvs, src->vertices_size);
+  }
+  dest->indices_size = src->indices_size;
+  dest->indices      = ARENA_PUSH_ARRAY(arena, U32, src->indices_size);
+  MEMORY_COPY_ARRAY(dest->indices, src->indices, src->indices_size);
+  return true;
 }
 
 #undef MODEL_LOG_OUT_OF_CHARS

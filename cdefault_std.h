@@ -1954,7 +1954,7 @@ void Str8ToLower(String8 s) {
   }
 }
 
-// TODO: support e notation
+// TODO: support hex, inf, etc.
 S32 Str8ToF32(String8 s, F32* f32) {
   U32 i = 0;
   F32 result = 0.0f;
@@ -1970,19 +1970,37 @@ S32 Str8ToF32(String8 s, F32* f32) {
     i++;
     found_f32 = true;
   }
-  if (s.str[i] != '.') { goto str8_to_f32_end; }
-  i++;
 
-  S32 exp = 1;
-  while (i < s.size && CharIsDigit(s.str[i])) {
-    result *= 10;
-    result += s.str[i] - '0';
+  if (i < s.size && s.str[i] == '.') {
     i++;
-    exp *= 10;
-    found_f32 = true;
+    S32 exp = 1;
+    while (i < s.size && CharIsDigit(s.str[i])) {
+      result *= 10;
+      result += s.str[i] - '0';
+      i++;
+      exp *= 10;
+      found_f32 = true;
+    }
+    result /= exp;
   }
-  result /= exp;
-str8_to_f32_end:
+
+  if (found_f32 && i < s.size && (s.str[i] == 'e' || s.str[i] == 'E')) {
+    i++;
+    B32 is_exp_negative = false;
+    if (i < s.size) {
+      if (s.str[i] == '-') { is_exp_negative = true; i++; }
+      if (s.str[i] == '+') { i++; }
+    }
+    S32 exp = 0;
+    while (i < s.size && CharIsDigit(s.str[i])) {
+      exp *= 10;
+      exp += s.str[i] - '0';
+      i++;
+    }
+    if (is_exp_negative) { exp *= -1; }
+    result *= F32Pow(10, exp);
+  }
+
   if (found_f32) {
     *f32 = sign * result;
     return i;

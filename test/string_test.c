@@ -166,6 +166,35 @@ void Str8ToF32Test(void) {
 
   EXPECT_S32_EQ(Str8ToF32(Str8Lit("abc1.2"), &result), -1);
   EXPECT_F32_APPROX_EQ(result, 0);
+
+  EXPECT_S32_EQ(Str8ToF32(Str8Lit("1e2"), &result), 3);
+  EXPECT_F32_APPROX_EQ(result, 100);
+
+  EXPECT_S32_EQ(Str8ToF32(Str8Lit("1.23e2"), &result), 6);
+  EXPECT_F32_APPROX_EQ(result, 123);
+
+  EXPECT_S32_EQ(Str8ToF32(Str8Lit("123.123456e2"), &result), 12);
+  EXPECT_F32_APPROX_EQ(result, 12312.3456f);
+
+  EXPECT_S32_EQ(Str8ToF32(Str8Lit("1e-2"), &result), 4);
+  EXPECT_F32_APPROX_EQ(result, 0.01f);
+
+  EXPECT_S32_EQ(Str8ToF32(Str8Lit("1.23e-2"), &result), 7);
+  EXPECT_F32_APPROX_EQ(result, 0.0123f);
+
+  EXPECT_S32_EQ(Str8ToF32(Str8Lit("-1.23e+2"), &result), 8);
+  EXPECT_F32_APPROX_EQ(result, -123);
+
+  EXPECT_S32_EQ(Str8ToF32(Str8Lit("1.23e0000002"), &result), 12);
+  EXPECT_F32_APPROX_EQ(result, 123);
+
+  EXPECT_S32_EQ(Str8ToF32(Str8Lit("1.23E2"), &result), 6);
+  EXPECT_F32_APPROX_EQ(result, 123);
+
+  EXPECT_S32_EQ(Str8ToF32(Str8Lit("E2"), &result), -1);
+
+  EXPECT_S32_EQ(Str8ToF32(Str8Lit(".1E2"), &result), 4);
+  EXPECT_F32_APPROX_EQ(result, 10);
 }
 
 void Str8ToS32Test(void) {

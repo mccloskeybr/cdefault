@@ -534,8 +534,8 @@ void Ray2RotateAroundPoint(V2* ray_start, V2* ray_dir, V2 point, F32 angle_rad) 
 B32 Ray2ContainsPoint(V2 ray_start, V2 ray_dir, V2 point) {
   DEBUG_ASSERT(Ray2Validate(ray_dir));
   V2 to_point = V2SubV2(point, ray_start);
-  if (!F32ApproxEq(V2CrossV2(to_point, ray_dir), 0)) { return false; }
-  if (V2DotV2(to_point, ray_dir) < 0)                { return false; }
+  if (!V2CrossV2(to_point, ray_dir), 0) { return false; }
+  if (V2DotV2(to_point, ray_dir) < 0)   { return false; }
   return true;
 }
 
@@ -559,11 +559,11 @@ B32 Ray2IntersectLine2(V2 ray_start, V2 ray_dir, V2 line_start, V2 line_end, V2*
 B32 Ray2IntersectRay2(V2 a_start, V2 a_dir, V2 b_start, V2 b_dir, V2* intersect_point) {
   DEBUG_ASSERT(Ray2Validate(a_dir) && Ray2Validate(b_dir));
   F32 dir_cross = V2CrossV2(b_dir, a_dir);
-  if (F32ApproxEq(dir_cross, 0)) {
+  if (dir_cross == 0) {
     // NOTE: parallel or collinear
     V2 d_start      = V2SubV2(b_start, a_start);
     F32 start_cross = V2CrossV2(d_start, a_dir);
-    if (!F32ApproxEq(start_cross, 0)) { return false; }
+    if (start_cross != 0) { return false; }
 
     // NOTE: determine if there's overlap on collinear intersection
     F32 t = +V2DotV2(a_dir, d_start);
@@ -1486,7 +1486,7 @@ B32 Ray3ApproxEq(V3 a_start, V3 a_dir, V3 b_start, V3 b_dir) {
 B32 Ray3ContainsPoint(V3 ray_start, V3 ray_dir, V3 point) {
   V3 to_point = V3SubV3(point, ray_start);
   V3 cross   = V3CrossV3(to_point, ray_dir);
-  if (!F32ApproxEq(V3LengthSq(cross), 0)) { return false; }
+  if (V3LengthSq(cross) != 0) { return false; }
   if (V3DotV3(to_point, ray_dir) < 0) { return false; }
   return true;
 }
@@ -1523,13 +1523,13 @@ B32 Ray3IntersectRay3(V3 a_start, V3 a_dir, V3 b_start, V3 b_dir, V3* intersect_
   V3 d_start  = V3SubV3(b_start, a_start);
   F32 dir_dot = V3DotV3(a_dir, b_dir);
   F32 denom   = 1.0f - (dir_dot * dir_dot);
-  if (F32ApproxEq(denom, 0)) {
+  if (denom == 0) {
     // NOTE: parallel or collinear case
     // NOTE: is parallel non-intersecting
     V3 start_cross = V3CrossV3(d_start, a_dir);
-    if (!F32ApproxEq(V3LengthSq(start_cross), 0)) { return false; }
+    if (V3LengthSq(start_cross) != 0) { return false; }
     V3 dir_cross = V3CrossV3(a_dir, b_dir);
-    if (!F32ApproxEq(V3LengthSq(dir_cross), 0)) { return false; }
+    if (V3LengthSq(dir_cross) != 0) { return false; }
 
     // NOTE: is collinear, determine if there's overlap
     F32 t = +V3DotV3(a_dir, d_start);
@@ -1613,17 +1613,17 @@ B32 Ray3IntersectMesh3(V3 ray_start, V3 ray_dir, V3* mesh_points, U32 mesh_point
     U32 i2 = mesh_indices[i + 2];
     DEBUG_ASSERT(i0 < mesh_points_size && i1 < mesh_points_size && i2 < mesh_points_size);
     V3 tri[3] = { mesh_points[i0], mesh_points[i1], mesh_points[i2] };
-    V3 i;
-    if (Ray3IntersectTri3(ray_start, ray_dir, tri, &i)) {
+    V3 intersect;
+    if (Ray3IntersectTri3(ray_start, ray_dir, tri, &intersect)) {
       if (enter_point == NULL && exit_point == NULL) { return true; }
-      F32 d = V3DotV3(ray_dir, V3SubV3(i, ray_start));
+      F32 d = V3DotV3(ray_dir, V3SubV3(intersect, ray_start));
       if (d < i_min_dist) {
         i_min_dist = d;
-        i_min = i;
+        i_min = intersect;
       }
       if (d > i_max_dist) {
         i_max_dist = d;
-        i_max = i;
+        i_max = intersect;
       }
     }
   }
@@ -1654,7 +1654,8 @@ B32 Plane3FromTri3(V3* plane_normal, F32* plane_d, V3 tri_points[3]) {
   V3 a = V3SubV3(tri_points[1], tri_points[0]);
   V3 b = V3SubV3(tri_points[2], tri_points[0]);
   *plane_normal = V3CrossV3(a, b);
-  if (F32ApproxEq(V3LengthSq(*plane_normal), 0)) { return false; }
+  if (V3LengthSq(*plane_normal) == 0) { return false; }
+
   *plane_normal = V3Normalize(*plane_normal);
   Plane3FromAnchor(*plane_normal, plane_d, tri_points[0]);
   return true;
@@ -1726,7 +1727,7 @@ B32 Plane3IntersectRay3(V3 plane_normal, F32 plane_d, V3 ray_start, V3 ray_dir, 
   DEBUG_ASSERT(F32ApproxEq(V3LengthSq(plane_normal), 1));
   DEBUG_ASSERT(F32ApproxEq(V3LengthSq(ray_dir), 1));
   F32 denom = V3DotV3(plane_normal, ray_dir);
-  if (F32ApproxEq(denom, 0)) { return false; }
+  if (denom == 0) { return false; }
   F32 t = (plane_d - V3DotV3(plane_normal, ray_start)) / denom;
   if (t < 0) { return false; }
   if (intersect_point != NULL) { *intersect_point = V3AddV3(ray_start, V3MultF32(ray_dir, t)); }
@@ -1739,7 +1740,7 @@ B32 Plane3IntersectPlane3(V3 a_normal, F32 a_d, V3 b_normal, F32 b_d, V3* inters
 
   V3  dir        = V3CrossV3(a_normal, b_normal);
   F32 dir_len_sq = V3LengthSq(dir);
-  if (F32ApproxEq(dir_len_sq, 0)) { return false; }
+  if (dir_len_sq == 0) { return false; }
 
   if (intersect_dir != NULL) { *intersect_dir = dir; }
   if (intersect_point != NULL) {
@@ -1942,7 +1943,7 @@ B32 ConvexPolygon3IntersectPlane3(V3* polygon_points, U32 polygon_points_size, V
       num_intersections++;
       if (num_intersections == 1) { i_start = hit; }
       else                        { i_end = hit; break; }
-    } else if (F32ApproxEq(d_start, 0)) {
+    } else if (d_start == 0) {
       // NOTE: edge start lies exactly on plane
       num_intersections++;
       if (num_intersections == 1) { i_start = edge_start; }
@@ -2224,8 +2225,8 @@ B32 ConvexHull3ContainsPoint(V3* hull_points, U32 hull_points_size, U32* hull_in
     DEBUG_ASSERT(i0 < hull_points_size && i1 < hull_points_size && i2 < hull_points_size);
     V3 tri[3] = { hull_points[i0], hull_points[i1], hull_points[i2] };
     V3 plane_normal; F32 plane_d;
-    if (!Plane3FromTri3(&plane_normal, &plane_d, tri)) { return false; }
-    if (V3DotV3(plane_normal, point) + plane_d > 0)   { return false; }
+    if (!Plane3FromTri3(&plane_normal, &plane_d, tri)) { continue; }
+    if (V3DotV3(plane_normal, point) + plane_d > 0)    { return false; }
   }
   return true;
 }

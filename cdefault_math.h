@@ -204,6 +204,7 @@ V3  V3Project(V3 a, V3 b); // NOTE: projects a onto b
 V3  V3Clamp(V3 v, F32 min, F32 max);
 B32 V3AreCollinear(V3 a, V3 b, V3 c);
 F32 V3AngleBetween(V3 a, V3 b);
+F32 V3AngleBetweenNorm(V3 a, V3 b, V3 normal);
 V3  V3Lerp(V3 a, V3 b, F32 t);
 V3  V3QuadBezier(V3 a, V3 b, V3 control, F32 t);
 V3  V3RotateAroundAxis(V3 v, V3 axis, F32 angle_rad);
@@ -854,6 +855,14 @@ B32 V3AreCollinear(V3 a, V3 b, V3 c) {
 
 F32 V3AngleBetween(V3 a, V3 b) {
   return F32ArcCos(V3DotV3(a, b));
+}
+
+F32 V3AngleBetweenNorm(V3 a, V3 b, V3 normal) {
+  V3  cross = V3CrossV3(a, b);
+  F32 dot   = V3DotV3(a, b);
+  F32 angle = F32ArcTan2(V3Length(cross), dot);
+  if (V3DotV3(normal, cross) < 0) { angle = -angle; }
+  return angle;
 }
 
 V3 V3Lerp(V3 a, V3 b, F32 t) {
